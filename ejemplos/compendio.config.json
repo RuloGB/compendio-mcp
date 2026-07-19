@@ -1,0 +1,8 @@
+{
+  "docsDir": "docs",
+  "exclude": ["INDEX.md"],
+  "db": ".compendio/compendio.db",
+  "embeddings": { "provider": "local", "model": "Xenova/multilingual-e5-small" },
+  "chunk": { "minTokens": 100, "maxTokens": 800 },
+  "search": { "k": 5, "estadosExcluidos": ["borrador", "obsoleto"] }
+}

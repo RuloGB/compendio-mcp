@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "compendio": {
+      "command": "node",
+      "args": ["dist/cli.js", "--root", "ejemplos", "serve"]
+    }
+  }
+}
