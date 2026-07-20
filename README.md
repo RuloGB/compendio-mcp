@@ -157,7 +157,7 @@ src/
 └── server.ts          # input adapter: MCP server (stdio)
 ```
 
-Key decisions (see [docs/compendio-mvp.md](docs/compendio-mvp.md)):
+Key decisions:
 
 - **SQLite + sqlite-vec** instead of a dedicated vector database: zero ops, right for corpora of hundreds of documents. The vector leg is isolated in the adapter; migrating would be a local change.
 - **Heading-based chunking** (H2, and H3 if the section exceeds the maximum), merging tiny sections. Cuts happen only at heading boundaries, so **tables are never split**.
