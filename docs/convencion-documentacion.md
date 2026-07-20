@@ -99,7 +99,7 @@ Index of all documentation: one line per document, in this format:
 - [adr] adr/adr-0007-eleccion-base-datos.md — Por qué PostgreSQL frente a MongoDB (vigente)
 ```
 
-By reading only this file, a person or an agent gets oriented across all the documentation. It is updated by hand, in the same PR that adds or changes a document.
+By reading only this file, a person or an agent gets oriented across all the documentation. It is kept up to date with `compendio index-md`, which regenerates it from each document's frontmatter and summary; run it in the same PR that adds or changes a document.
 
 ## 9. Glossary
 
@@ -111,7 +111,7 @@ By reading only this file, a person or an agent gets oriented across all the doc
 - [ ] The first paragraph summarizes the document and stands on its own
 - [ ] Descriptive headings; self-contained sections
 - [ ] Terminology per `glosario.md` (new modules registered)
-- [ ] `INDEX.md` updated
+- [ ] `INDEX.md` regenerated (`compendio index-md`)
 - [ ] If the change affects documented behavior, the document is updated (or its owner is notified)
 
 ## 11. Templates

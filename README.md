@@ -32,6 +32,7 @@ In a repository that follows the convention no configuration is needed: `compend
 | Command | What it does |
 |---|---|
 | `compendio index` | Reindexes all documentation (`--dir` for another directory, `--lexico` to skip embeddings) |
+| `compendio index-md` | Generates or updates `docs/INDEX.md` — one line per document — from the corpus frontmatter (`--dir` for another directory) |
 | `compendio search "..."` | Hybrid search with filters: `--tipo`, `--modulo`, `--etiquetas`, `-k`, `--todos`, `--lexico` |
 | `compendio overview` | Map of the indexed corpus |
 | `compendio eval` | Evaluates the goldenset and compares hybrid vs lexical (`--goldenset`, `-k`) |
@@ -64,7 +65,7 @@ Optional; every field has a default value:
 
 ## Registration in MCP clients
 
-Compendio is a standard MCP server over stdio and is registered the same way in all four clients. While the package is not yet published on npm, replace `npx compendio-mcp` with `node <path-to-compendio>/dist/cli.js` (the examples below use that form); once published, `"command": "npx", "args": ["compendio-mcp", "serve"]` is enough.
+Compendio is a standard MCP server over stdio and is registered the same way in all four clients. The package is published on [npm](https://www.npmjs.com/package/compendio-mcp), so the examples below use `npx`; to run a local checkout instead (development), replace it with `node <path-to-compendio>/dist/cli.js serve`.
 
 **OpenCode** (`opencode.json`):
 
@@ -73,7 +74,7 @@ Compendio is a standard MCP server over stdio and is registered the same way in 
   "mcp": {
     "compendio": {
       "type": "local",
-      "command": ["node", "C:/path/to/compendio-mcp/dist/cli.js", "serve"],
+      "command": ["npx", "compendio-mcp", "serve"],
       "enabled": true
     }
   }
@@ -86,8 +87,8 @@ Compendio is a standard MCP server over stdio and is registered the same way in 
 {
   "mcpServers": {
     "compendio": {
-      "command": "node",
-      "args": ["C:/path/to/compendio-mcp/dist/cli.js", "serve"]
+      "command": "npx",
+      "args": ["compendio-mcp", "serve"]
     }
   }
 }
@@ -100,8 +101,8 @@ Compendio is a standard MCP server over stdio and is registered the same way in 
   "servers": {
     "compendio": {
       "type": "stdio",
-      "command": "node",
-      "args": ["C:/path/to/compendio-mcp/dist/cli.js", "serve"]
+      "command": "npx",
+      "args": ["compendio-mcp", "serve"]
     }
   }
 }
@@ -113,8 +114,8 @@ Compendio is a standard MCP server over stdio and is registered the same way in 
 {
   "mcpServers": {
     "compendio": {
-      "command": "node",
-      "args": ["C:/path/to/compendio-mcp/dist/cli.js", "serve"]
+      "command": "npx",
+      "args": ["compendio-mcp", "serve"]
     }
   }
 }
@@ -176,6 +177,6 @@ The integration tests use a deterministic embeddings provider (no downloads) and
 
 ## Phases
 
-- **MVP (this)**: full indexing, hybrid search with filters, 3 MCP tools, CLI (index/search/overview/eval), degraded mode, goldenset with metrics.
-- **Phase 2**: incremental reindexing by hash, file-watching, `INDEX.md` generator, Ollama provider (bge-m3), lightweight reranking.
+- **MVP (this)**: full indexing, hybrid search with filters, 3 MCP tools, CLI (index/index-md/search/overview/eval), degraded mode, goldenset with metrics, `INDEX.md` generator.
+- **Phase 2**: incremental reindexing by hash, file-watching, Ollama provider (bge-m3), lightweight reranking.
 - **Phase 3**: role-aware retrieval, multi-repo, synonym table fed by the glossary.

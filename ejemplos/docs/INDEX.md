@@ -1,13 +1,15 @@
 # Índice de la documentación
 
-- [guia] glosario.md — Términos canónicos del proyecto LeadsViewer (vigente)
-- [funcional] funcional/leadsviewer-validacion-formulario.md — Reglas de validación del formulario de alta de leads (vigente)
-- [funcional] funcional/leadsviewer-importacion-csv.md — Importación masiva de leads por CSV (vigente)
-- [funcional] funcional/informes-panel-metricas.md — Panel de métricas de actividad comercial (vigente)
-- [adr] adr/adr-0001-eleccion-mongodb.md — MongoDB como base de datos inicial (obsoleto)
-- [adr] adr/adr-0003-autenticacion-sso.md — Autenticación mediante SSO corporativo OIDC (vigente)
-- [adr] adr/adr-0007-eleccion-base-datos.md — PostgreSQL como base de datos del sistema (vigente)
-- [api] api/leadsviewer-alta-leads.md — Contrato REST de alta y edición de leads (vigente)
-- [qa] qa/leadsviewer-plan-pruebas-validacion.md — Plan de pruebas de la validación del formulario (vigente)
-- [qa] qa/informes-plan-pruebas.md — Plan de pruebas del panel de métricas (borrador)
-- [guia] guias/transversal-despliegue.md — Guía de despliegue a producción (vigente)
+<!-- Generado con "compendio index-md"; los cambios manuales se sobrescriben. -->
+
+- [guia] glosario.md — Términos canónicos del proyecto LeadsViewer: módulos, entidades de negocio y siglas. Es la fuente de verdad para el campo modulo del frontm… (vigente)
+- [funcional] funcional/informes-panel-metricas.md — Describe el panel de informes de LeadsViewer: qué indicadores muestra, cómo se calculan y qué filtros admite. Consultar antes de añadir un … (vigente)
+- [funcional] funcional/leadsviewer-importacion-csv.md — Define cómo se cargan leads en lote desde un fichero CSV: formato del fichero, validación por fila, tratamiento de duplicados y el informe … (vigente)
+- [funcional] funcional/leadsviewer-validacion-formulario.md — Define las reglas de validación del formulario de alta y edición de leads en LeadsViewer: campos, formatos, obligatoriedad, tratamiento de … (vigente)
+- [adr] adr/adr-0001-eleccion-mongodb.md — Decisión original de arranque del proyecto: usar MongoDB por velocidad de desarrollo con un esquema aún inestable. Obsoleto: sustituido por… (obsoleto)
+- [adr] adr/adr-0003-autenticacion-sso.md — Se decidió delegar la autenticación en el proveedor de identidad corporativo mediante OpenID Connect, en lugar de mantener usuarios y crede… (vigente)
+- [adr] adr/adr-0007-eleccion-base-datos.md — Se decidió usar PostgreSQL como base de datos única del sistema, en sustitución de MongoDB, por la necesidad de transacciones y de integrid… (vigente)
+- [api] api/leadsviewer-alta-leads.md — Contrato REST del alta, edición y consulta de leads. Lo consumen el formulario web y la importación por CSV; ambos aplican las mismas regla… (vigente)
+- [qa] qa/informes-plan-pruebas.md — Borrador del plan de pruebas del panel de informes. Pendiente de revisar con el BA las definiciones de cálculo antes de dar el plan por vig… (borrador)
+- [qa] qa/leadsviewer-plan-pruebas-validacion.md — Casos de prueba del formulario de alta y edición de leads, derivados de la especificación funcional de validación. Criterio de salida: todo… (vigente)
+- [guia] guias/transversal-despliegue.md — Pasos para publicar una versión de LeadsViewer en producción, qué comprueba el pipeline y cómo revertir si algo sale mal. Consultar antes d… (vigente)

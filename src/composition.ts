@@ -1,9 +1,11 @@
 import { resolve } from "node:path";
 import { EvaluateSearch } from "./application/evaluate-search.js";
+import { GenerateIndexMd } from "./application/generate-index-md.js";
 import { GetOverview } from "./application/get-overview.js";
 import { IndexDocuments } from "./application/index-documents.js";
 import { ReadDocument } from "./application/read-document.js";
 import { SearchDocuments } from "./application/search-documents.js";
+import { INDEX_FILE } from "./domain/index-markdown.js";
 import type { EmbeddingsProvider } from "./domain/ports.js";
 import { loadConfig, SIN_CHUNKING, type CompendioConfig } from "./infrastructure/config.js";
 import {
@@ -11,6 +13,7 @@ import {
   TransformersEmbeddings,
 } from "./infrastructure/embeddings/transformers-embeddings.js";
 import { FileDocumentSource } from "./infrastructure/fs/file-document-source.js";
+import { FileIndexWriter } from "./infrastructure/fs/file-index-writer.js";
 import { RemarkMarkdownParser } from "./infrastructure/markdown/remark-markdown-parser.js";
 import { SqliteIndexStore } from "./infrastructure/sqlite/sqlite-index-store.js";
 
@@ -28,6 +31,7 @@ export interface Container {
   config: CompendioConfig;
   store: SqliteIndexStore;
   indexDocuments: IndexDocuments;
+  generateIndexMd: GenerateIndexMd;
   searchDocuments: SearchDocuments;
   getOverview: GetOverview;
   readDocument: ReadDocument;
@@ -45,19 +49,20 @@ export function createContainer(options: ContainerOptions): Container {
       ? null
       : new LazyEmbeddings(() => TransformersEmbeddings.create(config.embeddings.model));
 
-  const indexDocuments = new IndexDocuments(
-    new FileDocumentSource(docsDir, config.exclude),
-    new RemarkMarkdownParser(),
-    store,
-    embeddings,
-    { chunking: config.chunk, sinChunking: SIN_CHUNKING },
-  );
+  const source = new FileDocumentSource(docsDir, config.exclude);
+  const parser = new RemarkMarkdownParser();
+  const indexDocuments = new IndexDocuments(source, parser, store, embeddings, {
+    chunking: config.chunk,
+    sinChunking: SIN_CHUNKING,
+  });
+  const generateIndexMd = new GenerateIndexMd(source, parser, new FileIndexWriter(docsDir, INDEX_FILE));
   const searchDocuments = new SearchDocuments(store, embeddings, config.search);
 
   return {
     config,
     store,
     indexDocuments,
+    generateIndexMd,
     searchDocuments,
     getOverview: new GetOverview(store),
     readDocument: new ReadDocument(store),

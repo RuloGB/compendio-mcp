@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { INDEX_FILE } from "../domain/index-markdown.js";
 import type { Estado } from "../domain/model.js";
 
 export interface CompendioConfig {
@@ -27,7 +28,7 @@ export const SIN_CHUNKING = ["glosario.md"];
 
 export const DEFAULT_CONFIG: CompendioConfig = {
   docsDir: "docs",
-  exclude: ["INDEX.md"],
+  exclude: [INDEX_FILE],
   db: ".compendio/compendio.db",
   embeddings: { provider: "local", model: "Xenova/multilingual-e5-small" },
   chunk: { minTokens: 100, maxTokens: 800 },
