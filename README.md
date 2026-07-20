@@ -174,9 +174,3 @@ npm run dev -- ...  # CLI without compiling (tsx)
 ```
 
 The integration tests use a deterministic embeddings provider (no downloads) and the real `ejemplos/` corpus.
-
-## Phases
-
-- **MVP (this)**: full indexing, hybrid search with filters, 3 MCP tools, CLI (index/index-md/search/overview/eval), degraded mode, goldenset with metrics, `INDEX.md` generator.
-- **Phase 2**: incremental reindexing by hash, file-watching, Ollama provider (bge-m3), lightweight reranking.
-- **Phase 3**: role-aware retrieval, multi-repo, synonym table fed by the glossary.
