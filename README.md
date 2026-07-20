@@ -1,55 +1,55 @@
 # compendio-mcp
 
-*La documentación de tu proyecto, servida a cualquier agente en el mínimo de tokens.*
+*Your project's documentation, served to any agent in the fewest possible tokens.*
 
-Compendio es un servidor MCP que indexa la documentación markdown de un proyecto (escrita según la [convención de documentación](docs/convencion-documentacion.md)) y la expone a cualquier agente de IA mediante búsqueda híbrida local: léxica (FTS5/BM25) + semántica (embeddings), combinadas con Reciprocal Rank Fusion. Todo en local: un fichero SQLite, un modelo de embeddings en CPU y cero llamadas de red en operación.
+Compendio is an MCP server that indexes a project's markdown documentation (written following the [documentation convention](docs/convencion-documentacion.md)) and exposes it to any AI agent through local hybrid search: lexical (FTS5/BM25) + semantic (embeddings), combined with Reciprocal Rank Fusion. Everything runs locally: a single SQLite file, an embeddings model on CPU, and zero network calls in operation.
 
-## Requisitos
+## Requirements
 
 - Node.js ≥ 20.
-- Nada más: ni Docker, ni servicios, ni claves de API.
+- Nothing else: no Docker, no services, no API keys.
 
-## Inicio rápido
+## Quick start
 
 ```bash
 npm install
 npm run build
 
-# Indexar el corpus de ejemplo y evaluarlo
+# Index the example corpus and evaluate it
 node dist/cli.js --root ejemplos index
 node dist/cli.js --root ejemplos eval
 
-# Buscar desde la terminal
+# Search from the terminal
 node dist/cli.js --root ejemplos search "¿cuándo se considera duplicado un lead?"
 ```
 
-En el primer indexado se descarga el modelo de embeddings (`Xenova/multilingual-e5-small`, decenas de MB) y se cachea en disco; a partir de ahí la operación es 100 % offline. Si la descarga o la carga del modelo fallan, Compendio **no se cae**: indexa y busca en modo solo-léxico y lo indica en sus respuestas con `"modo": "lexico"`.
+On the first index the embeddings model is downloaded (`Xenova/multilingual-e5-small`, tens of MB) and cached to disk; from then on operation is 100% offline. If the model download or load fails, Compendio **does not crash**: it indexes and searches in lexical-only mode and signals it in its responses with `"modo": "lexico"`.
 
-En un repositorio que siga la convención no hace falta configuración: `compendio index` desde la raíz indexa `docs/` en `.compendio/compendio.db` (añade `.compendio/` a tu `.gitignore`).
+In a repository that follows the convention no configuration is needed: `compendio index` from the root indexes `docs/` into `.compendio/compendio.db` (add `.compendio/` to your `.gitignore`).
 
 ## CLI
 
-| Comando | Qué hace |
+| Command | What it does |
 |---|---|
-| `compendio index` | Reindexa toda la documentación (`--dir` para otro directorio, `--lexico` para saltarse los embeddings) |
-| `compendio search "..."` | Búsqueda híbrida con filtros: `--tipo`, `--modulo`, `--etiquetas`, `-k`, `--todos`, `--lexico` |
-| `compendio overview` | Mapa del corpus indexado |
-| `compendio eval` | Evalúa el goldenset y compara híbrido vs léxico (`--goldenset`, `-k`) |
-| `compendio serve` | Arranca el servidor MCP por stdio |
+| `compendio index` | Reindexes all documentation (`--dir` for another directory, `--lexico` to skip embeddings) |
+| `compendio search "..."` | Hybrid search with filters: `--tipo`, `--modulo`, `--etiquetas`, `-k`, `--todos`, `--lexico` |
+| `compendio overview` | Map of the indexed corpus |
+| `compendio eval` | Evaluates the goldenset and compares hybrid vs lexical (`--goldenset`, `-k`) |
+| `compendio serve` | Starts the MCP server over stdio |
 
-Opción global `-C, --root <dir>`: raíz del proyecto (donde viven `compendio.config.json` y `.compendio/`).
+Global option `-C, --root <dir>`: project root (where `compendio.config.json` and `.compendio/` live).
 
-## Herramientas MCP
+## MCP tools
 
-Diseñadas como *progressive disclosure*: orientarse barato → buscar barato → leer solo lo necesario.
+Designed as *progressive disclosure*: orient cheaply → search cheaply → read only what is needed.
 
-1. **`docs_overview()`** — mapa del corpus: recuento por tipo y módulo, y una línea por documento (`[tipo] ruta — resumen (estado)`). ~10 tokens por documento.
-2. **`search_docs({ query, tipo?, modulo?, etiquetas?, k?, incluir_no_vigentes? })`** — los k mejores fragmentos (5 por defecto, máximo 2 por documento), con ruta, sección, extracto y score. Los documentos `borrador` u `obsoleto` quedan excluidos salvo petición explícita.
-3. **`read_doc({ ruta, seccion? })`** — una sección concreta (o el documento completo) con su frontmatter. Si la ruta no existe, responde con las 3 rutas más parecidas en lugar de un error seco.
+1. **`docs_overview()`** — corpus map: counts by type and module, and one line per document (`[tipo] ruta — resumen (estado)`). ~10 tokens per document.
+2. **`search_docs({ query, tipo?, modulo?, etiquetas?, k?, incluir_no_vigentes? })`** — the top k fragments (5 by default, at most 2 per document), with path, section, excerpt and score. Documents in `borrador` (draft) or `obsoleto` (obsolete) state are excluded unless explicitly requested.
+3. **`read_doc({ ruta, seccion? })`** — a specific section (or the full document) with its frontmatter. If the path does not exist, it responds with the 3 most similar paths instead of a blunt error.
 
-## Configuración (`compendio.config.json`)
+## Configuration (`compendio.config.json`)
 
-Opcional; todos los campos tienen valor por defecto:
+Optional; every field has a default value:
 
 ```json
 {
@@ -62,9 +62,9 @@ Opcional; todos los campos tienen valor por defecto:
 }
 ```
 
-## Registro en clientes MCP
+## Registration in MCP clients
 
-Compendio es un servidor MCP estándar por stdio y se registra igual en los cuatro clientes. Mientras el paquete no esté publicado en npm, sustituye `npx compendio-mcp` por `node <ruta-a-compendio>/dist/cli.js` (los ejemplos siguientes usan esa forma); tras publicarlo bastará `"command": "npx", "args": ["compendio-mcp", "serve"]`.
+Compendio is a standard MCP server over stdio and is registered the same way in all four clients. While the package is not yet published on npm, replace `npx compendio-mcp` with `node <path-to-compendio>/dist/cli.js` (the examples below use that form); once published, `"command": "npx", "args": ["compendio-mcp", "serve"]` is enough.
 
 **OpenCode** (`opencode.json`):
 
@@ -73,21 +73,21 @@ Compendio es un servidor MCP estándar por stdio y se registra igual en los cuat
   "mcp": {
     "compendio": {
       "type": "local",
-      "command": ["node", "C:/ruta/a/compendio-mcp/dist/cli.js", "serve"],
+      "command": ["node", "C:/path/to/compendio-mcp/dist/cli.js", "serve"],
       "enabled": true
     }
   }
 }
 ```
 
-**Claude Code** (`.mcp.json` en la raíz del repo):
+**Claude Code** (`.mcp.json` at the repo root):
 
 ```json
 {
   "mcpServers": {
     "compendio": {
       "command": "node",
-      "args": ["C:/ruta/a/compendio-mcp/dist/cli.js", "serve"]
+      "args": ["C:/path/to/compendio-mcp/dist/cli.js", "serve"]
     }
   }
 }
@@ -101,7 +101,7 @@ Compendio es un servidor MCP estándar por stdio y se registra igual en los cuat
     "compendio": {
       "type": "stdio",
       "command": "node",
-      "args": ["C:/ruta/a/compendio-mcp/dist/cli.js", "serve"]
+      "args": ["C:/path/to/compendio-mcp/dist/cli.js", "serve"]
     }
   }
 }
@@ -114,68 +114,68 @@ Compendio es un servidor MCP estándar por stdio y se registra igual en los cuat
   "mcpServers": {
     "compendio": {
       "command": "node",
-      "args": ["C:/ruta/a/compendio-mcp/dist/cli.js", "serve"]
+      "args": ["C:/path/to/compendio-mcp/dist/cli.js", "serve"]
     }
   }
 }
 ```
 
-El servidor **no** reindexa por sí solo: ejecuta `compendio index` antes de arrancar el cliente (o tras cambiar la documentación). El reindexado incremental y el file-watching son fase 2.
+The server does **not** reindex on its own: run `compendio index` before starting the client (or after changing the documentation). Incremental reindexing and file-watching are phase 2.
 
-Este repositorio incluye un `.mcp.json` que sirve el corpus de `ejemplos/` para probar las tools desde Claude Code sin configurar nada.
+This repository includes a `.mcp.json` that serves the `ejemplos/` corpus so you can try the tools from Claude Code with zero configuration.
 
-## ¿Cuánto aporta lo semántico sobre grep?
+## How much does semantics add over grep?
 
-Medido con `compendio eval` sobre el corpus de ejemplo (`ejemplos/`: 11 documentos, 27 chunks) y su goldenset de 22 preguntas reales, ejecutado el 2026-07-19 en un portátil sin GPU:
+Measured with `compendio eval` on the example corpus (`ejemplos/`: 11 documents, 27 chunks) and its goldenset of 22 real questions, run on 2026-07-19 on a laptop without a GPU:
 
-| modo | recall@5 | MRR | fallos |
+| mode | recall@5 | MRR | failures |
 |---|---|---|---|
-| híbrido | **1.00** | **0.920** | 0 |
-| léxico | 0.95 | 0.885 | 1 |
+| hybrid | **1.00** | **0.920** | 0 |
+| lexical | 0.95 | 0.885 | 1 |
 
-- El modo léxico ya es fuerte cuando la pregunta usa la terminología del corpus (la convención de documentación empuja justo en esa dirección).
-- El hueco semántico aparece con paráfrasis y sinónimos: «¿Qué endpoint hay que llamar para crear un lead?» cae a la posición 7 en léxico y lo recupera el híbrido; «fichas repetidas de clientes potenciales» (cero solape léxico con «duplicado») solo la resuelve la pata semántica.
-- Indexado completo del corpus de ejemplo: ~6,5 s incluida la descarga/carga del modelo. Con el modelo caliente, la búsqueda híbrida responde en 5–20 ms y la léxica en <5 ms (requisito del MVP: <500 ms).
+- Lexical mode is already strong when the question uses the corpus terminology (the documentation convention pushes in exactly that direction).
+- The semantic gap appears with paraphrases and synonyms: «¿Qué endpoint hay que llamar para crear un lead?» drops to position 7 in lexical mode and the hybrid recovers it; «fichas repetidas de clientes potenciales» (zero lexical overlap with «duplicado») is only solved by the semantic leg.
+- Full index of the example corpus: ~6.5 s including model download/load. With the model warm, hybrid search responds in 5–20 ms and lexical in <5 ms (MVP requirement: <500 ms).
 
-`compendio eval` reproduce esta tabla en cualquier momento; es también el instrumento para tunear chunking y `k` sin ir a ojo.
+`compendio eval` reproduces this table at any time; it is also the instrument for tuning chunking and `k` without guessing.
 
-## Arquitectura
+## Architecture
 
-Hexagonal: el núcleo no conoce SQLite, ni transformers.js, ni el filesystem.
+Hexagonal: the core knows nothing about SQLite, transformers.js, or the filesystem.
 
 ```
 src/
-├── domain/            # puro, sin dependencias: modelo, chunking, RRF, métricas, validación
+├── domain/            # pure, no dependencies: model, chunking, RRF, metrics, validation
 │   └── ports.ts       # DocumentSource, MarkdownParser, IndexStore, EmbeddingsProvider
-├── application/       # casos de uso: IndexDocuments, SearchDocuments, GetOverview,
+├── application/       # use cases: IndexDocuments, SearchDocuments, GetOverview,
 │                      # ReadDocument, EvaluateSearch
-├── infrastructure/    # adaptadores: SQLite (FTS5 + sqlite-vec), remark + gray-matter,
-│                      # filesystem, transformers.js, configuración
-├── composition.ts     # raíz de composición (wiring)
-├── cli.ts             # adaptador de entrada: commander
-└── server.ts          # adaptador de entrada: servidor MCP (stdio)
+├── infrastructure/    # adapters: SQLite (FTS5 + sqlite-vec), remark + gray-matter,
+│                      # filesystem, transformers.js, configuration
+├── composition.ts     # composition root (wiring)
+├── cli.ts             # input adapter: commander
+└── server.ts          # input adapter: MCP server (stdio)
 ```
 
-Decisiones clave (ver [docs/compendio-mvp.md](docs/compendio-mvp.md)):
+Key decisions (see [docs/compendio-mvp.md](docs/compendio-mvp.md)):
 
-- **SQLite + sqlite-vec** en vez de base vectorial dedicada: cero operación, correcto para corpus de cientos de documentos. La pata vectorial está aislada en el adaptador; migrar sería un cambio local.
-- **Chunking por encabezados** (H2, y H3 si la sección excede el máximo), con fusión de secciones diminutas. Solo se corta en fronteras de encabezado, así que **las tablas nunca se parten**.
-- **RRF** (`score = Σ 1/(60 + rango)`) para fusionar rankings: sin pesos que tunear a ciegas.
-- **FTS5 con `remove_diacritics 2`**: «validación» y «validacion» coinciden — imprescindible en un corpus en español.
-- **Degradación elegante**: cualquier fallo del runtime de embeddings deja el sistema en modo léxico, nunca lo tira.
+- **SQLite + sqlite-vec** instead of a dedicated vector database: zero ops, right for corpora of hundreds of documents. The vector leg is isolated in the adapter; migrating would be a local change.
+- **Heading-based chunking** (H2, and H3 if the section exceeds the maximum), merging tiny sections. Cuts happen only at heading boundaries, so **tables are never split**.
+- **RRF** (`score = Σ 1/(60 + rank)`) to fuse rankings: no weights to tune blindly.
+- **FTS5 with `remove_diacritics 2`**: «validación» and «validacion» match — essential in a Spanish corpus.
+- **Graceful degradation**: any failure of the embeddings runtime leaves the system in lexical mode, never takes it down.
 
-## Desarrollo
+## Development
 
 ```bash
-npm run build       # compila a dist/
-npm test            # 56 tests (vitest): dominio, adaptadores e integración
-npm run dev -- ...  # CLI sin compilar (tsx)
+npm run build       # compiles to dist/
+npm test            # 56 tests (vitest): domain, adapters and integration
+npm run dev -- ...  # CLI without compiling (tsx)
 ```
 
-Los tests de integración usan un proveedor de embeddings determinista (sin descargas) y el corpus real de `ejemplos/`.
+The integration tests use a deterministic embeddings provider (no downloads) and the real `ejemplos/` corpus.
 
-## Fases
+## Phases
 
-- **MVP (esto)**: indexado completo, búsqueda híbrida con filtros, 3 tools MCP, CLI (index/search/overview/eval), modo degradado, goldenset con métricas.
-- **Fase 2**: reindexado incremental por hash, file-watching, generador de `INDEX.md`, proveedor Ollama (bge-m3), reranking ligero.
-- **Fase 3**: retrieval consciente del rol, multi-repo, tabla de sinónimos alimentada por el glosario.
+- **MVP (this)**: full indexing, hybrid search with filters, 3 MCP tools, CLI (index/search/overview/eval), degraded mode, goldenset with metrics.
+- **Phase 2**: incremental reindexing by hash, file-watching, `INDEX.md` generator, Ollama provider (bge-m3), lightweight reranking.
+- **Phase 3**: role-aware retrieval, multi-repo, synonym table fed by the glossary.

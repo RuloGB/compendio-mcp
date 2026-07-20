@@ -1,44 +1,44 @@
-# Compendio — MVP de servidor MCP de documentación con RAG
+# Compendio — MVP of an MCP documentation server with RAG
 
-Compendio es un servidor MCP que indexa la documentación markdown de un proyecto (escrita según la convención de documentación) y la expone a cualquier agente de IA mediante búsqueda híbrida local, gastando el mínimo de tokens posible. Este documento define el alcance, la arquitectura y los criterios de éxito del MVP.
+Compendio is an MCP server that indexes a project's markdown documentation (written following the documentation convention) and exposes it to any AI agent through local hybrid search, spending the fewest tokens possible. This document defines the scope, architecture and success criteria of the MVP.
 
-**Tagline:** *La documentación de tu proyecto, servida a cualquier agente en el mínimo de tokens.*
+**Tagline:** *Your project's documentation, served to any agent in the fewest possible tokens.*
 
 ---
 
-## 1. Problema y objetivo
+## 1. Problem and goal
 
-Los agentes de IA necesitan consultar la documentación del proyecto para responder con fiabilidad, pero leer ficheros enteros dispara el consumo de tokens y la búsqueda por palabras (grep) falla cuando la pregunta no usa la terminología exacta del corpus.
+AI agents need to consult the project's documentation to answer reliably, but reading whole files blows up token consumption, and keyword search (grep) fails when the question does not use the exact terminology of the corpus.
 
-**Objetivo del MVP:** que un agente responda preguntas sobre la documentación leyendo solo los fragmentos relevantes, con recuperación que funcione también cuando la pregunta usa sinónimos o parafrasea (hueco semántico), sin servicios externos y sin que ningún dato salga de la máquina.
+**MVP goal:** let an agent answer questions about the documentation by reading only the relevant fragments, with retrieval that also works when the question uses synonyms or paraphrases (semantic gap), with no external services and without any data leaving the machine.
 
-**No-objetivos del MVP:** interfaz gráfica, indexado de código fuente, multi-repositorio, sincronización en tiempo real, reranking con LLM.
+**MVP non-goals:** graphical interface, source-code indexing, multi-repository, real-time synchronization, LLM reranking.
 
-## 2. Requisitos
+## 2. Requirements
 
-### Funcionales
+### Functional
 
-1. Indexar todos los `.md` de `docs/` que sigan la convención (frontmatter con `tipo`, `modulo`, `estado`).
-2. Buscar por lenguaje natural combinando búsqueda léxica (BM25) y semántica (embeddings), con filtros por metadatos.
-3. Excluir por defecto documentos en estado `borrador` u `obsoleto`.
-4. Devolver resultados compactos (ruta, sección, extracto) y permitir leer una sección concreta bajo demanda.
-5. Funcionar con cualquier cliente MCP: OpenCode, Claude Code, Copilot (VS Code), Cursor.
+1. Index every `.md` in `docs/` that follows the convention (frontmatter with `tipo`, `modulo`, `estado`).
+2. Search by natural language combining lexical search (BM25) and semantic search (embeddings), with metadata filters.
+3. Exclude by default documents in `borrador` (draft) or `obsoleto` (obsolete) state.
+4. Return compact results (path, section, excerpt) and allow reading a specific section on demand.
+5. Work with any MCP client: OpenCode, Claude Code, Copilot (VS Code), Cursor.
 
-### No funcionales
+### Non-functional
 
-- **Local y privado:** cero llamadas de red en operación (solo la descarga inicial del modelo de embeddings, cacheada).
-- **Sin infraestructura:** un único fichero SQLite; nada de Docker, ni Milvus, ni servicios.
-- **Rendimiento:** indexar 100 documentos en menos de 30 segundos en un portátil normal; búsqueda en menos de 500 ms.
-- **Degradación elegante:** si el modelo de embeddings no está disponible, el servidor sigue funcionando en modo solo-léxico (FTS5) y lo indica en sus respuestas.
-- **Idioma:** el modelo de embeddings por defecto debe rendir bien en español.
+- **Local and private:** zero network calls in operation (only the initial download of the embeddings model, cached).
+- **No infrastructure:** a single SQLite file; no Docker, no Milvus, no services.
+- **Performance:** index 100 documents in under 30 seconds on a normal laptop; search in under 500 ms.
+- **Graceful degradation:** if the embeddings model is unavailable, the server keeps working in lexical-only mode (FTS5) and signals it in its responses.
+- **Language:** the default embeddings model must perform well in Spanish.
 
-## 3. Arquitectura
+## 3. Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
 │               compendio-mcp (npm)               │
 │                                                 │
-│  CLI                          Servidor MCP      │
+│  CLI                          MCP server        │
 │  compendio index              (stdio)           │
 │  compendio search "..."       docs_overview     │
 │  compendio eval               search_docs       │
@@ -46,92 +46,92 @@ Los agentes de IA necesitan consultar la documentación del proyecto para respon
 │         │                          │            │
 │         └──────────┬───────────────┘            │
 │                    ▼                            │
-│              núcleo común                       │
-│   parser frontmatter · chunking · embeddings    │
-│   búsqueda híbrida (RRF)                        │
+│              shared core                        │
+│   frontmatter parser · chunking · embeddings    │
+│   hybrid search (RRF)                           │
 │                    │                            │
 │                    ▼                            │
 │         .compendio/compendio.db (SQLite)        │
-│         FTS5 (BM25) + sqlite-vec (vectores)     │
+│         FTS5 (BM25) + sqlite-vec (vectors)      │
 └─────────────────────────────────────────────────┘
 ```
 
-CLI y servidor MCP comparten el mismo núcleo; el CLI existe para indexar, depurar búsquedas sin levantar un agente, y ejecutar las evaluaciones.
+The CLI and the MCP server share the same core; the CLI exists to index, debug searches without spinning up an agent, and run the evaluations.
 
-**Trade-offs asumidos:** SQLite + sqlite-vec en lugar de una base vectorial dedicada (menos escala, cero operación — correcto para corpus de cientos de documentos, no millones); reindexado completo en lugar de incremental (más simple, y con corpus pequeños cuesta segundos); embeddings locales en lugar de API (algo menos de calidad, pero privacidad total y coste cero).
+**Trade-offs accepted:** SQLite + sqlite-vec instead of a dedicated vector database (less scale, zero ops — right for corpora of hundreds of documents, not millions); full reindexing instead of incremental (simpler, and with small corpora it takes seconds); local embeddings instead of an API (slightly lower quality, but total privacy and zero cost).
 
-## 4. Modelo de datos
+## 4. Data model
 
 ```sql
 -- Documentos: uno por fichero .md
 CREATE TABLE documents (
   id INTEGER PRIMARY KEY,
-  ruta TEXT UNIQUE NOT NULL,        -- relativa a docs/
+  ruta TEXT UNIQUE NOT NULL,        -- relative to docs/
   titulo TEXT NOT NULL,             -- H1
-  resumen TEXT NOT NULL,            -- primer párrafo
+  resumen TEXT NOT NULL,            -- first paragraph
   tipo TEXT NOT NULL,               -- funcional | adr | api | qa | guia
   modulo TEXT NOT NULL,
   estado TEXT NOT NULL,             -- borrador | vigente | obsoleto
   propietario TEXT,
   etiquetas TEXT,                   -- JSON array
   actualizado TEXT,
-  hash TEXT NOT NULL                -- SHA-256 del contenido (base del incremental futuro)
+  hash TEXT NOT NULL                -- SHA-256 of the content (basis for future incremental indexing)
 );
 
 -- Chunks: uno por sección (H2/H3)
 CREATE TABLE chunks (
   id INTEGER PRIMARY KEY,
   document_id INTEGER REFERENCES documents(id),
-  encabezado TEXT NOT NULL,         -- ruta de encabezados: "Reglas de negocio > Campos"
+  encabezado TEXT NOT NULL,         -- heading path: "Reglas de negocio > Campos"
   contenido TEXT NOT NULL,
   orden INTEGER NOT NULL
 );
 
--- Índice léxico (BM25)
+-- Lexical index (BM25)
 CREATE VIRTUAL TABLE chunks_fts USING fts5(
   contenido, encabezado, content=chunks, content_rowid=id,
   tokenize='unicode61 remove_diacritics 2'
 );
 
--- Índice vectorial
+-- Vector index
 CREATE VIRTUAL TABLE chunks_vec USING vec0(
   chunk_id INTEGER PRIMARY KEY,
   embedding FLOAT[384]
 );
 ```
 
-Nota: `remove_diacritics 2` hace que "validación" y "validacion" coincidan en la búsqueda léxica — imprescindible en un corpus en español.
+Note: `remove_diacritics 2` makes "validación" and "validacion" match in lexical search — essential in a Spanish corpus.
 
-## 5. Pipeline de indexado (`compendio index`)
+## 5. Indexing pipeline (`compendio index`)
 
-1. **Descubrir** los `.md` bajo `docs/` (configurable; `INDEX.md` y `glosario.md` excluidos del chunking, el glosario se indexa como documento normal).
-2. **Parsear** frontmatter con gray-matter y **validar** contra la convención: campos obligatorios presentes y con valores permitidos. Los inválidos se reportan y se omiten — el indexador actúa de linter gratuito de la convención.
-3. **Trocear por encabezados** (H2, y H3 si la sección supera el máximo). Objetivo: chunks de 100–800 tokens. Secciones diminutas contiguas se fusionan; el encabezado completo ("Reglas de negocio > Duplicidad") acompaña siempre al chunk.
-4. **Generar embeddings** por chunk con prefijo `passage: ` (requisito de la familia E5) y guardarlos en `chunks_vec`.
-5. **Persistir** todo en `.compendio/compendio.db` (gitignoreado, reconstruible con un comando).
+1. **Discover** the `.md` files under `docs/` (configurable; `INDEX.md` and `glosario.md` are excluded from chunking — the glossary is indexed as a normal document).
+2. **Parse** the frontmatter with gray-matter and **validate** it against the convention: required fields present and holding allowed values. Invalid ones are reported and skipped — the indexer acts as a free linter of the convention.
+3. **Chunk by headings** (H2, and H3 if the section exceeds the maximum). Target: chunks of 100–800 tokens. Contiguous tiny sections are merged; the full heading path ("Reglas de negocio > Duplicidad") always travels with the chunk.
+4. **Generate embeddings** per chunk with the `passage: ` prefix (required by the E5 family) and store them in `chunks_vec`.
+5. **Persist** everything in `.compendio/compendio.db` (gitignored, rebuildable with a single command).
 
-MVP: reindexado completo bajo demanda. Incremental por hash y file-watching quedan para la fase 2.
+MVP: full reindexing on demand. Incremental by hash and file-watching are left for phase 2.
 
-## 6. Búsqueda híbrida
+## 6. Hybrid search
 
-1. La consulta se lanza en paralelo contra FTS5 (BM25) y contra sqlite-vec (similitud coseno, consulta con prefijo `query: `).
-2. Los dos rankings se combinan con **Reciprocal Rank Fusion**: `score = Σ 1/(60 + rango)`. Sin pesos que tunear a ciegas; robusto por defecto.
-3. **Filtros previos** por metadatos (`tipo`, `modulo`, `etiquetas`) reducen el espacio de búsqueda antes de puntuar. `estado` distinto de `vigente` se excluye salvo petición explícita.
-4. Se devuelven los k mejores chunks, deduplicados por documento (máximo 2 chunks del mismo documento).
+1. The query is run in parallel against FTS5 (BM25) and against sqlite-vec (cosine similarity, query with the `query: ` prefix).
+2. The two rankings are combined with **Reciprocal Rank Fusion**: `score = Σ 1/(60 + rank)`. No weights to tune blindly; robust by default.
+3. **Pre-filters** by metadata (`tipo`, `modulo`, `etiquetas`) shrink the search space before scoring. A `estado` other than `vigente` is excluded unless explicitly requested.
+4. The top k chunks are returned, deduplicated by document (at most 2 chunks from the same document).
 
-En modo degradado (sin embeddings) el paso 1 solo ejecuta FTS5, y la respuesta lo indica con `"modo": "lexico"`.
+In degraded mode (no embeddings) step 1 runs only FTS5, and the response signals it with `"modo": "lexico"`.
 
-## 7. Herramientas MCP
+## 7. MCP tools
 
-Diseñadas como *progressive disclosure*: orientarse barato → buscar barato → leer solo lo necesario.
+Designed as *progressive disclosure*: orient cheaply → search cheaply → read only what is needed.
 
 ### `docs_overview()`
 
-Devuelve el mapa del corpus: recuento por tipo y módulo, y una línea por documento (`[tipo] ruta — resumen (estado)`). Presupuesto: ~10 tokens por documento. Es el primer paso recomendado para cualquier agente.
+Returns the corpus map: counts by type and module, and one line per document (`[tipo] ruta — resumen (estado)`). Budget: ~10 tokens per document. It is the recommended first step for any agent.
 
 ### `search_docs({ query, tipo?, modulo?, etiquetas?, k?, incluir_no_vigentes? })`
 
-Devuelve los k mejores fragmentos (por defecto 5):
+Returns the top k fragments (5 by default):
 
 ```json
 {
@@ -147,20 +147,20 @@ Devuelve los k mejores fragmentos (por defecto 5):
 }
 ```
 
-Extractos de 2–3 líneas. Presupuesto objetivo: respuesta completa ≤ 600 tokens.
+Excerpts of 2–3 lines. Target budget: full response ≤ 600 tokens.
 
 ### `read_doc({ ruta, seccion? })`
 
-Devuelve la sección pedida (o el documento completo si no se indica), con su frontmatter. Si la ruta no existe, responde con las 3 rutas más parecidas en lugar de un error seco — un agente con un enlace roto no debe quedarse ciego.
+Returns the requested section (or the full document if none is given), with its frontmatter. If the path does not exist, it responds with the 3 most similar paths instead of a blunt error — an agent with a broken link must not be left blind.
 
 ## 8. Embeddings
 
-- Interfaz pluggable (`embed(textos: string[]): Promise<Float32Array[]>`), con un único proveedor en el MVP: **transformers.js** con `Xenova/multilingual-e5-small` (384 dimensiones, multilingüe, decenas de MB, corre en CPU).
-- Elección justificada por el corpus en español: los modelos populares solo-inglés (p. ej. la familia nomic por defecto) degradan notablemente fuera del inglés.
-- El modelo se descarga en el primer arranque y se cachea en disco. Si la descarga o la carga fallan: modo degradado léxico, nunca un crash.
-- Fase 2: proveedor Ollama (bge-m3) para quien quiera más calidad a cambio de dependencia externa.
+- Pluggable interface (`embed(textos: string[]): Promise<Float32Array[]>`), with a single provider in the MVP: **transformers.js** with `Xenova/multilingual-e5-small` (384 dimensions, multilingual, tens of MB, runs on CPU).
+- Choice justified by the Spanish corpus: popular English-only models (e.g. the default nomic family) degrade noticeably outside English.
+- The model is downloaded on the first run and cached to disk. If the download or load fails: degraded lexical mode, never a crash.
+- Phase 2: Ollama provider (bge-m3) for anyone who wants more quality in exchange for an external dependency.
 
-## 9. Configuración (`compendio.config.json`)
+## 9. Configuration (`compendio.config.json`)
 
 ```json
 {
@@ -173,11 +173,11 @@ Devuelve la sección pedida (o el documento completo si no se indica), con su fr
 }
 ```
 
-Todo tiene valor por defecto: en un repo que siga la convención, `npx compendio-mcp index` debe funcionar sin fichero de configuración.
+Everything has a default value: in a repo that follows the convention, `npx compendio-mcp index` must work with no configuration file.
 
-## 10. Evaluación (`compendio eval`) — dentro del MVP
+## 10. Evaluation (`compendio eval`) — inside the MVP
 
-Un fichero `goldenset.yaml` con preguntas reales del equipo mapeadas al documento que debe aparecer:
+A `goldenset.yaml` file with real team questions mapped to the document that should appear:
 
 ```yaml
 - pregunta: "¿Qué campos son obligatorios al dar de alta un lead?"
@@ -186,44 +186,44 @@ Un fichero `goldenset.yaml` con preguntas reales del equipo mapeadas al document
   esperado: adr/adr-0007-eleccion-base-datos.md
 ```
 
-`compendio eval` ejecuta cada pregunta y reporta **recall@5**, **MRR** y la lista de fallos — en modo híbrido y en modo solo-léxico, en la misma tabla. Esa comparación responde con datos la pregunta que justifica el proyecto: *¿cuánto aporta lo semántico sobre grep?* Es también el instrumento para tunear chunking y k sin ir a ojo.
+`compendio eval` runs each question and reports **recall@5**, **MRR** and the list of failures — in hybrid mode and in lexical-only mode, in the same table. That comparison answers, with data, the question that justifies the project: *how much does semantics add over grep?* It is also the instrument for tuning chunking and k without guessing.
 
-## 11. Compatibilidad de clientes
+## 11. Client compatibility
 
-Compendio es un servidor MCP estándar por stdio: se registra igual en OpenCode (`opencode.json`), Claude Code (`.mcp.json`), VS Code/Copilot (`mcp.json`) o Cursor. El README incluirá el bloque de configuración de los cuatro. Criterio de aceptación: probado en OpenCode y en al menos un cliente más.
+Compendio is a standard MCP server over stdio: it is registered the same way in OpenCode (`opencode.json`), Claude Code (`.mcp.json`), VS Code/Copilot (`mcp.json`) or Cursor. The README will include the configuration block for all four. Acceptance criterion: tested in OpenCode and at least one more client.
 
 ## 12. Stack
 
-| Pieza | Elección |
+| Piece | Choice |
 |---|---|
-| Lenguaje / runtime | TypeScript, Node ≥ 20 |
+| Language / runtime | TypeScript, Node ≥ 20 |
 | MCP | `@modelcontextprotocol/sdk` (stdio) |
-| Base de datos | `better-sqlite3` + extensión `sqlite-vec` + FTS5 |
+| Database | `better-sqlite3` + `sqlite-vec` extension + FTS5 |
 | Frontmatter | `gray-matter` |
-| Markdown / chunking | `remark` (árbol de encabezados) |
+| Markdown / chunking | `remark` (heading tree) |
 | Embeddings | `@huggingface/transformers` (transformers.js) |
 | CLI | `commander` |
 
-## 13. Fases
+## 13. Phases
 
-| Fase | Contenido |
+| Phase | Content |
 |---|---|
-| **MVP** | Indexado completo, búsqueda híbrida con filtros, 3 tools MCP, CLI (index/search/eval), modo degradado, goldenset con métricas, README con configuración de 4 clientes |
-| **Fase 2** | Reindexado incremental por hash, file-watching, generador de `INDEX.md`, proveedor Ollama, reranking ligero |
-| **Fase 3** | Integración con Persona (retrieval consciente del rol: QA ve primero docs de QA), multi-repo, tabla de sinónimos alimentada por el glosario |
+| **MVP** | Full indexing, hybrid search with filters, 3 MCP tools, CLI (index/search/eval), degraded mode, goldenset with metrics, README with 4-client configuration |
+| **Phase 2** | Incremental reindexing by hash, file-watching, `INDEX.md` generator, Ollama provider, lightweight reranking |
+| **Phase 3** | Integration with Persona (role-aware retrieval: QA sees QA docs first), multi-repo, synonym table fed by the glossary |
 
-## 14. Criterios de éxito del MVP
+## 14. MVP success criteria
 
-1. `npx compendio-mcp index && npx compendio-mcp eval` funciona en un repo que siga la convención, sin configuración.
-2. Recall@5 ≥ 0,9 sobre un goldenset de al menos 20 preguntas reales.
-3. La comparación híbrido vs. léxico está medida y documentada en el README (sea cual sea el resultado).
-4. Respuesta típica de `search_docs` ≤ 600 tokens; `docs_overview` ≤ 10 tokens por documento.
-5. Cero red en operación; el corpus nunca sale de la máquina.
-6. Probado en OpenCode y en un segundo cliente MCP.
+1. `npx compendio-mcp index && npx compendio-mcp eval` works in a repo that follows the convention, with no configuration.
+2. Recall@5 ≥ 0.9 over a goldenset of at least 20 real questions.
+3. The hybrid vs lexical comparison is measured and documented in the README (whatever the result).
+4. Typical `search_docs` response ≤ 600 tokens; `docs_overview` ≤ 10 tokens per document.
+5. Zero network in operation; the corpus never leaves the machine.
+6. Tested in OpenCode and in a second MCP client.
 
-## 15. Riesgos y decisiones abiertas
+## 15. Risks and open decisions
 
-- **sqlite-vec** es pre-1.0: API estable pero joven. Mitigación: la interfaz de búsqueda vectorial queda aislada en un módulo; migrar a otra extensión sería local.
-- **Descarga del modelo** en el primer arranque (decenas de MB): documentar bien y cachear; valorar un comando `compendio setup` explícito.
-- **Chunking de tablas markdown** largas (frecuentes en la convención: campos, mensajes de error): decidir si una tabla se mantiene siempre íntegra en un chunk aunque supere el máximo. Propuesta inicial: sí, las tablas no se parten.
-- **Nombre del paquete npm**: `compendio-mcp`, verificado libre (2026-07-19). Publicar pronto una 0.0.1 mínima para reservarlo: en npm los nombres son por orden de llegada.
+- **sqlite-vec** is pre-1.0: stable API but young. Mitigation: the vector search interface is isolated in a module; migrating to another extension would be a local change.
+- **Model download** on the first run (tens of MB): document it well and cache it; consider an explicit `compendio setup` command.
+- **Chunking of long markdown tables** (frequent in the convention: fields, error messages): decide whether a table always stays whole in one chunk even if it exceeds the maximum. Initial proposal: yes, tables are not split.
+- **npm package name**: `compendio-mcp`, verified available (2026-07-19). Publish a minimal 0.0.1 soon to reserve it: on npm, names are first-come, first-served.

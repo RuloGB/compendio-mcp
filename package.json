@@ -1,7 +1,7 @@
 {
   "name": "compendio-mcp",
   "version": "0.1.0",
-  "description": "Servidor MCP que indexa la documentación markdown de un proyecto y la expone a agentes de IA mediante búsqueda híbrida local (BM25 + embeddings), en el mínimo de tokens.",
+  "description": "MCP server that indexes a project's markdown documentation and exposes it to AI agents through local hybrid search (BM25 + embeddings), in the fewest possible tokens.",
   "type": "module",
   "license": "MIT",
   "author": "Raúl García Barciela",
