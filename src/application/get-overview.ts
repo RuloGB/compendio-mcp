@@ -1,3 +1,4 @@
+import { displayResumen, formatDocLine } from "../domain/index-markdown.js";
 import type { IndexStore } from "../domain/ports.js";
 
 export interface OverviewLine {
@@ -13,8 +14,6 @@ export interface Overview {
   porModulo: Record<string, number>;
   documentos: OverviewLine[];
 }
-
-const MAX_RESUMEN_CHARS = 140;
 
 /**
  * Corpus map for agents: counts by tipo and modulo plus one line per document.
@@ -38,7 +37,7 @@ export class GetOverview {
       documentos: documents.map((doc) => ({
         tipo: doc.tipo,
         ruta: doc.ruta,
-        resumen: truncate(doc.resumen, MAX_RESUMEN_CHARS),
+        resumen: displayResumen(doc),
         estado: doc.estado,
       })),
     };
@@ -52,7 +51,7 @@ export function formatOverview(overview: Overview): string {
   lines.push(`Por modulo: ${formatCounts(overview.porModulo)}`);
   lines.push("");
   for (const doc of overview.documentos) {
-    lines.push(`- [${doc.tipo}] ${doc.ruta} — ${doc.resumen} (${doc.estado})`);
+    lines.push(formatDocLine(doc));
   }
   return lines.join("\n");
 }
@@ -61,9 +60,4 @@ function formatCounts(counts: Record<string, number>): string {
   const entries = Object.entries(counts);
   if (entries.length === 0) return "—";
   return entries.map(([key, count]) => `${key} (${count})`).join(", ");
-}
-
-function truncate(text: string, maxChars: number): string {
-  const collapsed = text.replace(/\s+/g, " ").trim();
-  return collapsed.length <= maxChars ? collapsed : `${collapsed.slice(0, maxChars - 1)}…`;
 }

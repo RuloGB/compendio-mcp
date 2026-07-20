@@ -1,6 +1,6 @@
 /**
- * Core domain model. Field names in Spanish mirror the data contract defined
- * in docs/compendio-mvp.md (database columns and MCP tool responses).
+ * Core domain model. Field names in Spanish mirror the public data contract
+ * (database columns and MCP tool responses).
  */
 
 export const TIPOS = ["funcional", "adr", "api", "qa", "guia"] as const;

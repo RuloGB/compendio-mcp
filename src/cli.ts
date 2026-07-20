@@ -54,6 +54,23 @@ program
   });
 
 program
+  .command("index-md")
+  .description("Genera o actualiza INDEX.md en el directorio de documentacion")
+  .option("--dir <dir>", "directorio de documentacion (sobrescribe la configuracion)")
+  .action(async (options: { dir?: string }) => {
+    await withContainer({ docsDir: options.dir }, async (container) => {
+      const report = await container.generateIndexMd.execute();
+      for (const omitido of report.omitidos) {
+        console.warn(
+          `AVISO ${omitido.ruta}: ${omitido.errores.join("; ")} (no aparece en INDEX.md)`,
+        );
+      }
+      const resultado = report.cambiado ? "actualizado" : "sin cambios";
+      console.log(`INDEX.md ${resultado}: ${report.documentos} documentos en ${report.ruta}`);
+    });
+  });
+
+program
   .command("search")
   .description("Busca en la documentacion indexada y muestra el resultado en JSON")
   .argument("<query>", "consulta en lenguaje natural")

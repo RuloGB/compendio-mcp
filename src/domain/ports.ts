@@ -51,6 +51,19 @@ export interface ChunkEmbedding {
   embedding: Float32Array;
 }
 
+/** Result of writing the generated index file. */
+export interface IndexWriteResult {
+  /** Path of the index file, as resolved by the adapter. */
+  ruta: string;
+  /** False when the file already had exactly the generated content. */
+  cambiado: boolean;
+}
+
+/** Writes the generated INDEX.md into the docs directory (filesystem adapter). */
+export interface IndexFileWriter {
+  write(contenido: string): Promise<IndexWriteResult>;
+}
+
 /** Persistence port: SQLite (FTS5 + sqlite-vec) in production. */
 export interface IndexStore {
   /** Drops all indexed data (full reindex model of the MVP). */
