@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -34,5 +34,16 @@ describe("FileIndexWriter", () => {
     const result = await writer.write("# Índice v2\n");
     expect(result.cambiado).toBe(true);
     expect(await readFile(join(dir, "INDEX.md"), "utf8")).toBe("# Índice v2\n");
+  });
+
+  it("treats a CRLF copy of the same content as up to date (git autocrlf checkout)", async () => {
+    const contenidoLf = "# Índice\n\n- [guia] glosario.md — Términos (vigente)\n";
+    await writeFile(join(dir, "INDEX.md"), contenidoLf.replaceAll("\n", "\r\n"), "utf8");
+
+    const writer = new FileIndexWriter(dir, "INDEX.md");
+    const result = await writer.write(contenidoLf);
+
+    expect(result.cambiado).toBe(false);
+    expect(await readFile(join(dir, "INDEX.md"), "utf8")).toContain("\r\n");
   });
 });

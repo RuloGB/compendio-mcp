@@ -1,4 +1,4 @@
-import { condenseResumen, formatDocLine } from "../domain/index-markdown.js";
+import { displayResumen, formatDocLine } from "../domain/index-markdown.js";
 import type { IndexStore } from "../domain/ports.js";
 
 export interface OverviewLine {
@@ -37,7 +37,7 @@ export class GetOverview {
       documentos: documents.map((doc) => ({
         tipo: doc.tipo,
         ruta: doc.ruta,
-        resumen: condenseResumen(doc.resumen),
+        resumen: displayResumen(doc),
         estado: doc.estado,
       })),
     };

@@ -79,4 +79,28 @@ describe("GenerateIndexMd with problem documents", () => {
     expect(report.omitidos).toEqual([]);
     expect(writer.contenido).not.toContain("] INDEX.md");
   });
+
+  it("renders only the header for an empty corpus", async () => {
+    const { useCase, writer } = buildUseCase(new StaticSource([]));
+    const report = await useCase.execute();
+
+    expect(report.documentos).toBe(0);
+    expect(writer.contenido).toContain("# Índice de la documentación");
+    expect(writer.contenido).not.toContain("- [");
+  });
+
+  it("falls back to the title for a document with no paragraph at all", async () => {
+    const { useCase, writer } = buildUseCase(
+      new StaticSource([
+        {
+          ruta: "guias/transversal-sin-resumen.md",
+          contenido:
+            "---\ntipo: guia\nmodulo: transversal\nestado: vigente\n---\n\n# Solo título\n\n## Pasos\n\n- paso uno\n- paso dos\n",
+        },
+      ]),
+    );
+    await useCase.execute();
+
+    expect(writer.contenido).toContain("— Solo título (vigente)");
+  });
 });

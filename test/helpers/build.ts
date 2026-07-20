@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { EvaluateSearch } from "../../src/application/evaluate-search";
+import { GetOverview } from "../../src/application/get-overview";
 import { IndexDocuments } from "../../src/application/index-documents";
 import { ReadDocument } from "../../src/application/read-document";
 import { SearchDocuments } from "../../src/application/search-documents";
@@ -15,6 +16,7 @@ export interface TestHarness {
   index: IndexDocuments;
   search: SearchDocuments;
   read: ReadDocument;
+  overview: GetOverview;
   evaluate: EvaluateSearch;
   close(): void;
 }
@@ -38,6 +40,7 @@ export function buildHarness(embeddings: EmbeddingsProvider | null): TestHarness
     index,
     search,
     read: new ReadDocument(store),
+    overview: new GetOverview(store),
     evaluate: new EvaluateSearch(search, () => store.hasVectors()),
     close: () => store.close(),
   };

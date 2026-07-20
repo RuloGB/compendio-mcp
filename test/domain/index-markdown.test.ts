@@ -82,4 +82,15 @@ describe("condenseResumen", () => {
     expect(largo).toHaveLength(MAX_RESUMEN_CHARS);
     expect(largo.endsWith("…")).toBe(true);
   });
+
+  it("keeps a summary exactly at the limit intact", () => {
+    const exacto = "a".repeat(MAX_RESUMEN_CHARS);
+    expect(condenseResumen(exacto)).toBe(exacto);
+  });
+
+  it("truncates one character over the limit", () => {
+    const resultado = condenseResumen("a".repeat(MAX_RESUMEN_CHARS + 1));
+    expect(resultado).toHaveLength(MAX_RESUMEN_CHARS);
+    expect(resultado.endsWith("…")).toBe(true);
+  });
 });

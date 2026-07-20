@@ -18,6 +18,12 @@ export function condenseResumen(text: string, maxChars: number = MAX_RESUMEN_CHA
   return collapsed.length <= maxChars ? collapsed : `${collapsed.slice(0, maxChars - 1)}…`;
 }
 
+/** Resumen shown on a document line; falls back to the title when the
+ * document has no intro paragraph after the H1. */
+export function displayResumen(doc: { resumen: string; titulo: string }): string {
+  return condenseResumen(doc.resumen.trim().length > 0 ? doc.resumen : doc.titulo);
+}
+
 /** One document per line — the format shared by INDEX.md and docs_overview. */
 export function formatDocLine(doc: {
   tipo: string;
@@ -38,7 +44,7 @@ export function renderIndexMd(docs: IndexEntry[]): string {
     formatDocLine({
       tipo: doc.tipo,
       ruta: doc.ruta,
-      resumen: condenseResumen(doc.resumen.trim().length > 0 ? doc.resumen : doc.titulo),
+      resumen: displayResumen(doc),
       estado: doc.estado,
     }),
   );

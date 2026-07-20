@@ -21,10 +21,17 @@ export class FileIndexWriter implements IndexFileWriter {
     } catch {
       // First generation: the file does not exist yet.
     }
-    if (existente === contenido) {
+    // git may materialize the file with CRLF (core.autocrlf on Windows); the
+    // same content modulo EOL means up to date — rewriting would only churn
+    // mtimes and report a phantom change.
+    if (existente !== null && normalizeEol(existente) === contenido) {
       return { ruta, cambiado: false };
     }
     await writeFile(ruta, contenido, "utf8");
     return { ruta, cambiado: true };
   }
+}
+
+function normalizeEol(text: string): string {
+  return text.replaceAll("\r\n", "\n");
 }
