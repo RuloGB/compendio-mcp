@@ -1,6 +1,6 @@
 {
   "name": "compendio-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP server that indexes a project's markdown documentation and exposes it to AI agents through local hybrid search (BM25 + embeddings), in the fewest possible tokens.",
   "type": "module",
   "license": "MIT",
