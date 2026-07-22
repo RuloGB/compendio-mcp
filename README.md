@@ -11,21 +11,40 @@ Compendio is an MCP server that indexes a project's markdown documentation (writ
 
 ## Quick start
 
-```bash
-npm install
-npm run build
+Use Compendio in any project that has (or will have) markdown documentation.
 
-# Index the example corpus and evaluate it
-node dist/cli.js --root ejemplos index
-node dist/cli.js --root ejemplos eval
+1. **Install it.** Either globally, to get the short `compendio` command:
 
-# Search from the terminal
-node dist/cli.js --root ejemplos search "¿cuándo se considera duplicado un lead?"
-```
+   ```bash
+   npm install -g compendio-mcp
+   ```
 
-On the first index the embeddings model is downloaded (`Xenova/multilingual-e5-small`, tens of MB) and cached to disk; from then on operation is 100% offline. If the model download or load fails, Compendio **does not crash**: it indexes and searches in lexical-only mode and signals it in its responses with `"modo": "lexico"`.
+   or run it on demand through `npx` with no install step — in that case use `npx compendio-mcp <command>` instead of `compendio <command>` everywhere below (`npx` does not add `compendio` to your PATH):
 
-In a repository that follows the convention no configuration is needed: `compendio index` from the root indexes `docs/` into `.compendio/compendio.db` (add `.compendio/` to your `.gitignore`).
+   ```bash
+   npx compendio-mcp index
+   ```
+
+2. **Write your documentation** under `docs/` (the default location) following the [documentation convention](docs/convencion-documentacion.md): frontmatter with `tipo` (`funcional`, `adr`, `api`, `qa`, `guia`), etc.
+
+3. **Index it** from the project root:
+
+   ```bash
+   compendio index
+   ```
+
+   This creates `.compendio/compendio.db` (add `.compendio/` to your `.gitignore`). On the first run the embeddings model is downloaded (`Xenova/multilingual-e5-small`, tens of MB) and cached to disk; from then on operation is 100% offline. If the model download or load fails, Compendio **does not crash**: it indexes and searches in lexical-only mode and signals it in its responses with `"modo": "lexico"`.
+
+4. **Try it from the terminal** (optional, before wiring up a client):
+
+   ```bash
+   compendio overview
+   compendio search "your question here"
+   ```
+
+5. **Register it as an MCP server** in your client — see [Registration in MCP clients](#registration-in-mcp-clients) below.
+
+No configuration file is required for a project that follows the convention: every field in `compendio.config.json` has a default (see [Configuration](#configuration-compendioconfigjson) below).
 
 ## CLI
 
@@ -168,9 +187,18 @@ Key decisions:
 ## Development
 
 ```bash
+npm install
 npm run build       # compiles to dist/
 npm test            # 56 tests (vitest): domain, adapters and integration
 npm run dev -- ...  # CLI without compiling (tsx)
 ```
 
 The integration tests use a deterministic embeddings provider (no downloads) and the real `ejemplos/` corpus.
+
+Try the CLI against the bundled example corpus without installing the package:
+
+```bash
+node dist/cli.js --root ejemplos index
+node dist/cli.js --root ejemplos eval
+node dist/cli.js --root ejemplos search "¿cuándo se considera duplicado un lead?"
+```
