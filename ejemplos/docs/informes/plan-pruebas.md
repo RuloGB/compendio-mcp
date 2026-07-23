@@ -1,10 +1,5 @@
 ---
-tipo: qa
-modulo: informes
 estado: borrador
-propietario: QA
-etiquetas: [pruebas, panel, kpi]
-actualizado: 2026-07-19
 ---
 
 # Plan de pruebas: panel de métricas

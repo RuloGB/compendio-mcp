@@ -1,10 +1,5 @@
 ---
-tipo: funcional
-modulo: leadsviewer
-estado: vigente
-propietario: BA
 etiquetas: [lead, importacion, csv, lote]
-actualizado: 2026-07-19
 ---
 
 # Importación masiva de leads por CSV
@@ -26,7 +21,7 @@ La importación aplica exactamente las mismas reglas de validación que el formu
 
 ## Validación por fila
 
-1. Cada fila se valida de forma independiente con las reglas del formulario de alta (ver [validación del formulario](leadsviewer-validacion-formulario.md)).
+1. Cada fila se valida de forma independiente con las reglas del formulario de alta (ver [validación del formulario](validacion-formulario.md)).
 2. Una fila inválida no detiene la importación: se anota el motivo y se continúa con la siguiente.
 3. Si el email de una fila ya existe en el sistema, o aparece dos veces dentro del propio fichero, la fila se marca como duplicada y no se crea.
 4. Los valores de `origen` fuera de la lista cerrada se rechazan; no se crean orígenes nuevos desde un CSV.
@@ -51,5 +46,5 @@ El informe queda disponible durante 30 días en el historial de importaciones de
 
 ## Referencias
 
-- Reglas de validación de campos: [validación del formulario](leadsviewer-validacion-formulario.md).
+- Reglas de validación de campos: [validación del formulario](validacion-formulario.md).
 - Término `origen`: ver [glosario](../glosario.md).

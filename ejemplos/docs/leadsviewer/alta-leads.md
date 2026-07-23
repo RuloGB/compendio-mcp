@@ -1,12 +1,3 @@
----
-tipo: api
-modulo: leadsviewer
-estado: vigente
-propietario: DEV
-etiquetas: [lead, endpoint, alta, rest]
-actualizado: 2026-07-19
----
-
 # API leadsviewer: alta y edición de leads
 
 Contrato REST del alta, edición y consulta de leads. Lo consumen el formulario web y la importación por CSV; ambos aplican las mismas reglas de validación documentadas en la especificación funcional.
@@ -58,4 +49,4 @@ GET /api/v1/leads?email=ana.garcia%40empresa.com
 
 ## Referencias
 
-- Reglas de validación y mensajes de error: [validación del formulario](../funcional/leadsviewer-validacion-formulario.md).
+- Reglas de validación y mensajes de error: [validación del formulario](validacion-formulario.md).

@@ -1,12 +1,3 @@
----
-tipo: guia
-modulo: transversal
-estado: vigente
-propietario: DEV
-etiquetas: [despliegue, entornos, pipeline, rollback]
-actualizado: 2026-07-19
----
-
 # Guía de despliegue a producción
 
 Pasos para publicar una versión de LeadsViewer en producción, qué comprueba el pipeline y cómo revertir si algo sale mal. Consultar antes de cada despliegue y durante cualquier incidente de publicación.
@@ -40,4 +31,4 @@ Pasos para publicar una versión de LeadsViewer en producción, qué comprueba e
 
 ## Referencias
 
-- Decisión de base de datos y política de copias: [ADR-0007](../adr/adr-0007-eleccion-base-datos.md).
+- Decisión de base de datos y política de copias: [ADR-0007](adr-0007-eleccion-base-datos.md).

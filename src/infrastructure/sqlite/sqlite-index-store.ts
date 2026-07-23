@@ -16,9 +16,9 @@ interface DocumentRow {
   ruta: string;
   titulo: string;
   resumen: string;
-  tipo: string;
-  modulo: string;
-  estado: string;
+  tipo: string | null;
+  modulo: string | null;
+  estado: string | null;
   propietario: string | null;
   etiquetas: string | null;
   actualizado: string | null;
@@ -32,6 +32,41 @@ interface ChunkRow {
   contenido: string;
   orden: number;
 }
+
+/**
+ * Base schema DDL (nullable tipo/modulo/estado — Optional Persisted
+ * Metadata). Used both by `migrate()` (non-destructive `CREATE TABLE IF NOT
+ * EXISTS`, guaranteeing the schema exists on brand-new database files) and
+ * by `reset()` (destructive drop-and-recreate, guaranteeing the *current*
+ * schema on every `compendio index` run, including upgrading a pre-existing
+ * database created with the old `NOT NULL` columns).
+ */
+const SCHEMA_DDL = `
+  CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY,
+    ruta TEXT UNIQUE NOT NULL,
+    titulo TEXT NOT NULL,
+    resumen TEXT NOT NULL,
+    tipo TEXT,
+    modulo TEXT,
+    estado TEXT,
+    propietario TEXT,
+    etiquetas TEXT,
+    actualizado TEXT,
+    hash TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS chunks (
+    id INTEGER PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    encabezado TEXT NOT NULL,
+    contenido TEXT NOT NULL,
+    orden INTEGER NOT NULL
+  );
+  CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+    contenido, encabezado, content=chunks, content_rowid=id,
+    tokenize='unicode61 remove_diacritics 2'
+  );
+`;
 
 /**
  * SQLite adapter: documents + chunks, FTS5 (BM25, diacritics-insensitive) for
@@ -61,42 +96,37 @@ export class SqliteIndexStore implements IndexStore {
     }
   }
 
+  /**
+   * Non-destructive schema guarantee: runs on every container construction
+   * (`search`, `overview`, `eval`, `index-md`, `serve`, `index`). Must never
+   * drop/recreate — that would wipe the index on every non-index command.
+   * A pre-existing database keeps whatever schema it already has; the
+   * current-schema guarantee (including nullable columns) is enforced by
+   * `reset()` instead, which only runs at the start of an `index` run.
+   */
   private migrate(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS documents (
-        id INTEGER PRIMARY KEY,
-        ruta TEXT UNIQUE NOT NULL,
-        titulo TEXT NOT NULL,
-        resumen TEXT NOT NULL,
-        tipo TEXT NOT NULL,
-        modulo TEXT NOT NULL,
-        estado TEXT NOT NULL,
-        propietario TEXT,
-        etiquetas TEXT,
-        actualizado TEXT,
-        hash TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS chunks (
-        id INTEGER PRIMARY KEY,
-        document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-        encabezado TEXT NOT NULL,
-        contenido TEXT NOT NULL,
-        orden INTEGER NOT NULL
-      );
-      CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-        contenido, encabezado, content=chunks, content_rowid=id,
-        tokenize='unicode61 remove_diacritics 2'
-      );
-    `);
+    this.db.exec(SCHEMA_DDL);
   }
 
+  /**
+   * Index-run-scoped schema guarantee: drops and recreates the full schema
+   * (nullable columns) inside a single transaction, so a database created by
+   * a prior version with `NOT NULL` tipo/modulo/estado columns is upgraded
+   * in place, with no manual deletion of `.compendio/` required. The single
+   * transaction shrinks (does not eliminate) the window in which a
+   * concurrent reader could observe a missing table.
+   */
   reset(): void {
-    this.db.exec(`
-      DELETE FROM chunks;
-      DELETE FROM documents;
-      DROP TABLE IF EXISTS chunks_vec;
-    `);
-    this.db.exec(`INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild');`);
+    const run = this.db.transaction((): void => {
+      this.db.exec(`
+        DROP TABLE IF EXISTS chunks_vec;
+        DROP TABLE IF EXISTS chunks_fts;
+        DROP TABLE IF EXISTS chunks;
+        DROP TABLE IF EXISTS documents;
+      `);
+      this.db.exec(SCHEMA_DDL);
+    });
+    run();
   }
 
   saveDocument(meta: DocumentMeta, chunks: Chunk[]): SavedDocument {
@@ -118,9 +148,9 @@ export class SqliteIndexStore implements IndexStore {
           ruta: meta.ruta,
           titulo: meta.titulo,
           resumen: meta.resumen,
-          tipo: meta.tipo,
-          modulo: meta.modulo,
-          estado: meta.estado,
+          tipo: meta.tipo ?? null,
+          modulo: meta.modulo ?? null,
+          estado: meta.estado ?? null,
           propietario: meta.propietario ?? null,
           etiquetas: JSON.stringify(meta.etiquetas),
           actualizado: meta.actualizado ?? null,
@@ -225,7 +255,7 @@ export class SqliteIndexStore implements IndexStore {
 
   listDocuments(): IndexedDocument[] {
     const rows = this.db
-      .prepare(`SELECT * FROM documents ORDER BY tipo, ruta`)
+      .prepare(`SELECT * FROM documents ORDER BY ruta`)
       .all() as DocumentRow[];
     return rows.map(toDocument);
   }
@@ -295,9 +325,12 @@ function buildFilterSql(filters: SearchFilters): { sql: string; params: unknown[
     clauses.push("d.modulo = ?");
     params.push(filters.modulo);
   }
-  if (filters.estados !== undefined) {
-    clauses.push(`d.estado IN (${filters.estados.map(() => "?").join(",")})`);
-    params.push(...filters.estados);
+  if (filters.estadosExcluidos !== undefined && filters.estadosExcluidos.length > 0) {
+    // NULL-aware deny-list: a document with no estado is never excluded.
+    clauses.push(
+      `(d.estado IS NULL OR d.estado NOT IN (${filters.estadosExcluidos.map(() => "?").join(",")}))`,
+    );
+    params.push(...filters.estadosExcluidos);
   }
   if (filters.etiquetas !== undefined && filters.etiquetas.length > 0) {
     clauses.push(
@@ -322,12 +355,12 @@ function toDocument(row: DocumentRow): IndexedDocument {
     ruta: row.ruta,
     titulo: row.titulo,
     resumen: row.resumen,
-    tipo: row.tipo as IndexedDocument["tipo"],
-    modulo: row.modulo,
-    estado: row.estado as IndexedDocument["estado"],
     etiquetas: row.etiquetas === null ? [] : (JSON.parse(row.etiquetas) as string[]),
     hash: row.hash,
   };
+  if (row.tipo !== null) doc.tipo = row.tipo;
+  if (row.modulo !== null) doc.modulo = row.modulo;
+  if (row.estado !== null) doc.estado = row.estado;
   if (row.propietario !== null) doc.propietario = row.propietario;
   if (row.actualizado !== null) doc.actualizado = row.actualizado;
   return doc;

@@ -1,12 +1,3 @@
----
-tipo: funcional
-modulo: informes
-estado: vigente
-propietario: BA
-etiquetas: [kpi, panel, conversion, seguimiento]
-actualizado: 2026-07-19
----
-
 # Panel de métricas de actividad comercial
 
 Describe el panel de informes de LeadsViewer: qué indicadores muestra, cómo se calculan y qué filtros admite. Consultar antes de añadir un KPI nuevo o al revisar discrepancias en las cifras.
@@ -43,4 +34,4 @@ Los filtros se combinan entre sí y se reflejan en la URL, de modo que una vista
 ## Referencias
 
 - Términos `conversión` y `KPI`: ver [glosario](../glosario.md).
-- Canal de entrada de los leads: [validación del formulario](leadsviewer-validacion-formulario.md).
+- Canal de entrada de los leads: [validación del formulario](../leadsviewer/validacion-formulario.md).

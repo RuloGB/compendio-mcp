@@ -3,12 +3,6 @@
  * (database columns and MCP tool responses).
  */
 
-export const TIPOS = ["funcional", "adr", "api", "qa", "guia"] as const;
-export type Tipo = (typeof TIPOS)[number];
-
-export const ESTADOS = ["borrador", "vigente", "obsoleto"] as const;
-export type Estado = (typeof ESTADOS)[number];
-
 /** Metadata of an indexed markdown document (one per .md file). */
 export interface DocumentMeta {
   /** Path relative to the docs directory, POSIX separators. */
@@ -17,9 +11,12 @@ export interface DocumentMeta {
   titulo: string;
   /** First paragraph after the H1. */
   resumen: string;
-  tipo: Tipo;
-  modulo: string;
-  estado: Estado;
+  /** Open string, project-defined; absent when not declared/inferred. */
+  tipo?: string;
+  /** Open string, project-defined; absent for root-level files with no mapping/inference. */
+  modulo?: string;
+  /** Open string, project-defined; absent when not declared/inferred. */
+  estado?: string;
   propietario?: string;
   etiquetas: string[];
   actualizado?: string;
@@ -49,11 +46,12 @@ export interface IndexedChunk extends Chunk {
 export type SearchMode = "hibrido" | "lexico";
 
 export interface SearchFilters {
-  tipo?: Tipo;
+  /** Open string, project-defined; empty/whitespace treated as absent by callers. */
+  tipo?: string;
   modulo?: string;
   etiquetas?: string[];
-  /** Allowed estados; undefined means no restriction. */
-  estados?: Estado[];
+  /** Deny-list: documents whose estado is in this list are excluded; NULL estado is never excluded. */
+  estadosExcluidos?: string[];
 }
 
 export interface SearchResultItem {
@@ -61,7 +59,8 @@ export interface SearchResultItem {
   titulo: string;
   seccion: string;
   extracto: string;
-  estado: Estado;
+  /** Absent when the document has no estado (never rendered as "" or a placeholder). */
+  estado?: string;
   score: number;
 }
 

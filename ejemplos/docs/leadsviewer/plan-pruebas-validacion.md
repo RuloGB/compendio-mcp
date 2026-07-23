@@ -1,12 +1,3 @@
----
-tipo: qa
-modulo: leadsviewer
-estado: vigente
-propietario: QA
-etiquetas: [pruebas, validacion, formulario]
-actualizado: 2026-07-19
----
-
 # Plan de pruebas: validación del formulario de leads
 
 Casos de prueba del formulario de alta y edición de leads, derivados de la especificación funcional de validación. Criterio de salida: todos los casos en verde en el entorno de pruebas.

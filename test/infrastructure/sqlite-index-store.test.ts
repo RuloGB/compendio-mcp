@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DocumentMeta } from "../../src/domain/model";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
-function meta(overrides: Partial<DocumentMeta>): DocumentMeta {
+function meta(overrides: Partial<DocumentMeta> & { ruta?: string } = {}): DocumentMeta {
   return {
     ruta: "funcional/doc.md",
     titulo: "Documento",
@@ -35,8 +35,8 @@ describe("SqliteIndexStore", () => {
     expect(ids).toHaveLength(1);
   });
 
-  it("applies estado, tipo and etiquetas filters", () => {
-    store.saveDocument(meta({ ruta: "a.md", estado: "vigente", etiquetas: ["lead"] }), [
+  it("applies tipo, modulo and etiquetas filters", () => {
+    store.saveDocument(meta({ ruta: "a.md", etiquetas: ["lead"] }), [
       { encabezado: "A", contenido: "contenido comun", orden: 0 },
     ]);
     store.saveDocument(meta({ ruta: "b.md", estado: "borrador" }), [
@@ -47,7 +47,6 @@ describe("SqliteIndexStore", () => {
     ]);
 
     expect(store.searchLexical("comun", {}, 10)).toHaveLength(3);
-    expect(store.searchLexical("comun", { estados: ["vigente"] }, 10)).toHaveLength(2);
     expect(store.searchLexical("comun", { tipo: "adr" }, 10)).toHaveLength(1);
     expect(store.searchLexical("comun", { etiquetas: ["lead"] }, 10)).toHaveLength(1);
   });
@@ -74,12 +73,12 @@ describe("SqliteIndexStore", () => {
 
     const nearest = store.searchVector(new Float32Array([0.95, 0.05, 0]), {}, 10);
     expect(nearest).toHaveLength(2);
-    const onlyVigente = store.searchVector(
+    const sinBorrador = store.searchVector(
       new Float32Array([0.9, 0.1, 0]),
-      { estados: ["vigente"] },
+      { estadosExcluidos: ["borrador"] },
       10,
     );
-    expect(onlyVigente).toEqual([a.chunkIds[0]]);
+    expect(sinBorrador).toEqual([a.chunkIds[0]]);
   });
 
   it("reset drops documents, chunks and vectors", () => {
@@ -113,5 +112,97 @@ describe("SqliteIndexStore", () => {
     expect(doc!.etiquetas).toEqual(["lead", "rgpd"]);
     expect(doc!.propietario).toBe("BA");
     expect(doc!.actualizado).toBe("2026-07-19");
+  });
+
+  it("round-trips absent tipo/modulo/estado as NULL -> undefined (Optional Persisted Metadata)", () => {
+    store.saveDocument(
+      { ruta: "sin-metadata.md", titulo: "Sin metadata", resumen: "r", etiquetas: [], hash: "h" },
+      [{ encabezado: "A", contenido: "x", orden: 0 }],
+    );
+    const doc = store.getDocumentByRuta("sin-metadata.md");
+    expect(doc).not.toBeNull();
+    expect(doc!.tipo).toBeUndefined();
+    expect(doc!.modulo).toBeUndefined();
+    expect(doc!.estado).toBeUndefined();
+  });
+
+  it("listDocuments orders alphabetically by ruta regardless of NULL/non-NULL tipo", () => {
+    store.saveDocument(meta({ ruta: "z.md", tipo: "adr" }), [
+      { encabezado: "A", contenido: "x", orden: 0 },
+    ]);
+    store.saveDocument(
+      { ruta: "a.md", titulo: "A", resumen: "r", etiquetas: [], hash: "h" }, // no tipo (NULL)
+      [{ encabezado: "A", contenido: "x", orden: 0 }],
+    );
+    store.saveDocument(meta({ ruta: "m.md", tipo: "guia" }), [
+      { encabezado: "A", contenido: "x", orden: 0 },
+    ]);
+
+    expect(store.listDocuments().map((d) => d.ruta)).toEqual(["a.md", "m.md", "z.md"]);
+  });
+
+  it("estadosExcluidos deny-list: NULL estado is never excluded, declared exclusion filters correctly", () => {
+    store.saveDocument(meta({ ruta: "borrador.md", estado: "borrador" }), [
+      { encabezado: "A", contenido: "unico1", orden: 0 },
+    ]);
+    store.saveDocument(meta({ ruta: "vigente.md", estado: "vigente" }), [
+      { encabezado: "A", contenido: "unico1", orden: 0 },
+    ]);
+    store.saveDocument(
+      { ruta: "sin-estado.md", titulo: "T", resumen: "r", etiquetas: [], hash: "h" }, // no estado
+      [{ encabezado: "A", contenido: "unico1", orden: 0 }],
+    );
+
+    const sinDenyList = store.searchLexical("unico1", {}, 10);
+    expect(sinDenyList).toHaveLength(3);
+
+    const conDenyList = store.searchLexical("unico1", { estadosExcluidos: ["borrador"] }, 10);
+    expect(conDenyList).toHaveLength(2); // vigente.md and sin-estado.md remain eligible
+  });
+});
+
+describe("SqliteIndexStore — reset() schema guarantee (Pre-existing NOT NULL schema upgrade)", () => {
+  it("upgrades a pre-existing NOT NULL schema in place, without manual deletion", () => {
+    const store = new SqliteIndexStore(":memory:");
+    // Simulate a database created by a prior version with NOT NULL columns.
+    const db = (store as unknown as { db: { exec: (sql: string) => unknown } }).db;
+    db.exec(`
+      DROP TABLE IF EXISTS documents;
+      CREATE TABLE documents (
+        id INTEGER PRIMARY KEY,
+        ruta TEXT UNIQUE NOT NULL,
+        titulo TEXT NOT NULL,
+        resumen TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        modulo TEXT NOT NULL,
+        estado TEXT NOT NULL,
+        propietario TEXT,
+        etiquetas TEXT,
+        actualizado TEXT,
+        hash TEXT NOT NULL
+      );
+    `);
+
+    // Pre-reset: inserting a document with no tipo would violate NOT NULL.
+    expect(() =>
+      store.saveDocument(
+        { ruta: "sin-tipo.md", titulo: "T", resumen: "r", etiquetas: [], hash: "h" },
+        [{ encabezado: "A", contenido: "x", orden: 0 }],
+      ),
+    ).toThrow();
+
+    store.reset();
+
+    // Post-reset: the schema is nullable, no manual .compendio/ deletion needed.
+    expect(() =>
+      store.saveDocument(
+        { ruta: "sin-tipo.md", titulo: "T", resumen: "r", etiquetas: [], hash: "h" },
+        [{ encabezado: "A", contenido: "x", orden: 0 }],
+      ),
+    ).not.toThrow();
+    const doc = store.getDocumentByRuta("sin-tipo.md");
+    expect(doc!.tipo).toBeUndefined();
+
+    store.close();
   });
 });

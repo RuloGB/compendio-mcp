@@ -88,14 +88,16 @@ function headingsIn(markdown: string): string[] {
   return titles;
 }
 
-/** Renders the frontmatter of a document as a YAML block. */
+/**
+ * Renders the frontmatter of a document as a YAML block. Each of
+ * `tipo`/`modulo`/`estado` is rendered only when present on the document —
+ * an absent field is omitted entirely, never shown as empty/placeholder.
+ */
 export function formatFrontmatter(meta: DocumentMeta): string {
-  const lines = [
-    "---",
-    `tipo: ${meta.tipo}`,
-    `modulo: ${meta.modulo}`,
-    `estado: ${meta.estado}`,
-  ];
+  const lines = ["---"];
+  if (meta.tipo !== undefined) lines.push(`tipo: ${meta.tipo}`);
+  if (meta.modulo !== undefined) lines.push(`modulo: ${meta.modulo}`);
+  if (meta.estado !== undefined) lines.push(`estado: ${meta.estado}`);
   if (meta.propietario !== undefined) lines.push(`propietario: ${meta.propietario}`);
   if (meta.etiquetas.length > 0) lines.push(`etiquetas: [${meta.etiquetas.join(", ")}]`);
   if (meta.actualizado !== undefined) lines.push(`actualizado: ${meta.actualizado}`);

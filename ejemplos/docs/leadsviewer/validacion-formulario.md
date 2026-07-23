@@ -1,12 +1,3 @@
----
-tipo: funcional
-modulo: leadsviewer
-estado: vigente
-propietario: BA
-etiquetas: [lead, validacion, formulario, rgpd]
-actualizado: 2026-07-19
----
-
 # Validación del formulario de alta de leads
 
 Define las reglas de validación del formulario de alta y edición de leads en LeadsViewer: campos, formatos, obligatoriedad, tratamiento de duplicados y consentimiento RGPD. Consultar antes de implementar o modificar el formulario, o al revisar incidencias con datos de leads.
@@ -72,7 +63,7 @@ Los mensajes se muestran junto al campo afectado cuando este pierde el foco, y d
 
 ## Fuera de alcance
 
-- Importación masiva de leads: ver [importación por CSV](leadsviewer-importacion-csv.md).
+- Importación masiva de leads: ver [importación por CSV](importacion-csv.md).
 - Fusión de leads duplicados ya existentes en el sistema.
 - Puntuación (scoring) y cualificación de leads.
 - Sincronización con CRMs externos.
@@ -80,4 +71,4 @@ Los mensajes se muestran junto al campo afectado cuando este pierde el foco, y d
 ## Referencias
 
 - Términos `lead`, `leadsviewer` y `origen`: ver [glosario](../glosario.md).
-- Contrato de API de alta y edición de leads: [api/leadsviewer-alta-leads.md](../api/leadsviewer-alta-leads.md).
+- Contrato de API de alta y edición de leads: [alta-leads.md](alta-leads.md).

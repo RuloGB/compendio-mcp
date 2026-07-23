@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   condenseResumen,
+  formatDocLine,
   MAX_RESUMEN_CHARS,
   renderIndexMd,
   type IndexEntry,
@@ -8,10 +9,10 @@ import {
 
 function entry(overrides: Partial<IndexEntry>): IndexEntry {
   return {
-    ruta: "funcional/doc.md",
+    ruta: "auth/doc.md",
     titulo: "Documento",
     resumen: "Resumen breve",
-    tipo: "funcional",
+    tipo: "guia",
     estado: "vigente",
     ...overrides,
   };
@@ -20,39 +21,25 @@ function entry(overrides: Partial<IndexEntry>): IndexEntry {
 function listedRutas(salida: string): string[] {
   return salida
     .split("\n")
-    .filter((line) => line.startsWith("- ["))
-    .map((line) => line.split(" — ")[0]!.split("] ")[1]!);
+    .filter((line) => line.startsWith("- "))
+    .map((line) => line.split(" — ")[0]!.replace(/^- (\[[^\]]+\] )?/, ""));
 }
 
 describe("renderIndexMd", () => {
-  it("renders the convention line format under the title", () => {
-    const salida = renderIndexMd([entry({})]);
-    expect(salida).toContain("# Índice de la documentación");
-    expect(salida).toContain("Generado con");
-    expect(salida).toContain("- [funcional] funcional/doc.md — Resumen breve (vigente)");
-    expect(salida.endsWith("\n")).toBe(true);
+  it("defaults to alphabetical order by ruta with no comparator supplied", () => {
+    const salida = renderIndexMd([entry({ ruta: "b.md" }), entry({ ruta: "a.md" })]);
+    expect(listedRutas(salida)).toEqual(["a.md", "b.md"]);
   });
 
-  it("orders root documents first, then by tipo in convention order, then by ruta", () => {
-    const salida = renderIndexMd([
-      entry({ ruta: "qa/plan.md", tipo: "qa" }),
-      entry({ ruta: "adr/adr-0007-postgres.md", tipo: "adr" }),
-      entry({ ruta: "glosario.md", tipo: "guia" }),
-      entry({ ruta: "adr/adr-0001-mongodb.md", tipo: "adr", estado: "obsoleto" }),
-      entry({ ruta: "funcional/alta.md", tipo: "funcional" }),
-    ]);
-    expect(listedRutas(salida)).toEqual([
-      "glosario.md",
-      "funcional/alta.md",
-      "adr/adr-0001-mongodb.md",
-      "adr/adr-0007-postgres.md",
-      "qa/plan.md",
-    ]);
+  it("uses an injected comparator when supplied", () => {
+    const inverso = (a: IndexEntry, b: IndexEntry) => b.ruta.localeCompare(a.ruta);
+    const salida = renderIndexMd([entry({ ruta: "a.md" }), entry({ ruta: "b.md" })], inverso);
+    expect(listedRutas(salida)).toEqual(["b.md", "a.md"]);
   });
 
   it("collapses whitespace and truncates long summaries", () => {
     const salida = renderIndexMd([entry({ resumen: `linea\nrota   ${"x".repeat(200)}` })]);
-    const linea = salida.split("\n").find((l) => l.startsWith("- ["))!;
+    const linea = salida.split("\n").find((l) => l.startsWith("- "))!;
     const resumen = linea.split(" — ")[1]!.replace(/ \(vigente\)$/, "");
     expect(resumen).toContain("linea rota");
     expect(resumen).toHaveLength(MAX_RESUMEN_CHARS);
@@ -61,7 +48,7 @@ describe("renderIndexMd", () => {
 
   it("falls back to the title when the summary is empty", () => {
     const salida = renderIndexMd([entry({ resumen: "  ", titulo: "Guía de despliegue" })]);
-    expect(salida).toContain("- [funcional] funcional/doc.md — Guía de despliegue (vigente)");
+    expect(salida).toContain("- [guia] auth/doc.md — Guía de despliegue (vigente)");
   });
 
   it("renders only the header for an empty corpus", () => {
@@ -69,6 +56,33 @@ describe("renderIndexMd", () => {
     expect(salida).toContain("# Índice de la documentación");
     expect(salida).not.toContain("- [");
     expect(salida.endsWith("\n")).toBe(true);
+  });
+});
+
+describe("formatDocLine — omits absent tipo/estado segments", () => {
+  it("omits both segments when tipo and estado are absent", () => {
+    const linea = formatDocLine({ tipo: undefined, ruta: "a.md", resumen: "r", estado: undefined });
+    expect(linea).toBe("- a.md — r");
+    expect(linea).not.toContain("[");
+    expect(linea).not.toContain("(");
+    expect(linea).not.toContain("undefined");
+  });
+
+  it("includes tipo and omits estado when only tipo is present", () => {
+    const linea = formatDocLine({ tipo: "guia", ruta: "a.md", resumen: "r", estado: undefined });
+    expect(linea).toBe("- [guia] a.md — r");
+    expect(linea).not.toContain("(");
+  });
+
+  it("includes estado and omits tipo when only estado is present", () => {
+    const linea = formatDocLine({ tipo: undefined, ruta: "a.md", resumen: "r", estado: "vigente" });
+    expect(linea).toBe("- a.md — r (vigente)");
+    expect(linea).not.toContain("[");
+  });
+
+  it("includes both segments when both are present", () => {
+    const linea = formatDocLine({ tipo: "guia", ruta: "a.md", resumen: "r", estado: "vigente" });
+    expect(linea).toBe("- [guia] a.md — r (vigente)");
   });
 });
 

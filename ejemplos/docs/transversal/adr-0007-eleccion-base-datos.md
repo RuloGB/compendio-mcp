@@ -1,12 +1,3 @@
----
-tipo: adr
-modulo: transversal
-estado: vigente
-propietario: ARQ
-etiquetas: [postgresql, persistencia, transacciones]
-actualizado: 2026-07-19
----
-
 # ADR-0007: PostgreSQL como base de datos del sistema
 
 Se decidió usar PostgreSQL como base de datos única del sistema, en sustitución de MongoDB, por la necesidad de transacciones y de integridad referencial entre leads, interacciones e informes.

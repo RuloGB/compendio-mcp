@@ -3,7 +3,6 @@ import { z } from "zod";
 import { formatOverview } from "./application/get-overview.js";
 import { formatFrontmatter } from "./application/read-document.js";
 import type { SearchQuery } from "./application/search-documents.js";
-import { TIPOS } from "./domain/model.js";
 import type { Container } from "./composition.js";
 
 export const SERVER_VERSION = "0.1.0";
@@ -37,18 +36,22 @@ export function createMcpServer(container: Container): McpServer {
       description:
         "Busqueda hibrida (lexica BM25 + semantica) en lenguaje natural sobre la documentacion " +
         "del proyecto, con filtros por metadatos. Devuelve fragmentos compactos (ruta, seccion, " +
-        "extracto); usa read_doc para leer una seccion completa. Los documentos en borrador u " +
-        "obsoletos quedan excluidos salvo incluir_no_vigentes.",
+        "extracto); usa read_doc para leer una seccion completa. Si el proyecto declara " +
+        "convencion.estadosExcluidos, los documentos en esos estados quedan fuera salvo " +
+        "incluir_no_vigentes; si no lo declara, no se excluye ningun documento por su estado.",
       inputSchema: {
         query: z.string().min(1).describe("Consulta en lenguaje natural"),
-        tipo: z.enum(TIPOS).optional().describe("Filtra por tipo de documento"),
+        tipo: z.string().optional().describe("Filtra por tipo de documento (segun la convencion del proyecto)"),
         modulo: z.string().optional().describe("Filtra por modulo"),
         etiquetas: z.array(z.string()).optional().describe("Filtra por etiquetas (basta una)"),
         k: z.number().int().min(1).max(20).optional().describe("Numero de resultados (5 por defecto)"),
         incluir_no_vigentes: z
           .boolean()
           .optional()
-          .describe("Incluye documentos en borrador u obsoletos"),
+          .describe(
+            "Incluye documentos cuyo estado figura en convencion.estadosExcluidos " +
+              "(sin efecto si el proyecto no declara exclusiones)",
+          ),
       },
     },
     async (args) => {

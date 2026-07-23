@@ -1,11 +1,5 @@
 ---
-tipo: adr
-modulo: transversal
 estado: obsoleto
-propietario: ARQ
-etiquetas: [mongodb, persistencia]
-actualizado: 2026-05-02
-sustituido-por: adr/adr-0007-eleccion-base-datos.md
 ---
 
 # ADR-0001: MongoDB como base de datos inicial

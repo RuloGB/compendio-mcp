@@ -1,12 +1,3 @@
----
-tipo: adr
-modulo: transversal
-estado: vigente
-propietario: ARQ
-etiquetas: [sso, oidc, seguridad, acceso]
-actualizado: 2026-07-19
----
-
 # ADR-0003: Autenticación mediante SSO corporativo (OIDC)
 
 Se decidió delegar la autenticación en el proveedor de identidad corporativo mediante OpenID Connect, en lugar de mantener usuarios y credenciales propios en LeadsViewer.

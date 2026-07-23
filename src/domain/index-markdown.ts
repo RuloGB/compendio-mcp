@@ -1,4 +1,4 @@
-import { TIPOS, type DocumentMeta } from "./model.js";
+import type { DocumentMeta } from "./model.js";
 
 /** File name of the generated corpus index, fixed by the documentation convention. */
 export const INDEX_FILE = "INDEX.md";
@@ -24,23 +24,39 @@ export function displayResumen(doc: { resumen: string; titulo: string }): string
   return condenseResumen(doc.resumen.trim().length > 0 ? doc.resumen : doc.titulo);
 }
 
-/** One document per line — the format shared by INDEX.md and docs_overview. */
+/**
+ * One document per line — the format shared by INDEX.md and docs_overview.
+ * Omits the `[tipo]` bracket segment and the `(estado)` parenthesized segment
+ * entirely when the corresponding field is absent (never `[undefined]` or an
+ * empty placeholder).
+ */
 export function formatDocLine(doc: {
-  tipo: string;
+  tipo: string | undefined;
   ruta: string;
   resumen: string;
-  estado: string;
+  estado: string | undefined;
 }): string {
-  return `- [${doc.tipo}] ${doc.ruta} — ${doc.resumen} (${doc.estado})`;
+  const tipoSegment = doc.tipo !== undefined ? `[${doc.tipo}] ` : "";
+  const estadoSegment = doc.estado !== undefined ? ` (${doc.estado})` : "";
+  return `- ${tipoSegment}${doc.ruta} — ${doc.resumen}${estadoSegment}`;
+}
+
+/** Default ordering: alphabetical by `ruta` (the zero-config/libre default). */
+function compararAlfabetico(a: IndexEntry, b: IndexEntry): number {
+  return a.ruta.localeCompare(b.ruta);
 }
 
 /**
- * Renders INDEX.md per the documentation convention: one line per document,
- * root-level documents first (the glossary), then grouped by tipo in
- * convention order, alphabetically within each group.
+ * Renders INDEX.md: one line per document. Ordering is delegated to an
+ * injectable comparator (default = alphabetical by `ruta`); pass the
+ * `estricto` declared-taxonomy comparator from `crearComparadorIndice` to
+ * order by the declared `tipos` sequence instead.
  */
-export function renderIndexMd(docs: IndexEntry[]): string {
-  const lines = [...docs].sort(compareEntries).map((doc) =>
+export function renderIndexMd(
+  docs: IndexEntry[],
+  comparar: (a: IndexEntry, b: IndexEntry) => number = compararAlfabetico,
+): string {
+  const lines = [...docs].sort(comparar).map((doc) =>
     formatDocLine({
       tipo: doc.tipo,
       ruta: doc.ruta,
@@ -50,13 +66,4 @@ export function renderIndexMd(docs: IndexEntry[]): string {
   );
   const header = `${TITULO_INDICE}\n\n${AVISO_GENERADO}\n`;
   return lines.length === 0 ? header : `${header}\n${lines.join("\n")}\n`;
-}
-
-function compareEntries(a: IndexEntry, b: IndexEntry): number {
-  const nivelA = a.ruta.includes("/") ? 1 : 0;
-  const nivelB = b.ruta.includes("/") ? 1 : 0;
-  if (nivelA !== nivelB) return nivelA - nivelB;
-  const tipoDiff = TIPOS.indexOf(a.tipo) - TIPOS.indexOf(b.tipo);
-  if (tipoDiff !== 0) return tipoDiff;
-  return a.ruta.localeCompare(b.ruta);
 }

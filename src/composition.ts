@@ -5,6 +5,7 @@ import { GetOverview } from "./application/get-overview.js";
 import { IndexDocuments } from "./application/index-documents.js";
 import { ReadDocument } from "./application/read-document.js";
 import { SearchDocuments } from "./application/search-documents.js";
+import { crearComparadorIndice, crearConvencionPolicy } from "./domain/convencion.js";
 import { INDEX_FILE } from "./domain/index-markdown.js";
 import type { EmbeddingsProvider } from "./domain/ports.js";
 import { loadConfig, SIN_CHUNKING, type CompendioConfig } from "./infrastructure/config.js";
@@ -51,12 +52,23 @@ export function createContainer(options: ContainerOptions): Container {
 
   const source = new FileDocumentSource(docsDir, config.exclude);
   const parser = new RemarkMarkdownParser();
-  const indexDocuments = new IndexDocuments(source, parser, store, embeddings, {
+  const policy = crearConvencionPolicy(config.convencion);
+  const comparador = crearComparadorIndice(config.convencion);
+  const indexDocuments = new IndexDocuments(source, parser, store, embeddings, policy, {
     chunking: config.chunk,
     sinChunking: SIN_CHUNKING,
   });
-  const generateIndexMd = new GenerateIndexMd(source, parser, new FileIndexWriter(docsDir, INDEX_FILE));
-  const searchDocuments = new SearchDocuments(store, embeddings, config.search);
+  const generateIndexMd = new GenerateIndexMd(
+    source,
+    parser,
+    new FileIndexWriter(docsDir, INDEX_FILE),
+    policy,
+    comparador,
+  );
+  const searchDocuments = new SearchDocuments(store, embeddings, {
+    k: config.search.k,
+    estadosExcluidos: config.convencion.estadosExcluidos,
+  });
 
   return {
     config,
