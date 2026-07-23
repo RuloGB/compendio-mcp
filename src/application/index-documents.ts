@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { chunkOutline, type ChunkingOptions } from "../domain/chunking.js";
-import { validateFrontmatter } from "../domain/frontmatter.js";
+import type { ConvencionPolicy } from "../domain/convencion.js";
 import type { Chunk, SearchMode } from "../domain/model.js";
 import type {
   DocumentSource,
@@ -41,8 +41,10 @@ export interface IndexDocumentsOptions {
 const DEFAULT_BATCH_SIZE = 16;
 
 /**
- * Full reindex pipeline: discover -> parse & validate -> chunk -> embed ->
- * persist. Invalid documents are reported and skipped. If the embeddings
+ * Full reindex pipeline: discover -> parse & resolve -> chunk -> embed ->
+ * persist. A file is skipped and reported in `omitidos` for any resilience
+ * reason (unreadable, unparseable, no indexable content) or, under the
+ * injected `ConvencionPolicy`, for a metadata reason. If the embeddings
  * provider is missing or fails, indexing completes in lexical-only mode
  * instead of crashing (graceful degradation).
  */
@@ -52,22 +54,33 @@ export class IndexDocuments {
     private readonly parser: MarkdownParser,
     private readonly store: IndexStore,
     private readonly embeddings: EmbeddingsProvider | null,
+    private readonly policy: ConvencionPolicy,
     private readonly options: IndexDocumentsOptions,
   ) {}
 
   async execute(): Promise<IndexReport> {
     const start = Date.now();
-    const files = await this.source.discover();
+    const { files, erroresLectura } = await this.source.discover();
 
     const indexados: IndexedFileReport[] = [];
-    const omitidos: SkippedFileReport[] = [];
+    const omitidos: SkippedFileReport[] = erroresLectura.map((e) => ({
+      ruta: e.ruta,
+      errores: [e.error],
+    }));
     const pending: { chunkId: number; texto: string }[] = [];
 
     this.store.reset();
 
     for (const file of files) {
-      const parsed = this.parser.parse(file.contenido);
-      const validation = validateFrontmatter({
+      let parsed;
+      try {
+        parsed = this.parser.parse(file.contenido);
+      } catch (error) {
+        omitidos.push({ ruta: file.ruta, errores: [describeError(error)] });
+        continue;
+      }
+
+      const resolution = this.policy.resolver({
         data: parsed.data,
         ruta: file.ruta,
         titulo: parsed.outline.titulo,
@@ -75,13 +88,13 @@ export class IndexDocuments {
         hash: createHash("sha256").update(file.contenido, "utf8").digest("hex"),
       });
 
-      if (!validation.ok) {
-        omitidos.push({ ruta: file.ruta, errores: validation.errores });
+      if (!resolution.ok) {
+        omitidos.push({ ruta: file.ruta, errores: resolution.errores });
         continue;
       }
 
       const chunks = this.isSinChunking(file.ruta)
-        ? this.wholeDocumentChunk(validation.meta.titulo, parsed.body)
+        ? this.wholeDocumentChunk(resolution.meta.titulo, parsed.body)
         : chunkOutline(parsed.outline, this.options.chunking);
 
       if (chunks.length === 0) {
@@ -89,14 +102,14 @@ export class IndexDocuments {
         continue;
       }
 
-      const saved = this.store.saveDocument(validation.meta, chunks);
+      const saved = this.store.saveDocument(resolution.meta, chunks);
       chunks.forEach((chunk, i) => {
         pending.push({
           chunkId: saved.chunkIds[i]!,
           texto: `${chunk.encabezado}\n${chunk.contenido}`,
         });
       });
-      indexados.push({ ruta: file.ruta, titulo: validation.meta.titulo, chunks: chunks.length });
+      indexados.push({ ruta: file.ruta, titulo: resolution.meta.titulo, chunks: chunks.length });
     }
 
     const aviso = await this.embedPending(pending);

@@ -1,0 +1,9 @@
+{
+  "docsDir": "docs",
+  "convencion": {
+    "modo": "estricto",
+    "tipos": ["funcional", "adr", "api", "qa", "guia"],
+    "estados": ["borrador", "vigente", "obsoleto"],
+    "estadosExcluidos": ["borrador", "obsoleto"]
+  }
+}

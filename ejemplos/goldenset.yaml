@@ -1,46 +1,46 @@
 # Goldenset de evaluación: preguntas reales mapeadas al documento que debe aparecer.
 # Ejecutar con: compendio eval (desde el directorio ejemplos/)
 - pregunta: "¿Qué campos son obligatorios al dar de alta un lead?"
-  esperado: funcional/leadsviewer-validacion-formulario.md
+  esperado: leadsviewer/validacion-formulario.md
 - pregunta: "¿Cuándo se considera que un lead está duplicado?"
-  esperado: funcional/leadsviewer-validacion-formulario.md
+  esperado: leadsviewer/validacion-formulario.md
 - pregunta: "¿Cómo evitamos fichas repetidas de clientes potenciales?"
-  esperado: funcional/leadsviewer-validacion-formulario.md
+  esperado: leadsviewer/validacion-formulario.md
 - pregunta: "¿Qué mensaje ve el usuario si escribe un correo mal formado?"
-  esperado: funcional/leadsviewer-validacion-formulario.md
+  esperado: leadsviewer/validacion-formulario.md
 - pregunta: "¿En qué formato se almacena el teléfono de un lead?"
-  esperado: funcional/leadsviewer-validacion-formulario.md
+  esperado: leadsviewer/validacion-formulario.md
 - pregunta: "¿Es obligatorio aceptar la política de privacidad para guardar un lead?"
-  esperado: funcional/leadsviewer-validacion-formulario.md
+  esperado: leadsviewer/validacion-formulario.md
 - pregunta: "¿Por qué elegimos PostgreSQL?"
-  esperado: adr/adr-0007-eleccion-base-datos.md
+  esperado: transversal/adr-0007-eleccion-base-datos.md
 - pregunta: "¿Qué motor de persistencia usa el sistema y por qué?"
-  esperado: adr/adr-0007-eleccion-base-datos.md
+  esperado: transversal/adr-0007-eleccion-base-datos.md
 - pregunta: "¿Por qué dejamos de usar MongoDB?"
-  esperado: adr/adr-0007-eleccion-base-datos.md
+  esperado: transversal/adr-0007-eleccion-base-datos.md
 - pregunta: "¿Cómo inician sesión los usuarios en la aplicación?"
-  esperado: adr/adr-0003-autenticacion-sso.md
+  esperado: transversal/adr-0003-autenticacion-sso.md
 - pregunta: "¿Por qué no gestionamos contraseñas propias?"
-  esperado: adr/adr-0003-autenticacion-sso.md
+  esperado: transversal/adr-0003-autenticacion-sso.md
 - pregunta: "¿De dónde salen los roles y permisos de cada usuario?"
-  esperado: adr/adr-0003-autenticacion-sso.md
+  esperado: transversal/adr-0003-autenticacion-sso.md
 - pregunta: "¿Cuántas filas admite un fichero de carga masiva?"
-  esperado: funcional/leadsviewer-importacion-csv.md
+  esperado: leadsviewer/importacion-csv.md
 - pregunta: "¿Qué ocurre con las filas inválidas al importar un CSV?"
-  esperado: funcional/leadsviewer-importacion-csv.md
+  esperado: leadsviewer/importacion-csv.md
 - pregunta: "¿Se pueden actualizar leads existentes subiendo un fichero?"
-  esperado: funcional/leadsviewer-importacion-csv.md
+  esperado: leadsviewer/importacion-csv.md
 - pregunta: "¿Qué endpoint hay que llamar para crear un lead?"
-  esperado: api/leadsviewer-alta-leads.md
+  esperado: leadsviewer/alta-leads.md
 - pregunta: "¿Qué código de error devuelve la API si el email ya existe?"
-  esperado: api/leadsviewer-alta-leads.md
+  esperado: leadsviewer/alta-leads.md
 - pregunta: "¿Cómo se calcula la tasa de conversión del panel?"
-  esperado: funcional/informes-panel-metricas.md
+  esperado: informes/panel-metricas.md
 - pregunta: "¿Qué indicadores muestra el cuadro de mando comercial?"
-  esperado: funcional/informes-panel-metricas.md
+  esperado: informes/panel-metricas.md
 - pregunta: "¿Cómo se revierte un despliegue que ha salido mal?"
-  esperado: guias/transversal-despliegue.md
+  esperado: transversal/despliegue.md
 - pregunta: "¿Se pueden deshacer las migraciones de base de datos?"
-  esperado: guias/transversal-despliegue.md
+  esperado: transversal/despliegue.md
 - pregunta: "¿Qué casos de prueba cubren el email duplicado?"
-  esperado: qa/leadsviewer-plan-pruebas-validacion.md
+  esperado: leadsviewer/plan-pruebas-validacion.md

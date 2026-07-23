@@ -1,12 +1,3 @@
----
-tipo: guia
-modulo: transversal
-estado: vigente
-propietario: ARQ
-etiquetas: [glosario, terminologia]
-actualizado: 2026-07-19
----
-
 # Glosario del proyecto
 
 Términos canónicos del proyecto LeadsViewer: módulos, entidades de negocio y siglas. Es la fuente de verdad para el campo `modulo` del frontmatter y para la terminología de toda la documentación.

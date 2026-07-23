@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Command } from "commander";
 import { parse as parseYaml } from "yaml";
 import { formatOverview } from "./application/get-overview.js";
 import type { SearchQuery } from "./application/search-documents.js";
 import type { EvalCase, EvalSummary } from "./domain/metrics.js";
-import { TIPOS, type Tipo } from "./domain/model.js";
 import { createContainer, type Container } from "./composition.js";
 import { createMcpServer, SERVER_VERSION } from "./server.js";
 
@@ -75,10 +75,10 @@ program
   .description("Busca en la documentacion indexada y muestra el resultado en JSON")
   .argument("<query>", "consulta en lenguaje natural")
   .option("-k, --k <n>", "numero de resultados", parsePositiveInt)
-  .option("--tipo <tipo>", `filtra por tipo (${TIPOS.join(", ")})`)
+  .option("--tipo <tipo>", "filtra por tipo de documento (segun la convencion del proyecto)")
   .option("--modulo <modulo>", "filtra por modulo")
   .option("--etiquetas <lista>", "filtra por etiquetas, separadas por comas")
-  .option("--todos", "incluye documentos en borrador u obsoletos")
+  .option("--todos", "incluye documentos excluidos por convencion.estadosExcluidos")
   .option("--lexico", "fuerza busqueda solo lexica (sin embeddings)")
   .action(
     async (
@@ -168,12 +168,14 @@ function parsePositiveInt(value: string): number {
   return parsed;
 }
 
-function parseTipo(value: string): Tipo {
-  if (!TIPOS.includes(value as Tipo)) {
-    console.error(`Tipo invalido: "${value}". Permitidos: ${TIPOS.join(", ")}`);
-    process.exit(2);
-  }
-  return value as Tipo;
+/**
+ * `tipo` is an open, project-defined string (declared via `convencion.tipos`
+ * in `compendio.config.json`, or freeform in `libre` mode) — there is no
+ * closed list to validate against at the CLI layer, so this is a passthrough,
+ * never a hard exit. Exported for direct unit testing.
+ */
+export function parseTipo(value: string): string {
+  return value.trim();
 }
 
 function loadGoldenset(path: string): EvalCase[] {
@@ -240,7 +242,27 @@ function formatEvalRow(modo: string, summary: EvalSummary): string {
   );
 }
 
-program.parseAsync(process.argv).catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+// Guard against side effects when this module is imported (e.g. by tests)
+// instead of executed directly (`node dist/cli.js ...` / `tsx src/cli.ts ...`).
+//
+// `realpathSync`, not `resolve`: npm installs the `bin` entries as symlinks to
+// `dist/cli.js` on macOS/Linux, and Node resolves symlinks for `import.meta.url`
+// but NOT for `process.argv[1]`. Comparing the un-resolved paths makes this
+// guard false under `npx compendio` / a global install, so the CLI would exit 0
+// having silently done nothing. `resolve` only normalizes; it never follows a link.
+const isMainModule = (() => {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  try {
+    return realpathSync(entry) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+})();
+
+if (isMainModule) {
+  program.parseAsync(process.argv).catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}

@@ -14,9 +14,25 @@ export interface DocumentFile {
   contenido: string;
 }
 
-/** Discovers the markdown files to index (filesystem adapter). */
+/** A per-file read failure discovered while walking the docs directory. */
+export interface ReadError {
+  ruta: string;
+  error: string;
+}
+
+/** Result of a discovery pass: successfully read files plus per-file read failures. */
+export interface DiscoverResult {
+  files: DocumentFile[];
+  erroresLectura: ReadError[];
+}
+
+/**
+ * Discovers the markdown files to index (filesystem adapter). A single
+ * unreadable file is collected into `erroresLectura` rather than aborting
+ * the whole walk.
+ */
 export interface DocumentSource {
-  discover(): Promise<DocumentFile[]>;
+  discover(): Promise<DiscoverResult>;
 }
 
 export interface ParsedMarkdown {

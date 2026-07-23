@@ -6,16 +6,16 @@ import type { EvalCase } from "../../src/domain/metrics";
 const CASOS: EvalCase[] = [
   {
     pregunta: "campos obligatorios del formulario de alta",
-    esperado: "funcional/leadsviewer-validacion-formulario.md",
+    esperado: "leadsviewer/validacion-formulario.md",
   },
   {
     pregunta: "elección de PostgreSQL como base de datos",
-    esperado: "adr/adr-0007-eleccion-base-datos.md",
+    esperado: "transversal/adr-0007-eleccion-base-datos.md",
   },
   // Semantic-gap question: no lexical overlap with the corpus.
   {
     pregunta: "registros clonados",
-    esperado: "funcional/leadsviewer-validacion-formulario.md",
+    esperado: "leadsviewer/validacion-formulario.md",
   },
 ];
 

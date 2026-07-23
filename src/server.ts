@@ -1,12 +1,34 @@
+import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { formatOverview } from "./application/get-overview.js";
 import { formatFrontmatter } from "./application/read-document.js";
 import type { SearchQuery } from "./application/search-documents.js";
-import { TIPOS } from "./domain/model.js";
 import type { Container } from "./composition.js";
 
-export const SERVER_VERSION = "0.1.0";
+/**
+ * Read from package.json at runtime rather than importing it: `rootDir` is
+ * `src`, so a `resolveJsonModule` import of `../package.json` would pull a file
+ * from outside the root and shift the whole emitted layout under `dist/`.
+ *
+ * `../package.json` resolves to the package root from both `src/server.ts`
+ * (under `tsx`) and `dist/server.js` (published), since `outDir` sits one level
+ * below the root just like `rootDir`.
+ */
+export const SERVER_VERSION: string = readPackageVersion();
+
+function readPackageVersion(): string {
+  const manifest = new URL("../package.json", import.meta.url);
+  const parsed: unknown = JSON.parse(readFileSync(manifest, "utf8"));
+  if (typeof parsed !== "object" || parsed === null || !("version" in parsed)) {
+    throw new Error("package.json no declara 'version'");
+  }
+  const version = (parsed as { version: unknown }).version;
+  if (typeof version !== "string" || version.length === 0) {
+    throw new Error("package.json declara una 'version' que no es una cadena valida");
+  }
+  return version;
+}
 
 /**
  * MCP server over stdio with the three progressive-disclosure tools:
@@ -37,18 +59,22 @@ export function createMcpServer(container: Container): McpServer {
       description:
         "Busqueda hibrida (lexica BM25 + semantica) en lenguaje natural sobre la documentacion " +
         "del proyecto, con filtros por metadatos. Devuelve fragmentos compactos (ruta, seccion, " +
-        "extracto); usa read_doc para leer una seccion completa. Los documentos en borrador u " +
-        "obsoletos quedan excluidos salvo incluir_no_vigentes.",
+        "extracto); usa read_doc para leer una seccion completa. Si el proyecto declara " +
+        "convencion.estadosExcluidos, los documentos en esos estados quedan fuera salvo " +
+        "incluir_no_vigentes; si no lo declara, no se excluye ningun documento por su estado.",
       inputSchema: {
         query: z.string().min(1).describe("Consulta en lenguaje natural"),
-        tipo: z.enum(TIPOS).optional().describe("Filtra por tipo de documento"),
+        tipo: z.string().optional().describe("Filtra por tipo de documento (segun la convencion del proyecto)"),
         modulo: z.string().optional().describe("Filtra por modulo"),
         etiquetas: z.array(z.string()).optional().describe("Filtra por etiquetas (basta una)"),
         k: z.number().int().min(1).max(20).optional().describe("Numero de resultados (5 por defecto)"),
         incluir_no_vigentes: z
           .boolean()
           .optional()
-          .describe("Incluye documentos en borrador u obsoletos"),
+          .describe(
+            "Incluye documentos cuyo estado figura en convencion.estadosExcluidos " +
+              "(sin efecto si el proyecto no declara exclusiones)",
+          ),
       },
     },
     async (args) => {

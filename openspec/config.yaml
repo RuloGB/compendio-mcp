@@ -1,0 +1,65 @@
+schema: spec-driven
+
+context: |
+  Stack: Node.js >=20, TypeScript, MCP server "Compendio". Hexagonal
+  architecture — pure src/domain/, use cases in src/application/, adapters
+  in src/infrastructure/ (better-sqlite3+sqlite-vec, transformers.js,
+  remark+gray-matter, fs). Seams in src/domain/ports.ts.
+  Testing: Vitest, pool "forks" (native addon — do not change). No lint/
+  coverage scripts configured. Full details: CLAUDE.md, openspec/testing-capabilities.md.
+  Language contract: prose in English; MCP tool contract
+  (ruta/tipo/modulo/etiquetas/seccion, omitidos/indexados/avisoEmbeddings),
+  CLI options, SQLite columns, ejemplos/ corpus stay Spanish (deliberate,
+  not to "fix").
+
+strict_tdd: true
+
+testing:
+  test_command: "npm test"
+  test_watch_command: "npm run test:watch"
+  typecheck_command: "npm run typecheck"
+  build_command: "npm run build"
+  lint_command: null
+  format_command: null
+  coverage_command: null
+  details_file: openspec/testing-capabilities.md
+
+rules:
+  proposal:
+    - Include a rollback plan for risky changes.
+    - "Upcoming pivot: removing the fixed documentation convention (required
+      frontmatter tipo/modulo/estado, closed TIPOS/ESTADOS lists) in favor of
+      zero-config indexing (inference-based, no frontmatter required) plus an
+      optional per-project convention in compendio.config.json. No backward
+      compatibility obligation with the old convention (explicit user
+      decision, 2026-07-22) — state this plainly, do not invent a compat
+      shim unless asked."
+  specs:
+    - Use Given/When/Then for scenarios.
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
+    - Keep MCP tool params/response fields in Spanish (ruta, tipo, modulo,
+      etiquetas, seccion, omitidos, indexados, avisoEmbeddings) unless the
+      change explicitly redefines the contract.
+  design:
+    - Include sequence/flow notes for non-trivial flows (e.g. inference-based
+      classification, config-driven convention resolution).
+    - Document architecture decisions with rationale.
+    - Keep src/domain/ free of SQLite/transformers.js/filesystem dependencies;
+      route any new adapter through src/domain/ports.ts.
+  tasks:
+    - Group by phase, use hierarchical numbering.
+    - Keep tasks completable in one session.
+  apply:
+    guidelines:
+      - Follow existing hexagonal patterns; new adapters implement ports.ts.
+    tdd: true
+    test_command: "npm test"
+  verify:
+    test_command: "npm test"
+    build_command: "npm run build"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas.
+    - For the zero-config pivot, confirm openspec/specs/ reflects removal of
+      the closed TIPOS/ESTADOS convention and addition of inference-based
+      + optional-config classification before archiving.

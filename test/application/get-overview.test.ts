@@ -2,23 +2,71 @@ import { describe, expect, it } from "vitest";
 import { formatOverview, GetOverview } from "../../src/application/get-overview";
 import type { DocumentMeta } from "../../src/domain/model";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
-import { buildHarness } from "../helpers/build";
 
-describe("GetOverview over the ejemplos corpus", () => {
-  it("counts by tipo/modulo and renders one convention line per document", async () => {
-    const harness = buildHarness(null);
-    await harness.index.execute();
+function seed(store: SqliteIndexStore, overrides: Partial<DocumentMeta> & { ruta: string }): void {
+  const meta: DocumentMeta = {
+    ruta: overrides.ruta,
+    titulo: overrides.titulo ?? overrides.ruta,
+    resumen: overrides.resumen ?? "contenido",
+    etiquetas: overrides.etiquetas ?? [],
+    hash: overrides.hash ?? overrides.ruta,
+    ...(overrides.tipo !== undefined ? { tipo: overrides.tipo } : {}),
+    ...(overrides.modulo !== undefined ? { modulo: overrides.modulo } : {}),
+    ...(overrides.estado !== undefined ? { estado: overrides.estado } : {}),
+  };
+  store.saveDocument(meta, [{ encabezado: "H", contenido: "contenido", orden: 0 }]);
+}
 
-    const overview = harness.overview.execute();
-    expect(overview.totalDocumentos).toBe(11);
-    expect(overview.porTipo).toEqual({ funcional: 3, adr: 3, api: 1, qa: 2, guia: 2 });
-    expect(overview.porModulo["leadsviewer"]).toBeGreaterThan(0);
+describe("GetOverview — empty taxonomy omission", () => {
+  it("omits the 'Por tipo:' and 'Por modulo:' lines when no document defines them", () => {
+    const store = new SqliteIndexStore(":memory:");
+    seed(store, { ruta: "a.md" });
+    seed(store, { ruta: "b.md" });
+
+    const overview = new GetOverview(store).execute();
+    expect(overview.porTipo).toEqual({});
+    expect(overview.porModulo).toEqual({});
 
     const salida = formatOverview(overview);
-    expect(salida).toContain("Documentos indexados: 11");
-    expect(salida).toMatch(/^- \[guia\] glosario\.md — .+ \(vigente\)$/m);
+    expect(salida).not.toContain("Por tipo:");
+    expect(salida).not.toContain("Por modulo:");
+    store.close();
+  });
+});
 
-    harness.close();
+describe("GetOverview — partial tipo coverage", () => {
+  it("counts only documents that define tipo, with no synthetic bucket", () => {
+    const store = new SqliteIndexStore(":memory:");
+    seed(store, { ruta: "a.md", tipo: "guia" });
+    seed(store, { ruta: "b.md" }); // no tipo
+
+    const overview = new GetOverview(store).execute();
+    expect(overview.porTipo).toEqual({ guia: 1 });
+    expect(overview.totalDocumentos).toBe(2);
+
+    const salida = formatOverview(overview);
+    expect(salida).toContain("Por tipo: guia (1)");
+    expect(salida).not.toContain("undefined");
+    store.close();
+  });
+});
+
+describe("GetOverview — per-document line ordering and segment omission", () => {
+  it("orders lines alphabetically by ruta and omits absent tipo/estado segments", () => {
+    const store = new SqliteIndexStore(":memory:");
+    seed(store, { ruta: "z.md", tipo: "guia", estado: "vigente" });
+    seed(store, { ruta: "a.md" }); // no tipo, no estado
+    seed(store, { ruta: "m.md", tipo: "adr" }); // tipo only
+
+    const overview = new GetOverview(store).execute();
+    expect(overview.documentos.map((d) => d.ruta)).toEqual(["a.md", "m.md", "z.md"]);
+
+    const salida = formatOverview(overview);
+    const lineas = salida.split("\n").filter((l) => l.startsWith("- "));
+    expect(lineas[0]).toBe("- a.md — contenido");
+    expect(lineas[1]).toBe("- [adr] m.md — contenido");
+    expect(lineas[2]).toBe("- [guia] z.md — contenido (vigente)");
+    store.close();
   });
 });
 
