@@ -4,4 +4,3 @@ dist/
 .atl/
 *.tsbuildinfo
 .codegraph/
-openspec/

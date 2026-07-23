@@ -1,0 +1,255 @@
+schema: spec-driven
+change: configurable-convention
+created: 2026-07-22
+artifact_store: openspec
+execution_mode: interactive
+delivery_strategy: ask-on-risk
+phases:
+  explore:
+    status: done
+    artifact: exploration.md
+    completed: 2026-07-22
+    note: >-
+      Investigation by sdd-explore agent; artifact persisted by the
+      orchestrator because the explore agent has no write tooling.
+  proposal:
+    status: done
+    artifact: proposal.md
+    completed: 2026-07-22
+  specs:
+    status: done
+    completed: 2026-07-22
+    artifacts:
+      - specs/configuration/spec.md
+      - specs/indexing/spec.md
+      - specs/search/spec.md
+      - specs/mcp-contract/spec.md
+      - specs/index-md/spec.md
+    assumptions_flagged: # extrapolated by sdd-spec, to confirm during design/tasks review
+      - estricto INDEX.md ordering tie-break within a tipo group = alphabetical by ruta
+      - docs_overview partial taxonomy coverage counts only defined values (no synthetic bucket)
+      - all requirements are ADDED (no baseline in openspec/specs/ to MODIFY against; first SDD change)
+  design:
+    status: done
+    completed: 2026-07-23
+    artifact: design.md
+    core: >-
+      Injected pure-domain ConvencionPolicy (libre inference-first default vs
+      estricto linter vs declared taxonomies); tipo/modulo/estado optional open
+      strings; estado filtering becomes a NULL-aware deny-list; policy built
+      from config in the composition root.
+    confirmed_assumptions: # user-confirmed 2026-07-23, now binding
+      - estricto performs no inference (validation-only)
+      - retired search.estadosExcluidos key -> warn-and-ignore
+      - estricto INDEX.md intra-tipo tie-break -> alphabetical by ruta
+      - docs_overview partial taxonomy -> count only defined values
+    review:
+      protocol: judgment-day (blind dual adversarial review)
+      rounds: 4
+      fix_iterations: 4
+      outcome: >-
+        APPROVED (closed 2026-07-23 by user decision after round 4 returned
+        zero confirmed CRITICALs; iteration-4 fixes verified textually by the
+        orchestrator instead of a fifth blind round — explicit user choice).
+      highlights: >-
+        Caught pre-implementation: false schema-migration claim (reset() never
+        recreated tables), a fix-introduced data-wipe regression (drop-and-
+        recreate in the constructor path), incomplete type-ripple enumeration,
+        and estricto-semantics divergences between spec and design.
+    additional_decisions: # user-confirmed 2026-07-23 during judgment-day
+      concurrency_non_goal: >-
+        Concurrent readers during a compendio index run are out of scope /
+        best-effort: a live serve session MAY see empty results or a transient
+        error while reset()'s transactional drop-and-recreate is in flight.
+        Declared as a spec-level non-goal (indexing spec).
+      overview_ordering: >-
+        docs_overview per-document lines (listDocuments) ordered alphabetically
+        by ruta (was ORDER BY tipo, which would NULL-cluster in zero-config
+        corpora) — coherence extension of the INDEX.md ordering decision.
+    reconciliation_note: >-
+      Design was authored in parallel with spec (no spec.md existed at design
+      time); inference details (humanized filename, ordering comparator) must
+      be reconciled spec<->design before or during tasks.
+  tasks:
+    status: done
+    completed: 2026-07-23
+    artifact: tasks.md
+    decisions: # made during sdd-tasks
+      slice_b_size_exception: >-
+        Slice B (domain model + validation-gate + resilience + SQLite + search
+        + overview + read-doc + composition) ships as a single size:exception
+        PR — the optional-field TS ripple across ~9 files cannot be split
+        without a transient red build (per design.md Open Questions).
+      slice_d_split: >-
+        Slice D splits into D1 (fixtures/corpus: ejemplos/ migration,
+        goldenset.yaml, secondary estricto fixture) and D2 (docs: README,
+        convencion-documentacion.md, CLAUDE.md, INDEX.md regen) as two
+        independently reviewable PRs to balance the B exception.
+      reconciliation_resolution: >-
+        Closed state.yaml's spec<->design reconciliation flag: on detailed
+        comparison, spec.md and design.md do not actually diverge on the
+        humanized-filename algorithm or the INDEX.md ordering comparator
+        (estricto declared-order-then-alphabetical-by-ruta tie-break) — both
+        describe the same behavior; design.md was less explicit about the
+        tie-break, not contradictory. Recorded as task 0.1 in tasks.md, to be
+        appended to design.md's Open Questions during apply.
+  apply:
+    status: done
+    artifact: apply-progress.md
+    completed_slice: >-
+      Phase 0 (task 0.1) + Phase A (A1, A2, A4 full; A3 closed by B20) +
+      Phase B (B1-B21, fully closed) + Phase C (C1, C2, C3, fully closed) +
+      Phase D1 (D1.1-D1.5, fully closed) + Phase D2 (D2.1-D2.4, fully closed) +
+      Phase E (E1, E2, fully closed) -- the entire change is complete
+    remaining_phases: []
+    note: >-
+      Batch 1: Phase A additive/green; A3's search.estadosExcluidos removal
+      deferred to B20 (composition.ts structural dependency). Batch 2: Phase
+      B (B1-B20) landed as the pre-approved size:exception PR, closing A3's
+      deferred debt in full. B21 was left PARTIAL because the only residual
+      failure (npm run typecheck/build red) lived exclusively in Phase C's
+      own files (server.ts/cli.ts still importing Tipo/TIPOS, which B1
+      deletes from model.ts), and Batch 2's explicit scope forbade touching
+      Phase C. Batch 3: implemented C1 (server.ts's search_docs tipo param
+      -> z.string().optional(), TIPOS import dropped), C2 (cli.ts's
+      parseTipo -> plain trimmed passthrough, no more process.exit(2); help
+      text for --tipo/--todos updated to describe open-string/config-driven
+      behavior; added an entry-point guard around program.parseAsync so
+      cli.ts is safely importable by tests), and C3 (test/server.test.ts:
+      3 tests on the MCP tool's zod schema directly via _registeredTools;
+      test/cli.test.ts: 4 tests on the exported parseTipo). This closes
+      B21 as a direct consequence: npm run typecheck exit 0, npm run build
+      exit 0, npm test 155/155 (148 baseline + 7 new), and
+      `grep -rn "TIPOS|ESTADOS|\bTipo\b|\bEstado\b" src/` returns zero
+      matches. Batch 4: implemented D1.1 (ejemplos/docs/ restructured via
+      git mv into folder-as-module layout: leadsviewer/, informes/,
+      transversal/, glosario.md at root; frontmatter stripped to nothing on
+      8/11 files, light single-field frontmatter kept on 3 to demonstrate
+      etiquetas/estado still work), D1.2 (goldenset.yaml's 22 esperado
+      paths rewritten, zero pregunta text changed), D1.3
+      (test/fixtures/estricto/ synthetic fixture: 5 docs reproducing the
+      retired tipos/estados taxonomy, verified via vitest and the real
+      CLI), D1.4 (ejemplos/compendio.config.json: search.estadosExcluidos
+      removed, no convencion block declared -> zero-config; verified zero
+      stderr output on index), and D1.5 (test/helpers/build.ts's
+      EJEMPLOS_CONVENCION switched from the interim estricto reproduction
+      to real libre; every ejemplos-path test assertion re-pointed;
+      generate-index-md.test.ts/get-overview.test.ts confirmed via grep to
+      need no changes, already decoupled from ejemplos/ since B11/B15).
+      Eval baseline held/improved: hibrido recall@5 1.00 unchanged, MRR
+      0.920 -> 0.943; lexico unchanged at 0.95/0.857. npm run typecheck
+      exit 0, npm run build exit 0, npm test 159/159 (155 baseline + 4
+      new). Nothing committed/pushed. Orchestrator review (post-Batch-4):
+      ejemplos/compendio.config.json deleted entirely (every remaining value
+      was byte-identical to DEFAULT_CONFIG; a zero-config demo shipping a
+      config file that configures nothing contradicted the pitch) -
+      test/fixtures/estricto/compendio.config.json is now the repo's only
+      config example. Batch 5: implemented D2.1 (README.md rewritten:
+      zero-config-first quick start, new "Documentation convention
+      (optional)" section presenting convencion.modo libre/estricto with the
+      estricto reproduce-today JSON example pointing at
+      test/fixtures/estricto/, config table updated to search:{k}-only plus
+      full convencion defaults, search.estadosExcluidos retirement called
+      out, eval table refreshed with freshly re-measured zero-config numbers
+      hibrido 1.00/0.943 lexico 0.95/0.857, ejemplos/ paths updated to the
+      D1 folder-as-module layout), D2.2 (docs/convencion-documentacion.md
+      reframed: new section 4 documents libre inference rules and estricto
+      per-field validation matching indexing/spec.md's table exactly, plus
+      camposFrontmatter mapping incl. the shared-source-key scenario;
+      section 5 "Frontmatter" renamed from "Required frontmatter" and
+      reframed as this project's own team choice, not a tool requirement;
+      section 8 Lifecycle clarifies estadosExcluidos defaults to [] and uses
+      the document's own untouched estado:borrador frontmatter as the live
+      example the orchestrator flagged; section 9 INDEX.md ordering updated
+      to alphabetical-by-ruta default), D2.3 (CLAUDE.md's "Non-obvious
+      decisions" and "Working conventions" rewritten against the actually
+      shipped src/ - verified by reading convencion.ts/config.ts/
+      sqlite-index-store.ts/index-markdown.ts/get-overview.ts directly, not
+      copied forward from the stale doc; the closed TIPOS=[...] bullet is
+      gone), and D2.4 (docs/INDEX.md regenerated via
+      `node dist/cli.js --root . index-md` after D2.1-D2.3; reported "sin
+      cambios" since the one document's frontmatter/first-paragraph were
+      untouched by the rewrite, but freshly generated through the real
+      libre/alphabetical-default path - no config file at the repo root).
+      Verified: npm run typecheck exit 0, npm run build exit 0, npm test
+      159/159 (unchanged - docs-only batch); grep across README.md/
+      CLAUDE.md/docs/ confirms no reference to ejemplos/compendio.config.json,
+      no closed-list TIPOS/ESTADOS claim, no "frontmatter is required"
+      claim. Nothing committed/pushed. Batch 6: implemented E1 (clean-tree
+      gate: dist/ + *.tsbuildinfo removed before npm run build; build exit 0,
+      npm test 159/159, npm run typecheck exit 0) and E2 (manual smoke test
+      against the compiled dist/). Central acceptance test (estado_semantics
+      round trip) verified explicitly: estricto fixture excludes borrador by
+      default and includes it with --todos; zero-config ejemplos/ returns
+      byte-identical results with/without --todos despite genuinely
+      containing borrador/obsoleto documents (both independently confirmed
+      returned by the unfiltered default search). docs_overview/index-md
+      ordering confirmed alphabetical-by-ruta in ejemplos/ and
+      declared-taxonomy-order (funcional,adr,api,qa,guia) in the estricto
+      fixture. Zero omitidos in both corpora (11/11, 5/5). read_doc on a
+      no-frontmatter document renders an empty ---/--- block, no placeholder
+      lines; a partial-metadata document renders only its present fields.
+      search_docs tool description confirmed free of the unconditional-
+      exclusion claim (Batch 5 orchestrator fix reads correctly). Eval
+      baseline reproduced exactly: hibrido 1.00/0.943, lexico 0.95/0.857.
+      Two known issues confirmed still present, both explicitly out of
+      scope and NOT fixed: SERVER_VERSION hardcoded "0.1.0" vs package.json
+      "0.1.2" (compendio --version prints 0.1.0); no subprocess-level CLI
+      test exists (concrete follow-up test design recorded in
+      apply-progress.md, not implemented). npm run typecheck exit 0, npm
+      run build exit 0, npm test 159/159. Nothing committed/pushed. The
+      change is complete pending sdd-verify.
+  verify:
+    status: done
+    completed: 2026-07-23
+    artifact: verify-report.md
+    outcome: >-
+      PASS, recommend archive. 0 CRITICAL, 1 WARNING, 2 SUGGESTION. Independent
+      re-verification (clean-tree build/typecheck/test, all real CLI reproductions of the
+      five highest-scrutiny spec areas) found no defect beyond the four already caught
+      during apply. The one WARNING is an SDD-artifact-trail staleness, not a code
+      defect: tasks.md/apply-progress.md still describe SERVER_VERSION drift and the
+      missing subprocess CLI test as open, but commits eadc0a3 and 4206bbe (made after
+      Batch 6 closed, outside the sdd-apply batch process) fixed both -- verified
+      independently in this pass (167/167 tests, up from 159/159). Not blocking archive.
+    command_evidence: >-
+      npm run typecheck exit 0; rm -rf dist && npm run build exit 0; npm test 167/167
+      (21 files); grep for TIPOS/ESTADOS/Tipo/Estado in src/ empty; domain purity
+      confirmed (no infrastructure/better-sqlite3/transformers.js/node:fs imports under
+      src/domain/); real CLI round trips reproduced for the estado_semantics no-op
+      (ejemplos, zero-config, diff identical with/without --todos) and the estricto
+      deny-list/declared-order (test/fixtures/estricto, index-md declared-taxonomy
+      order vs docs_overview alphabetical order, both independently confirmed correct).
+  archive:
+    status: pending
+next_recommended: [sdd-spec, sdd-design] # parallel; both read proposal.md
+residual_decisions: # confirmed by the user 2026-07-22, proposal question round
+  estados_excluidos_placement: >-
+    Moves into the convencion block; search.estadosExcluidos is retired.
+  overview_empty_taxonomy: >-
+    docs_overview omits porTipo/porModulo buckets entirely when the corpus has
+    no such values; no synthetic "sin tipo" bucket.
+  index_md_ordering: >-
+    Alphabetical by ruta in libre mode; declared-taxonomy order in estricto.
+    User note: the MCP is not in production yet (no installed base), so the
+    re-sort of existing INDEX.md files and contract breaks carry no real cost.
+  estricto_without_taxonomies: >-
+    Presence-only validation: fields must exist and be non-empty, any value
+    accepted; declaring tipos/estados additionally enforces values.
+product_decisions: # confirmed by the user 2026-07-22, pre-proposal question round
+  strictness: >-
+    Explicit toggle convencion.modo: "estricto" | "libre". No config -> libre
+    (inference, never skips files). estricto -> linter behavior validating
+    against user-declared taxonomies, invalid files skipped (omitidos).
+  modulo_inference: >-
+    First folder segment under docsDir (docs/auth/login.md -> modulo "auth");
+    files at docsDir root have no modulo. Frontmatter/mapping wins when present.
+  estado_semantics: >-
+    Config-driven: estadosExcluidos declared per project; when not declared,
+    nothing is excluded and incluir_no_vigentes is a no-op. Current behavior is
+    reproducible by declaring ["borrador","obsoleto"].
+  fixtures: >-
+    Rework ejemplos/ as the zero-config corpus (primary example, matching the
+    product pitch); the full-convention case moves to secondary synthetic
+    fixtures. Implies restructuring ejemplos/ folders (currently tipo-based)
+    and updating goldenset.yaml rutas.
