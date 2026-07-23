@@ -221,8 +221,21 @@ phases:
       deny-list/declared-order (test/fixtures/estricto, index-md declared-taxonomy
       order vs docs_overview alphabetical order, both independently confirmed correct).
   archive:
-    status: pending
-next_recommended: [sdd-spec, sdd-design] # parallel; both read proposal.md
+    status: done
+    completed: 2026-07-23
+    artifact: archive-report.md
+    note: >-
+      All five delta specs merged into openspec/specs/ (configuration, indexing,
+      search, mcp-contract, index-md) — verified byte-identical to the deltas,
+      which is correct: this is the project's FIRST archived change, so
+      openspec/specs/ had no prior baseline and every requirement is ADDED, not
+      merged against existing text. Task completion gate validated — all 40
+      implementation tasks marked complete in tasks.md. No CRITICAL issues in
+      verify-report. Archive report written with full observation traceability.
+      Folder moved to openspec/changes/archive/2026-07-23-configurable-convention
+      via `git mv` by the orchestrator (the sdd-archive agent has no shell tool
+      and could not perform the move itself).
+next_recommended: [] # cycle complete; nothing pending for this change
 residual_decisions: # confirmed by the user 2026-07-22, proposal question round
   estados_excluidos_placement: >-
     Moves into the convencion block; search.estadosExcluidos is retired.
