@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { formatOverview } from "./application/get-overview.js";
@@ -5,7 +6,29 @@ import { formatFrontmatter } from "./application/read-document.js";
 import type { SearchQuery } from "./application/search-documents.js";
 import type { Container } from "./composition.js";
 
-export const SERVER_VERSION = "0.1.0";
+/**
+ * Read from package.json at runtime rather than importing it: `rootDir` is
+ * `src`, so a `resolveJsonModule` import of `../package.json` would pull a file
+ * from outside the root and shift the whole emitted layout under `dist/`.
+ *
+ * `../package.json` resolves to the package root from both `src/server.ts`
+ * (under `tsx`) and `dist/server.js` (published), since `outDir` sits one level
+ * below the root just like `rootDir`.
+ */
+export const SERVER_VERSION: string = readPackageVersion();
+
+function readPackageVersion(): string {
+  const manifest = new URL("../package.json", import.meta.url);
+  const parsed: unknown = JSON.parse(readFileSync(manifest, "utf8"));
+  if (typeof parsed !== "object" || parsed === null || !("version" in parsed)) {
+    throw new Error("package.json no declara 'version'");
+  }
+  const version = (parsed as { version: unknown }).version;
+  if (typeof version !== "string" || version.length === 0) {
+    throw new Error("package.json declara una 'version' que no es una cadena valida");
+  }
+  return version;
+}
 
 /**
  * MCP server over stdio with the three progressive-disclosure tools:

@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Container } from "../src/composition.js";
-import { createMcpServer } from "../src/server.js";
+import { createMcpServer, SERVER_VERSION } from "../src/server.js";
 
 /**
  * Smoke-level contract test: schema validation for the `search_docs` tool's
@@ -49,5 +50,20 @@ describe("search_docs tool — open tipo schema", () => {
     const server = createMcpServer(fakeContainer());
     const tool = getRegisteredTool(server, "search_docs");
     expect(() => tool.inputSchema?.parse({ tipo: "playbook" })).toThrow();
+  });
+});
+
+/**
+ * `SERVER_VERSION` is what the CLI reports via `--version` and what the MCP
+ * server announces to clients. It drifted from `package.json` once already
+ * (hardcoded `"0.1.0"` against a published `0.1.2`), under-reporting the real
+ * version to every client. This test is the thing that keeps the two tied.
+ */
+describe("SERVER_VERSION", () => {
+  it("matches the version declared in package.json", () => {
+    const manifest = new URL("../package.json", import.meta.url);
+    const { version } = JSON.parse(readFileSync(manifest, "utf8")) as { version: string };
+
+    expect(SERVER_VERSION).toBe(version);
   });
 });
