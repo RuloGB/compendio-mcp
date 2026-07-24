@@ -38,6 +38,7 @@ export class FileDocumentSource implements DocumentSource {
             (error instanceof Error ? error.message : String(error)),
         );
       }
+      erroresLectura.push({ ruta: prefix, error: error instanceof Error ? error.message : String(error) });
       return;
     }
     for (const entry of entries) {

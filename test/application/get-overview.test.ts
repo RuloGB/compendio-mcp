@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { formatOverview, GetOverview } from "../../src/application/get-overview";
+import { formatOverview, GetOverview, toSincronizacionInfo } from "../../src/application/get-overview";
+import type { SyncReport } from "../../src/application/sync-index";
 import type { DocumentMeta } from "../../src/domain/model";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
+
+function fakeReport(overrides: Partial<SyncReport> = {}): SyncReport {
+  return {
+    modo: "hibrido",
+    indexados: [],
+    eliminados: [],
+    omitidos: [],
+    totalChunks: 0,
+    duracionMs: 1,
+    ...overrides,
+  };
+}
 
 function seed(store: SqliteIndexStore, overrides: Partial<DocumentMeta> & { ruta: string }): void {
   const meta: DocumentMeta = {
@@ -91,6 +104,59 @@ describe("GetOverview resumen fallback", () => {
       "- [guia] guias/transversal-sin-resumen.md — Guía sin resumen (vigente)",
     );
 
+    store.close();
+  });
+});
+
+describe("toSincronizacionInfo — content-based omission", () => {
+  it("is null when there is no report yet (lastReport is null)", () => {
+    expect(toSincronizacionInfo(null)).toBeNull();
+  });
+
+  it("is null when the most recent pass had nothing to report (empty omitidos, no avisoEmbeddings)", () => {
+    expect(toSincronizacionInfo(fakeReport())).toBeNull();
+  });
+
+  it("surfaces omitidos when the most recent pass skipped a document", () => {
+    const report = fakeReport({ omitidos: [{ ruta: "a.md", errores: ["motivo"] }] });
+    expect(toSincronizacionInfo(report)).toEqual({ omitidos: [{ ruta: "a.md", errores: ["motivo"] }] });
+  });
+
+  it("surfaces avisoEmbeddings when the most recent pass degraded to lexical-only", () => {
+    const report = fakeReport({ avisoEmbeddings: "embeddings no disponibles: busqueda en modo lexico" });
+    expect(toSincronizacionInfo(report)).toEqual({
+      omitidos: [],
+      avisoEmbeddings: "embeddings no disponibles: busqueda en modo lexico",
+    });
+  });
+});
+
+describe("formatOverview — sincronizacion block", () => {
+  it("omits the block entirely when sincronizacion is null or undefined", () => {
+    const store = new SqliteIndexStore(":memory:");
+    seed(store, { ruta: "a.md" });
+    const overview = new GetOverview(store).execute();
+
+    expect(formatOverview(overview)).not.toContain("Sincronizacion");
+    expect(formatOverview(overview, null)).not.toContain("Sincronizacion");
+    expect(formatOverview(overview, undefined)).not.toContain("Sincronizacion");
+    store.close();
+  });
+
+  it("renders omitidos and avisoEmbeddings when sincronizacion has content", () => {
+    const store = new SqliteIndexStore(":memory:");
+    seed(store, { ruta: "a.md" });
+    const overview = new GetOverview(store).execute();
+
+    const salida = formatOverview(overview, {
+      omitidos: [{ ruta: "roto.md", errores: ["permiso denegado"] }],
+      avisoEmbeddings: "embeddings no disponibles: busqueda en modo lexico",
+    });
+
+    expect(salida).toContain("Sincronizacion");
+    expect(salida).toContain("roto.md");
+    expect(salida).toContain("permiso denegado");
+    expect(salida).toContain("embeddings no disponibles: busqueda en modo lexico");
     store.close();
   });
 });

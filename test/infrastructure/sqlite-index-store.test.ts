@@ -161,6 +161,157 @@ describe("SqliteIndexStore", () => {
   });
 });
 
+describe("SqliteIndexStore — deleteDocument", () => {
+  let store: SqliteIndexStore;
+
+  beforeEach(() => {
+    store = new SqliteIndexStore(":memory:");
+  });
+
+  afterEach(() => {
+    store.close();
+  });
+
+  it("leaves no chunks/chunks_fts/chunks_vec orphans and no stale lexical hits", () => {
+    const saved = store.saveDocument(meta({ ruta: "borrar.md" }), [
+      { encabezado: "A", contenido: "contenido unico borrado", orden: 0 },
+    ]);
+    store.saveEmbeddings([{ chunkId: saved.chunkIds[0]!, embedding: new Float32Array([1, 0, 0]) }]);
+    expect(store.hasVectors()).toBe(true);
+
+    store.deleteDocument("borrar.md");
+
+    expect(store.getDocumentByRuta("borrar.md")).toBeNull();
+    expect(store.getChunksByIds(saved.chunkIds)).toEqual([]);
+    expect(store.searchLexical("unico borrado", {}, 10)).toEqual([]);
+    // Chunk id is gone from chunks_vec too: hasVectors reflects the actual row count.
+    expect(store.hasVectors()).toBe(false);
+  });
+
+  it("is a no-op when the ruta does not exist", () => {
+    store.saveDocument(meta({ ruta: "otro.md" }), [
+      { encabezado: "A", contenido: "algo", orden: 0 },
+    ]);
+    expect(() => store.deleteDocument("no-existe.md")).not.toThrow();
+    expect(store.getDocumentByRuta("otro.md")).not.toBeNull();
+  });
+});
+
+describe("SqliteIndexStore — upsertDocument", () => {
+  let store: SqliteIndexStore;
+
+  beforeEach(() => {
+    store = new SqliteIndexStore(":memory:");
+  });
+
+  afterEach(() => {
+    store.close();
+  });
+
+  it("re-indexing a changed document replaces content with no duplicates", () => {
+    store.upsertDocument(
+      meta({ ruta: "cambia.md", hash: "h1" }),
+      [{ encabezado: "A", contenido: "contenido viejo", orden: 0 }],
+      null,
+    );
+    const first = store.getDocumentByRuta("cambia.md");
+    expect(first).not.toBeNull();
+    expect(store.searchLexical("viejo", {}, 10)).toHaveLength(1);
+
+    store.upsertDocument(
+      meta({ ruta: "cambia.md", hash: "h2" }),
+      [{ encabezado: "B", contenido: "contenido nuevo", orden: 0 }],
+      null,
+    );
+
+    expect(store.listDocuments().filter((d) => d.ruta === "cambia.md")).toHaveLength(1);
+    expect(store.getDocumentByRuta("cambia.md")!.hash).toBe("h2");
+    expect(store.searchLexical("viejo", {}, 10)).toEqual([]);
+    expect(store.searchLexical("nuevo", {}, 10)).toHaveLength(1);
+  });
+
+  it("writes embeddings for a brand-new document even before any compendio index run", () => {
+    // Regression guard for the design's write-guard decision: on a project
+    // whose chunks_vec table has never been created, upsertDocument must
+    // still create it and persist the embedding (vectorsEnabled alone, not
+    // deleteDocument's tableExists double guard).
+    const result = store.upsertDocument(
+      meta({ ruta: "nuevo.md" }),
+      [{ encabezado: "A", contenido: "primero", orden: 0 }],
+      [new Float32Array([1, 0, 0])],
+    );
+    expect(store.hasVectors()).toBe(true);
+    const nearest = store.searchVector(new Float32Array([1, 0, 0]), {}, 10);
+    expect(nearest).toEqual([result.chunkIds[0]]);
+  });
+});
+
+describe("SqliteIndexStore — listChunksMissingVectors", () => {
+  let store: SqliteIndexStore;
+
+  beforeEach(() => {
+    store = new SqliteIndexStore(":memory:");
+  });
+
+  afterEach(() => {
+    store.close();
+  });
+
+  it("returns [] when chunks_vec was never created", () => {
+    store.saveDocument(meta({ ruta: "a.md" }), [
+      { encabezado: "A", contenido: "x", orden: 0 },
+    ]);
+    expect(store.listChunksMissingVectors()).toEqual([]);
+  });
+
+  it("returns only the chunks with no chunks_vec row for a partially vectorized document", () => {
+    const saved = store.saveDocument(meta({ ruta: "parcial.md" }), [
+      { encabezado: "Uno", contenido: "primero", orden: 0 },
+      { encabezado: "Dos", contenido: "segundo", orden: 1 },
+    ]);
+    store.saveEmbeddings([{ chunkId: saved.chunkIds[0]!, embedding: new Float32Array([1, 0]) }]);
+
+    const missing = store.listChunksMissingVectors();
+
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toEqual({
+      chunkId: saved.chunkIds[1],
+      ruta: "parcial.md",
+      encabezado: "Dos",
+      contenido: "segundo",
+    });
+  });
+});
+
+describe("SqliteIndexStore — replaceEmbeddings", () => {
+  let store: SqliteIndexStore;
+
+  beforeEach(() => {
+    store = new SqliteIndexStore(":memory:");
+  });
+
+  afterEach(() => {
+    store.close();
+  });
+
+  it("re-covers an already-vectorized chunk without a PRIMARY KEY violation or duplicate row", () => {
+    const saved = store.saveDocument(meta({ ruta: "re-embed.md" }), [
+      { encabezado: "A", contenido: "algo", orden: 0 },
+    ]);
+    store.saveEmbeddings([{ chunkId: saved.chunkIds[0]!, embedding: new Float32Array([1, 0]) }]);
+
+    expect(() =>
+      store.replaceEmbeddings([
+        { chunkId: saved.chunkIds[0]!, embedding: new Float32Array([0, 1]) },
+      ]),
+    ).not.toThrow();
+
+    expect(store.listChunksMissingVectors()).toEqual([]);
+    const nearest = store.searchVector(new Float32Array([0, 1]), {}, 10);
+    expect(nearest).toEqual([saved.chunkIds[0]]);
+  });
+});
+
 describe("SqliteIndexStore — reset() schema guarantee (Pre-existing NOT NULL schema upgrade)", () => {
   it("upgrades a pre-existing NOT NULL schema in place, without manual deletion", () => {
     const store = new SqliteIndexStore(":memory:");

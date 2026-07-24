@@ -67,6 +67,14 @@ export interface ChunkEmbedding {
   embedding: Float32Array;
 }
 
+/** One indexed chunk with no corresponding `chunks_vec` row. */
+export interface ChunkMissingVector {
+  chunkId: number;
+  ruta: string;
+  encabezado: string;
+  contenido: string;
+}
+
 /** Result of writing the generated index file. */
 export interface IndexWriteResult {
   /** Path of the index file, as resolved by the adapter. */
@@ -86,6 +94,26 @@ export interface IndexStore {
   reset(): void;
   saveDocument(meta: DocumentMeta, chunks: Chunk[]): SavedDocument;
   saveEmbeddings(items: ChunkEmbedding[]): void;
+  /** Removes a document plus its chunks, FTS rows, and vector rows (no orphans).
+   * A no-op when the ruta is not indexed. */
+  deleteDocument(ruta: string): void;
+  /** Atomically replaces a document (delete-if-exists, then insert):
+   * documents + chunks + chunks_fts, plus chunks_vec when embeddings is
+   * non-null. `embeddings`, when provided, must have one entry per chunk in
+   * the same order. */
+  upsertDocument(
+    meta: DocumentMeta,
+    chunks: Chunk[],
+    embeddings: Float32Array[] | null,
+  ): SavedDocument;
+  /** Every indexed chunk with no `chunks_vec` row. `[]` when vectors are
+   * unavailable or `chunks_vec` was never created. */
+  listChunksMissingVectors(): ChunkMissingVector[];
+  /** Idempotent vector write: delete-then-insert per `chunk_id` in one
+   * transaction, so re-covering an already-vectorized chunk cannot violate
+   * the vec0 PRIMARY KEY. Unlike `saveEmbeddings`, this MAY be called on a
+   * chunk that already has a vector row. */
+  replaceEmbeddings(items: ChunkEmbedding[]): void;
   listDocuments(): IndexedDocument[];
   getDocumentByRuta(ruta: string): IndexedDocument | null;
   getChunksByDocument(documentId: number): IndexedChunk[];

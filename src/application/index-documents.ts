@@ -1,13 +1,13 @@
-import { createHash } from "node:crypto";
-import { chunkOutline, type ChunkingOptions } from "../domain/chunking.js";
+import type { ChunkingOptions } from "../domain/chunking.js";
 import type { ConvencionPolicy } from "../domain/convencion.js";
-import type { Chunk, SearchMode } from "../domain/model.js";
+import type { SearchMode } from "../domain/model.js";
 import type {
   DocumentSource,
   EmbeddingsProvider,
   IndexStore,
   MarkdownParser,
 } from "../domain/ports.js";
+import { computeHash, describeError, transformFile } from "./index-pipeline.js";
 
 export interface IndexedFileReport {
   ruta: string;
@@ -72,44 +72,23 @@ export class IndexDocuments {
     this.store.reset();
 
     for (const file of files) {
-      let parsed;
-      try {
-        parsed = this.parser.parse(file.contenido);
-      } catch (error) {
-        omitidos.push({ ruta: file.ruta, errores: [describeError(error)] });
+      const hash = computeHash(file.contenido);
+      const result = transformFile(this.parser, this.policy, this.options, file, hash);
+
+      if (!result.ok) {
+        omitidos.push({ ruta: file.ruta, errores: result.errores });
         continue;
       }
 
-      const resolution = this.policy.resolver({
-        data: parsed.data,
-        ruta: file.ruta,
-        titulo: parsed.outline.titulo,
-        resumen: parsed.outline.resumen,
-        hash: createHash("sha256").update(file.contenido, "utf8").digest("hex"),
-      });
-
-      if (!resolution.ok) {
-        omitidos.push({ ruta: file.ruta, errores: resolution.errores });
-        continue;
-      }
-
-      const chunks = this.isSinChunking(file.ruta)
-        ? this.wholeDocumentChunk(resolution.meta.titulo, parsed.body)
-        : chunkOutline(parsed.outline, this.options.chunking);
-
-      if (chunks.length === 0) {
-        omitidos.push({ ruta: file.ruta, errores: ["el documento no tiene contenido indexable"] });
-        continue;
-      }
-
-      const saved = this.store.saveDocument(resolution.meta, chunks);
+      const { meta, chunks } = result;
+      const saved = this.store.saveDocument(meta, chunks);
       chunks.forEach((chunk, i) => {
         pending.push({
           chunkId: saved.chunkIds[i]!,
           texto: `${chunk.encabezado}\n${chunk.contenido}`,
         });
       });
-      indexados.push({ ruta: file.ruta, titulo: resolution.meta.titulo, chunks: chunks.length });
+      indexados.push({ ruta: file.ruta, titulo: meta.titulo, chunks: chunks.length });
     }
 
     const aviso = await this.embedPending(pending);
@@ -146,18 +125,4 @@ export class IndexDocuments {
     }
   }
 
-  private isSinChunking(ruta: string): boolean {
-    const basename = ruta.split("/").pop() ?? ruta;
-    return this.options.sinChunking.some((entry) => entry === ruta || entry === basename);
-  }
-
-  private wholeDocumentChunk(titulo: string, body: string): Chunk[] {
-    const contenido = body.trim();
-    if (contenido.length === 0) return [];
-    return [{ encabezado: titulo, contenido, orden: 0 }];
-  }
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

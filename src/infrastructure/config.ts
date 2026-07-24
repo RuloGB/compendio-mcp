@@ -19,6 +19,15 @@ export interface CompendioConfig {
     k: number;
   };
   /**
+   * Incremental-sync throttle: minimum interval, in milliseconds, between
+   * throttled sync passes triggered by MCP tool calls (see Indexing spec's
+   * "Incremental Sync Triggers"). A non-finite, negative, or zero declared
+   * value falls back to the default, same as an absent key.
+   */
+  sync: {
+    throttleMs: number;
+  };
+  /**
    * Documentation convention: zero-config `libre` inference vs opt-in
    * `estricto` linting. `estadosExcluidos` (search deny-list) lives here,
    * not under `search` — the retired `search.estadosExcluidos` key is
@@ -33,6 +42,9 @@ export const CONFIG_FILE = "compendio.config.json";
 /** Files indexed as a single chunk (no heading-based chunking). */
 export const SIN_CHUNKING = ["glosario.md"];
 
+/** Default incremental-sync throttle: 30 seconds. */
+export const DEFAULT_THROTTLE_MS = 30000;
+
 export const DEFAULT_CONFIG: CompendioConfig = {
   docsDir: "docs",
   exclude: [INDEX_FILE],
@@ -40,6 +52,7 @@ export const DEFAULT_CONFIG: CompendioConfig = {
   embeddings: { provider: "local", model: "Xenova/multilingual-e5-small" },
   chunk: { minTokens: 100, maxTokens: 800 },
   search: { k: 5 },
+  sync: { throttleMs: DEFAULT_THROTTLE_MS },
   convencion: {
     modo: "libre",
     estadosExcluidos: [],
@@ -100,8 +113,16 @@ function mergeConfig(base: CompendioConfig, override: Partial<CompendioConfig>):
     // type no longer declares it — `warnIfLegacyEstadosExcluidos` warns, and
     // this line ensures it never leaks into the returned config.
     search: { k: override.search?.k ?? base.search.k },
+    sync: { throttleMs: validThrottleMs(override.sync?.throttleMs) ?? base.sync.throttleMs },
     convencion: mergeConvencion(base.convencion, override.convencion),
   };
+}
+
+/** A declared `throttleMs` is valid only when it is a finite number greater
+ * than 0; anything else (non-numeric, negative, zero) is treated the same as
+ * an absent key and falls back to the default. */
+function validThrottleMs(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 /**

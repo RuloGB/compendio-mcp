@@ -9,7 +9,7 @@ import type {
   IndexedDocument,
   SearchFilters,
 } from "../../domain/model.js";
-import type { ChunkEmbedding, IndexStore, SavedDocument } from "../../domain/ports.js";
+import type { ChunkEmbedding, ChunkMissingVector, IndexStore, SavedDocument } from "../../domain/ports.js";
 
 interface DocumentRow {
   id: number;
@@ -130,6 +130,24 @@ export class SqliteIndexStore implements IndexStore {
   }
 
   saveDocument(meta: DocumentMeta, chunks: Chunk[]): SavedDocument {
+    const run = this.db.transaction((): SavedDocument =>
+      this.insertDocumentAndChunks(meta, chunks, null, null),
+    );
+    return run();
+  }
+
+  /**
+   * Shared insert path for `saveDocument` and `upsertDocument`: `documents` +
+   * `chunks` + `chunks_fts`, plus a `chunks_vec` row per chunk when both
+   * `embeddings` and `insertVec` are provided. Caller wraps this in a
+   * transaction; it issues no transaction of its own.
+   */
+  private insertDocumentAndChunks(
+    meta: DocumentMeta,
+    chunks: Chunk[],
+    embeddings: Float32Array[] | null,
+    insertVec: Database.Statement | null,
+  ): SavedDocument {
     const insertDocument = this.db.prepare(`
       INSERT INTO documents (ruta, titulo, resumen, tipo, modulo, estado, propietario, etiquetas, actualizado, hash)
       VALUES (@ruta, @titulo, @resumen, @tipo, @modulo, @estado, @propietario, @etiquetas, @actualizado, @hash)
@@ -142,32 +160,135 @@ export class SqliteIndexStore implements IndexStore {
       INSERT INTO chunks_fts(rowid, contenido, encabezado) VALUES (?, ?, ?)
     `);
 
-    const run = this.db.transaction((): SavedDocument => {
-      const documentId = Number(
-        insertDocument.run({
-          ruta: meta.ruta,
-          titulo: meta.titulo,
-          resumen: meta.resumen,
-          tipo: meta.tipo ?? null,
-          modulo: meta.modulo ?? null,
-          estado: meta.estado ?? null,
-          propietario: meta.propietario ?? null,
-          etiquetas: JSON.stringify(meta.etiquetas),
-          actualizado: meta.actualizado ?? null,
-          hash: meta.hash,
-        }).lastInsertRowid,
+    const documentId = Number(
+      insertDocument.run({
+        ruta: meta.ruta,
+        titulo: meta.titulo,
+        resumen: meta.resumen,
+        tipo: meta.tipo ?? null,
+        modulo: meta.modulo ?? null,
+        estado: meta.estado ?? null,
+        propietario: meta.propietario ?? null,
+        etiquetas: JSON.stringify(meta.etiquetas),
+        actualizado: meta.actualizado ?? null,
+        hash: meta.hash,
+      }).lastInsertRowid,
+    );
+    const chunkIds = chunks.map((chunk, index) => {
+      const chunkId = Number(
+        insertChunk.run(documentId, chunk.encabezado, chunk.contenido, chunk.orden)
+          .lastInsertRowid,
       );
-      const chunkIds = chunks.map((chunk) => {
-        const chunkId = Number(
-          insertChunk.run(documentId, chunk.encabezado, chunk.contenido, chunk.orden)
-            .lastInsertRowid,
-        );
-        insertFts.run(chunkId, chunk.contenido, chunk.encabezado);
-        return chunkId;
-      });
-      return { documentId, chunkIds };
+      insertFts.run(chunkId, chunk.contenido, chunk.encabezado);
+      if (insertVec !== null && embeddings !== null) {
+        insertVec.run(BigInt(chunkId), toBlob(embeddings[index]!));
+      }
+      return chunkId;
+    });
+    return { documentId, chunkIds };
+  }
+
+  /**
+   * Removes a document's `chunks` rows (using the FTS5 external-content
+   * `'delete'` command form, since a plain DELETE on `chunks` would desync
+   * `chunks_fts`), its `chunks_vec` rows (guarded by `vectorsEnabled &&
+   * tableExists("chunks_vec")` — the extension can fail to load in a
+   * process while the table still exists in the DB file), then the `chunks`
+   * and `documents` rows themselves. Caller is responsible for wrapping this
+   * in a transaction; it issues no transaction of its own so it can be
+   * composed inside `deleteDocument` and `upsertDocument` alike.
+   */
+  private deleteDocumentRows(documentId: number): void {
+    const chunks = this.db
+      .prepare(`SELECT id, contenido, encabezado FROM chunks WHERE document_id = ?`)
+      .all(documentId) as { id: number; contenido: string; encabezado: string }[];
+    const vecGuarded = this.vectorsEnabled && this.tableExists("chunks_vec");
+    const deleteFts = this.db.prepare(
+      `INSERT INTO chunks_fts(chunks_fts, rowid, contenido, encabezado) VALUES ('delete', ?, ?, ?)`,
+    );
+    const deleteVec = vecGuarded
+      ? this.db.prepare(`DELETE FROM chunks_vec WHERE chunk_id = ?`)
+      : null;
+    for (const chunk of chunks) {
+      deleteFts.run(chunk.id, chunk.contenido, chunk.encabezado);
+      if (deleteVec !== null) deleteVec.run(BigInt(chunk.id));
+    }
+    this.db.prepare(`DELETE FROM chunks WHERE document_id = ?`).run(documentId);
+    this.db.prepare(`DELETE FROM documents WHERE id = ?`).run(documentId);
+  }
+
+  deleteDocument(ruta: string): void {
+    const run = this.db.transaction((): void => {
+      const doc = this.db.prepare(`SELECT id FROM documents WHERE ruta = ?`).get(ruta) as
+        | { id: number }
+        | undefined;
+      if (doc === undefined) return;
+      this.deleteDocumentRows(doc.id);
+    });
+    run();
+  }
+
+  upsertDocument(
+    meta: DocumentMeta,
+    chunks: Chunk[],
+    embeddings: Float32Array[] | null,
+  ): SavedDocument {
+    // Write-side guard: vectorsEnabled alone (NOT deleteDocumentRows' extra
+    // tableExists guard) — a brand-new project's very first upsertDocument
+    // call must still create chunks_vec lazily and persist the embedding.
+    if (embeddings !== null && embeddings.length > 0) {
+      this.ensureVectorTable(embeddings[0]!.length);
+    }
+    const findExisting = this.db.prepare(`SELECT id FROM documents WHERE ruta = ?`);
+    // Prepared only when the table is actually present (either created just
+    // now above, or by a prior upsertDocument/saveEmbeddings call) — the
+    // vectorsEnabled-alone guard governs WHETHER embeddings get written, not
+    // whether it is safe to prepare a statement against a table that may not
+    // exist yet (e.g. embeddings is null and chunks_vec was never created).
+    const insertVec =
+      this.vectorsEnabled && this.tableExists("chunks_vec")
+        ? this.db.prepare(`INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)`)
+        : null;
+
+    const run = this.db.transaction((): SavedDocument => {
+      const existing = findExisting.get(meta.ruta) as { id: number } | undefined;
+      if (existing !== undefined) {
+        this.deleteDocumentRows(existing.id);
+      }
+      return this.insertDocumentAndChunks(meta, chunks, embeddings, insertVec);
     });
     return run();
+  }
+
+  listChunksMissingVectors(): ChunkMissingVector[] {
+    if (!this.vectorsEnabled || !this.tableExists("chunks_vec")) return [];
+    return this.db
+      .prepare(
+        `SELECT c.id AS chunkId, d.ruta AS ruta, c.encabezado AS encabezado, c.contenido AS contenido
+         FROM chunks c
+         JOIN documents d ON d.id = c.document_id
+         WHERE c.id NOT IN (SELECT chunk_id FROM chunks_vec)
+         ORDER BY c.id`,
+      )
+      .all() as ChunkMissingVector[];
+  }
+
+  replaceEmbeddings(items: ChunkEmbedding[]): void {
+    if (items.length === 0) return;
+    if (!this.vectorsEnabled) {
+      throw new Error("la extension sqlite-vec no esta disponible en esta instalacion");
+    }
+    const dimension = items[0]!.embedding.length;
+    this.ensureVectorTable(dimension);
+    const del = this.db.prepare(`DELETE FROM chunks_vec WHERE chunk_id = ?`);
+    const insert = this.db.prepare(`INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)`);
+    const run = this.db.transaction(() => {
+      for (const item of items) {
+        del.run(BigInt(item.chunkId));
+        insert.run(BigInt(item.chunkId), toBlob(item.embedding));
+      }
+    });
+    run();
   }
 
   saveEmbeddings(items: ChunkEmbedding[]): void {

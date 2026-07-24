@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   buildHarness,
@@ -8,9 +11,12 @@ import {
 import { BrokenEmbeddings, FakeEmbeddings } from "../helpers/fake-embeddings";
 import { IndexDocuments } from "../../src/application/index-documents";
 import type { IndexReport } from "../../src/application/index-documents";
+import { ReadDocument } from "../../src/application/read-document";
 import { SearchDocuments } from "../../src/application/search-documents";
+import { SyncIndex } from "../../src/application/sync-index";
 import { crearConvencionPolicy, type ConvencionConfig } from "../../src/domain/convencion";
 import type { DiscoverResult, DocumentFile, DocumentSource } from "../../src/domain/ports";
+import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
@@ -456,5 +462,77 @@ describe("SearchDocuments — config-driven estadosExcluidos deny-list", () => {
     expect(response.resultados[0]!.estado).toBeUndefined();
     expect("estado" in response.resultados[0]!).toBe(false);
     store.close();
+  });
+});
+
+// --- SyncIndex end-to-end: a temp docs directory on real disk -----------
+
+describe("SyncIndex — end-to-end incremental sync over a temp docs directory", () => {
+  it("reflects an added, edited, and deleted file across successive sync passes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-sync-e2e-"));
+    // Deliberately disjoint vocabulary across original/edited/added content —
+    // a shared word (even "contenido") would make the lexical assertions
+    // below pass for the wrong reason.
+    writeFileSync(join(dir, "a.md"), "# A\n\nTextoalfaoriginalunicoirrepetible.\n");
+
+    const store = new SqliteIndexStore(":memory:");
+    const source = new FileDocumentSource(dir, []);
+    const parser = new RemarkMarkdownParser();
+    const policy = crearConvencionPolicy(LIBRE);
+    const embeddings = new FakeEmbeddings();
+    const sync = new SyncIndex(source, parser, store, embeddings, policy, {
+      chunking: { minTokens: 10, maxTokens: 800 },
+      sinChunking: [],
+    });
+    const search = new SearchDocuments(store, embeddings, { k: 10, estadosExcluidos: [] });
+    const read = new ReadDocument(store);
+
+    try {
+      // 1. Add: first pass indexes the new file.
+      await sync.execute();
+      const initial = await search.execute({
+        query: "textoalfaoriginalunicoirrepetible",
+        forzarLexico: true,
+      });
+      expect(initial.resultados.map((r) => r.ruta)).toContain("a.md");
+
+      // 2. Edit: content changes (hash differs) -> re-indexed, old content gone.
+      writeFileSync(join(dir, "a.md"), "# A\n\nTextobetaeditadodistintototalmente.\n");
+      await sync.execute();
+      const edited = await search.execute({
+        query: "textobetaeditadodistintototalmente",
+        forzarLexico: true,
+      });
+      expect(edited.resultados.map((r) => r.ruta)).toContain("a.md");
+      const stale = await search.execute({
+        query: "textoalfaoriginalunicoirrepetible",
+        forzarLexico: true,
+      });
+      expect(stale.resultados.map((r) => r.ruta)).not.toContain("a.md");
+
+      // Add a second file alongside the edited one.
+      writeFileSync(join(dir, "b.md"), "# B\n\nTextogammanuevodiferenteaparte.\n");
+      await sync.execute();
+      const added = await search.execute({
+        query: "textogammanuevodiferenteaparte",
+        forzarLexico: true,
+      });
+      expect(added.resultados.map((r) => r.ruta)).toContain("b.md");
+
+      // 3. Delete: a.md removed from disk -> removed from the index, read
+      // falls back to closest-match suggestions instead of erroring.
+      rmSync(join(dir, "a.md"));
+      await sync.execute();
+      const afterDelete = read.execute({ ruta: "a.md" });
+      expect(afterDelete.tipo).toBe("ruta-no-encontrada");
+      const stillThere = await search.execute({
+        query: "textogammanuevodiferenteaparte",
+        forzarLexico: true,
+      });
+      expect(stillThere.resultados.map((r) => r.ruta)).toContain("b.md");
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

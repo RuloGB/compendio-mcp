@@ -1,5 +1,7 @@
 import { displayResumen, formatDocLine } from "../domain/index-markdown.js";
 import type { IndexStore } from "../domain/ports.js";
+import type { SkippedFileReport } from "./index-documents.js";
+import type { SyncReport } from "./sync-index.js";
 
 export interface OverviewLine {
   tipo?: string;
@@ -46,7 +48,33 @@ export class GetOverview {
   }
 }
 
-export function formatOverview(overview: Overview): string {
+/** Sync-status surfaced in `docs_overview`: what the most recent incremental
+ * sync pass had to report, if anything. */
+export interface SincronizacionInfo {
+  omitidos: SkippedFileReport[];
+  avisoEmbeddings?: string;
+}
+
+/**
+ * Maps `SyncScheduler.lastReport` to `SincronizacionInfo`. The omission rule
+ * is CONTENT-based, not presence-based: `null` both when there is no report
+ * yet, AND when the most recent pass had nothing to report (empty `omitidos`
+ * and no `avisoEmbeddings`) — `runTracked()` sets `lastReport` after every
+ * completed pass, including a fully clean one, so a presence-only rule would
+ * render an empty block forever after the first successful pass.
+ */
+export function toSincronizacionInfo(report: SyncReport | null): SincronizacionInfo | null {
+  if (report === null) return null;
+  if (report.omitidos.length === 0 && report.avisoEmbeddings === undefined) return null;
+  const info: SincronizacionInfo = { omitidos: report.omitidos };
+  if (report.avisoEmbeddings !== undefined) info.avisoEmbeddings = report.avisoEmbeddings;
+  return info;
+}
+
+export function formatOverview(
+  overview: Overview,
+  sincronizacion?: SincronizacionInfo | null,
+): string {
   const lines: string[] = [];
   lines.push(`Documentos indexados: ${overview.totalDocumentos}`);
   const porTipoLine = formatCounts(overview.porTipo);
@@ -56,6 +84,16 @@ export function formatOverview(overview: Overview): string {
   lines.push("");
   for (const doc of overview.documentos) {
     lines.push(formatDocLine({ tipo: doc.tipo, ruta: doc.ruta, resumen: doc.resumen, estado: doc.estado }));
+  }
+  if (sincronizacion !== null && sincronizacion !== undefined) {
+    lines.push("");
+    lines.push("Sincronizacion:");
+    for (const omitido of sincronizacion.omitidos) {
+      lines.push(`AVISO ${omitido.ruta}: ${omitido.errores.join("; ")}`);
+    }
+    if (sincronizacion.avisoEmbeddings !== undefined) {
+      lines.push(`AVISO ${sincronizacion.avisoEmbeddings}`);
+    }
   }
   return lines.join("\n");
 }

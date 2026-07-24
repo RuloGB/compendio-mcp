@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Container } from "../src/composition.js";
 import { createMcpServer, SERVER_VERSION } from "../src/server.js";
 
@@ -17,6 +17,7 @@ function fakeContainer(): Container {
 
 interface RegisteredToolLike {
   inputSchema?: { parse: (value: unknown) => unknown };
+  handler: (...args: unknown[]) => Promise<unknown>;
 }
 
 function getRegisteredTool(
@@ -59,6 +60,61 @@ describe("search_docs tool — open tipo schema", () => {
  * (hardcoded `"0.1.0"` against a published `0.1.2`), under-reporting the real
  * version to every client. This test is the thing that keeps the two tied.
  */
+/**
+ * Thin integration check that a REAL registered handler (not a reimplemented
+ * copy of the wiring) awaits `syncScheduler.maybeSync()` before doing its
+ * own work — the incremental-sync trigger required by the Indexing spec's
+ * "Incremental Sync Triggers" requirement. Covers all three tool handlers
+ * (`docs_overview`, `search_docs`, `read_doc`), not just the first one: the
+ * mcp-contract spec's throttled-check requirement applies to all three, and
+ * each handler wires `maybeSync()` independently (a regression in one
+ * handler would not be caught by testing only another).
+ */
+function fakeContainerWithScheduler(maybeSync: () => Promise<void>): Container {
+  return {
+    syncScheduler: { maybeSync, lastReport: null },
+    getOverview: { execute: () => ({ totalDocumentos: 0, porTipo: {}, porModulo: {}, documentos: [] }) },
+    searchDocuments: { execute: async () => ({ modo: "lexico", resultados: [] }) },
+    readDocument: { execute: () => ({ tipo: "ruta-no-encontrada", ruta: "no-importa.md", sugerencias: [] }) },
+  } as unknown as Container;
+}
+
+describe("docs_overview tool — incremental sync trigger", () => {
+  it("awaits syncScheduler.maybeSync() before answering", async () => {
+    const maybeSync = vi.fn().mockResolvedValue(undefined);
+    const server = createMcpServer(fakeContainerWithScheduler(maybeSync));
+    const tool = getRegisteredTool(server, "docs_overview");
+
+    await tool.handler({});
+
+    expect(maybeSync).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("search_docs tool — incremental sync trigger", () => {
+  it("awaits syncScheduler.maybeSync() before answering", async () => {
+    const maybeSync = vi.fn().mockResolvedValue(undefined);
+    const server = createMcpServer(fakeContainerWithScheduler(maybeSync));
+    const tool = getRegisteredTool(server, "search_docs");
+
+    await tool.handler({ query: "algo" });
+
+    expect(maybeSync).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("read_doc tool — incremental sync trigger", () => {
+  it("awaits syncScheduler.maybeSync() before answering", async () => {
+    const maybeSync = vi.fn().mockResolvedValue(undefined);
+    const server = createMcpServer(fakeContainerWithScheduler(maybeSync));
+    const tool = getRegisteredTool(server, "read_doc");
+
+    await tool.handler({ ruta: "algo.md" });
+
+    expect(maybeSync).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("SERVER_VERSION", () => {
   it("matches the version declared in package.json", () => {
     const manifest = new URL("../package.json", import.meta.url);
