@@ -20,13 +20,10 @@ jobs:
           # scripts run by `npm ci` could read it.
           persist-credentials: false
 
-      # registry-url makes setup-node write an .npmrc that reads NODE_AUTH_TOKEN,
-      # provided on publish from the NPM_TOKEN repository secret.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
 
       - name: Verify tag matches package.json version
         run: |
@@ -40,20 +37,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Keeps re-tagging idempotent: a version already on npm is skipped, not re-published
-      - name: Check if version is already on npm
-        id: npm-check
-        run: |
-          PKG_VERSION="$(node -p "require('./package.json').version")"
-          if npm view "compendio-mcp@$PKG_VERSION" version >/dev/null 2>&1; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "compendio-mcp@$PKG_VERSION is already on npm, skipping publish"
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # The prepublishOnly gate runs as explicit steps so a failure is visible
-      # per phase in the run summary; publish then skips the lifecycle rerun.
+      # Publishing to npm is done manually (the account enforces 2FA on writes,
+      # which no unattended runner can satisfy). This job only validates the
+      # tagged commit and cuts the GitHub Release; run `npm publish` locally.
+      #
+      # The same checks that `prepublishOnly` runs are listed as explicit steps
+      # so a failure is visible per phase in the run summary.
       - name: Typecheck
         run: npm run typecheck
 
@@ -62,12 +51,6 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      - name: Publish to npm
-        if: steps.npm-check.outputs.published == 'false'
-        run: npm publish --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         env:
