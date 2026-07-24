@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { formatOverview } from "./application/get-overview.js";
+import { formatOverview, toSincronizacionInfo } from "./application/get-overview.js";
 import { formatFrontmatter } from "./application/read-document.js";
 import type { SearchQuery } from "./application/search-documents.js";
 import type { Container } from "./composition.js";
@@ -47,9 +47,12 @@ export function createMcpServer(container: Container): McpServer {
         "documento ([tipo] ruta — resumen (estado)). Es el primer paso recomendado antes de buscar.",
       inputSchema: {},
     },
-    async () => ({
-      content: [{ type: "text", text: formatOverview(container.getOverview.execute()) }],
-    }),
+    async () => {
+      await container.syncScheduler.maybeSync();
+      const overview = container.getOverview.execute();
+      const sincronizacion = toSincronizacionInfo(container.syncScheduler.lastReport);
+      return { content: [{ type: "text", text: formatOverview(overview, sincronizacion) }] };
+    },
   );
 
   server.registerTool(
@@ -78,6 +81,7 @@ export function createMcpServer(container: Container): McpServer {
       },
     },
     async (args) => {
+      await container.syncScheduler.maybeSync();
       const query: SearchQuery = { query: args.query };
       if (args.tipo !== undefined) query.tipo = args.tipo;
       if (args.modulo !== undefined) query.modulo = args.modulo;
@@ -105,6 +109,7 @@ export function createMcpServer(container: Container): McpServer {
       },
     },
     async (args) => {
+      await container.syncScheduler.maybeSync();
       const request: { ruta: string; seccion?: string } = { ruta: args.ruta };
       if (args.seccion !== undefined) request.seccion = args.seccion;
       const result = container.readDocument.execute(request);

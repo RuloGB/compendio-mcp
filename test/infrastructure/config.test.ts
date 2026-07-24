@@ -144,4 +144,47 @@ describe("loadConfig", () => {
       camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
     });
   });
+
+  it("defaults sync.throttleMs to 30000 when no sync block is declared", () => {
+    const config = loadConfig(join(dir, "no-such-project-sync"));
+    expect(config.sync).toEqual({ throttleMs: 30000 });
+  });
+
+  it("accepts a custom sync.throttleMs", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-sync-custom-"));
+    await writeFile(
+      join(projectDir, "compendio.config.json"),
+      JSON.stringify({ sync: { throttleMs: 60000 } }),
+      "utf8",
+    );
+    const config = loadConfig(projectDir);
+    expect(config.sync.throttleMs).toBe(60000);
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  it("falls back to the default when sync.throttleMs is non-numeric, negative, or zero", async () => {
+    for (const invalid of ["no-es-un-numero", -100, 0]) {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-sync-invalid-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ sync: { throttleMs: invalid } }),
+        "utf8",
+      );
+      const config = loadConfig(projectDir);
+      expect(config.sync.throttleMs).toBe(30000);
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a very small positive throttleMs without clamping it to a floor", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-sync-small-"));
+    await writeFile(
+      join(projectDir, "compendio.config.json"),
+      JSON.stringify({ sync: { throttleMs: 100 } }),
+      "utf8",
+    );
+    const config = loadConfig(projectDir);
+    expect(config.sync.throttleMs).toBe(100);
+    await rm(projectDir, { recursive: true, force: true });
+  });
 });

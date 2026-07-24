@@ -1,0 +1,354 @@
+schema: spec-driven
+change: incremental-reindex
+created: 2026-07-24
+artifact_store: openspec
+execution_mode: interactive
+delivery_strategy: ask-on-risk
+phases:
+  explore:
+    status: done
+    artifact: exploration.md
+    completed: 2026-07-24
+    note: >-
+      Investigation by sdd-explore agent; artifact persisted by the
+      orchestrator because the explore agent has no write tooling.
+    critical_findings: # surfaced by exploration, must be addressed in design
+      - >-
+        ON DELETE CASCADE on chunks.document_id is inert: PRAGMA foreign_keys
+        is never enabled on the better-sqlite3 connection. A per-document
+        DELETE will orphan chunks unless FKs are enabled or dependents are
+        deleted explicitly.
+      - >-
+        chunks_fts is an FTS5 external-content table: removing chunks without
+        the special 'delete' command form desyncs the FTS index. No existing
+        code or test exercises single-document deletion.
+      - >-
+        A serve-side incremental path never calls reset(), so a pre-existing
+        old-schema (NOT NULL) database would keep failing inserts; needs an
+        explicit schema-staleness decision (auto full reindex vs warn vs
+        PRAGMA user_version marker).
+    open_product_decisions: # to resolve in the pre-proposal question round
+      - Throttle default for the per-query staleness check (~30-60s suggested).
+      - Where incremental-sync omitidos/avisoEmbeddings surface (stderr only
+        vs docs_overview response field vs silent).
+      - >-
+        Old-schema DB at serve startup: auto full reindex once vs warn-and-ask
+        vs user_version marker strategy.
+    size_forecast: >-
+      ~500-800 changed lines (crosses the 400-line review budget; delivery
+      strategy ask-on-risk will fire at the tasks review-workload guard).
+  proposal:
+    status: done
+    artifact: proposal.md
+    completed: 2026-07-24
+    core: >-
+      In-process content-hash diff (reusing the persisted documents.hash) with
+      per-document upsert/delete on the IndexStore port; triggers = one sync at
+      serve startup + a 30s-throttled pre-tool-call check shared by all three
+      MCP tools; compendio index stays the authoritative full rebuild; watcher
+      explicitly deferred to a separate future change. Blast radius: indexing,
+      configuration, mcp-contract specs (search and index-md untouched).
+  spec:
+    status: done
+    artifacts:
+      - specs/indexing/spec.md
+      - specs/configuration/spec.md
+      - specs/mcp-contract/spec.md
+    completed: 2026-07-24
+    note: >-
+      All-ADDED delta specs; blast radius held to indexing, configuration,
+      mcp-contract (search and index-md untouched). Exploration's critical
+      findings are encoded as requirements (explicit dependent deletion, FTS5
+      'delete' command form, user_version staleness gate).
+    naming_assumptions: # informal names fixed at spec level; confirm in design
+      - sync.throttleMs config key (milliseconds, default 30000)
+      - sincronizacion response field in docs_overview
+  design:
+    status: done
+    artifact: design.md
+    completed: 2026-07-24
+    note: >-
+      Resolves all three critical findings: explicit ordered per-document
+      teardown (FTS5 'delete' command form, chunks_vec BigInt delete, single
+      transaction; FK cascade explicitly rejected as insufficient), and a
+      PRAGMA user_version staleness gate (stamped in reset() and on
+      brand-new-DB migrate() only). Confirms both spec naming assumptions
+      (sync.throttleMs, sincronizacion). Adds SyncScheduler in-flight promise
+      dedupe as load-bearing correctness against async double-sync.
+    delivery_note: >-
+      Design recommends a two-PR slice (PR#1 store primitives + tests, PR#2
+      sync/scheduler/config/visibility + tests) given the ~500-800 line
+      forecast; final split decision belongs to the tasks-phase review
+      workload guard under ask-on-risk.
+    judgment_day:
+      rounds: 4
+      fix_iterations: 3
+      verdict: escalated
+      resolved: >-
+        14 findings fixed across 3 iterations: scheduler error recovery and
+        inFlight cleanup, schema-mismatch branch routed through the single
+        in-flight-tracked startup entry point, erroresLectura excluded from
+        delete candidates, resolver rejection on a changed known ruta deletes
+        the stale row, per-document embed-then-commit (no hash-current
+        vectorless rows), isSchemaCurrent() replacing a raw version read,
+        migrate() stamp-guard ordering, content-based sincronizacion omission,
+        split delete-guard vs write-guard for chunks_vec, throttleMs invalid
+        value fallback, connect-before-sync ordering, and two false claims
+        about existing code.
+      open_items_resolved: 2026-07-24 # all five settled; see resolutions below
+      resolutions:
+        - >-
+          old_schema_handling WITHDRAWN by the user (beta, no installed base):
+          the entire PRAGMA user_version gate is gone from design and spec.
+          startup() now unconditionally runs one in-flight-tracked
+          syncIndex.execute(). Exploration critical finding #3 is now an
+          ACCEPTED risk, not a mitigated one; remedy is deleting .compendio/ or
+          running compendio index once. proposal.md amended to match.
+        - >-
+          ultimoIntentoFallido DROPPED by the user: a whole-pass sync failure is
+          stderr-only and never surfaces through docs_overview. The
+          sincronizacion omission rule is now purely content-based, matching the
+          mcp-contract scenario exactly. No mcp-contract spec change needed.
+        - >-
+          FileDocumentSource directory-read gap SCOPED INTO this change: new
+          indexing requirement so a directory-level read failure excludes every
+          ruta beneath that subtree from the delete-candidate set (prefix rule),
+          plus the ~4-line walk() fix. Root-directory failure still throws.
+        - >-
+          Vector-coverage reconciliation moved to CHUNK granularity
+          (listChunksMissingVectors, double-guarded to return [] when vectors
+          are off or chunks_vec was never created) with an idempotent
+          replaceEmbeddings write, because embedPending batches across document
+          boundaries and saveEmbeddings' plain INSERT would collide on
+          chunk_id.
+        - >-
+          Concurrency requirement narrowed to the guarantee that actually holds
+          (per-document atomicity), explicitly disclaiming a pass-level
+          snapshot: SearchDocuments awaits embeddings between two rounds of
+          store reads, so a single call can straddle a sync pass.
+      carried_to_tasks: # flagged by the design revision, decide in sdd-tasks
+        - >-
+          Forcing a subdirectory readdir failure is not portable (POSIX chmod
+          000 does not restrict directory listing on Windows, the primary dev
+          environment). Pick a seam for readdir or a platform-skipped test; the
+          SyncIndex prefix rule itself is testable via a stubbed DocumentSource.
+        - >-
+          Port surface grew to four new methods (deleteDocument,
+          upsertDocument, listChunksMissingVectors, replaceEmbeddings);
+          saveEmbeddings stays INSERT-only so the full-rebuild path is
+          untouched.
+  tasks:
+    status: done
+    artifact: tasks.md
+    completed: 2026-07-24
+    note: >-
+      Resolved both carried_to_tasks items: (1) the readdir-failure test uses
+      a portable vi.hoisted mock of node:fs/promises readdir (same pattern
+      file-document-source.test.ts already uses for readFile) instead of a
+      chmod-based test — no platform skip needed; (2) confirmed the four new
+      IndexStore methods as designed, saveEmbeddings untouched. Revised
+      design's 2-PR delivery split into a 3-PR stacked-to-main chain (store
+      primitives / diff engine SyncIndex / trigger+config+visibility) because
+      sync-index.ts plus its dedicated test suite is itself ~450-700 lines and
+      would have hugged or exceeded the 400-line budget inside design's PR#2.
+    review_workload_forecast:
+      estimated_changed_lines: "~500-800"
+      budget_risk: High
+      chained_prs_recommended: true
+      chain_strategy: stacked-to-main
+      decision_needed_before_apply: true
+      work_units: 3
+    delivery_decision: # review workload guard, ask-on-risk, resolved 2026-07-24
+      resolution: single-pr
+      size_exception: accepted
+      note: >-
+        The user rejected both the 3-PR chain and the design's 2-PR split and
+        accepted size:exception — this change ships as ONE pull request of
+        ~500-800 lines. The three phases in tasks.md remain the implementation
+        and commit order (store primitives -> SyncIndex diff engine ->
+        trigger/config/visibility), each still an independently test-passing
+        work unit, but they land as commits inside a single PR rather than as
+        separate stacked PRs. Orchestrator flagged the review-density risk;
+        the user confirmed. Recommended compensating control: a judgment-day
+        adversarial pass after sdd-apply, before opening the PR.
+  apply:
+    status: done
+    artifact: apply-progress.md
+    note: >-
+      Batch 3 of 3 (this run): Phase 3 (config/scheduler/wiring/visibility,
+      tasks 3.1-3.13) done under Strict TDD, closing out Phase 1 (batch 1) and
+      Phase 2 (batch 2). All 39 tasks across all 3 phases complete. This run
+      also closed a coordinator-flagged mutation-testing gap in Phase 2's
+      reconcileVectors hash-match filter (see phase_2_sync_index note below)
+      before starting Phase 3. Coordinator independently re-verified Phase 1
+      and Phase 2 (mutation testing on isProtected() and the FTS delete
+      statement, both caught) before authorizing Phase 3.
+    post_verify_followup: >-
+      2026-07-24, after the independent sdd-verify pass (see phases.verify
+      below) returned pass-with-warnings with 2 genuine test-coverage gaps
+      (M3: embed-before-upsert atomicity in SyncIndex.processNewAndChanged
+      unprotected; W3: search_docs/read_doc handlers' maybeSync() wiring
+      unprotected). Production code was NOT changed (verifier confirmed it
+      correct in both cases) — only tests were added, in the same apply
+      session. Gap 1 (M3): added a RecordingStore + shared embed/upsert order
+      log to sync-index.test.ts; verified green with code intact, red when
+      the write was manually split into upsert-then-embed
+      (AssertionError: expected null not to be null; 210 passed, 1 failed —
+      211 total), green again after reverting. Gap 2 (W3): extended
+      server.test.ts's fakeContainerWithScheduler with searchDocuments/
+      readDocument stubs and added the same maybeSync-spy pattern for
+      search_docs and read_doc; verified green with code intact, red when
+      each handler's maybeSync() call was deleted in turn (one at a time,
+      confirming isolation — the other tool's test stayed green each time),
+      green again after reverting each. Final state: npm test 213/213
+      passed, npm run typecheck clean, git diff --stat 16 files changed
+      715 insertions(+) 77 deletions(-) (tracked files only; 5 new
+      untracked files not counted by git diff --stat: index-pipeline.ts 91
+      lines, sync-index.ts 221 lines, sync-scheduler.ts 81 lines,
+      sync-index.test.ts 554 lines, sync-scheduler.test.ts 145 lines). The
+      third warning (W2, no literal `compendio serve` subprocess test) was
+      explicitly NOT actioned per the coordinator's instruction — an
+      accepted scoping gap per design.md's testing strategy. No commits
+      made.
+    phase_1_store_primitives:
+      status: done
+      completed: 2026-07-24
+      tasks_completed: ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10", "1.11", "1.12"]
+      gate: "npm test: 176/176 passed; npm run typecheck: clean"
+    phase_2_sync_index:
+      status: done
+      completed: 2026-07-24
+      tasks_completed:
+        [
+          "2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "2.7", "2.8",
+          "2.9", "2.10", "2.11", "2.12", "2.13", "2.14",
+        ]
+      gate: "npm test: 190/190 passed (191/191 after the mutation-gap fix below); npm run typecheck: clean"
+      note: >-
+        2.1/2.2 verified as a pure extraction: the pre-existing
+        index-and-search.test.ts suite (29 tests covering IndexDocuments)
+        passed unchanged, before and after, with zero test edits — the
+        explicit signal the coordinator asked for if behavior had drifted.
+        sync-index.ts (221 lines) + sync-index.test.ts (400 lines) exceed the
+        ~400-line note in task 2.14; per that task's own guidance this is a
+        commit-splitting concern for whoever commits this work (split
+        2.1-2.6 core diff from 2.7-2.8 augmentation rules into two commits),
+        not a new size-exception decision — the whole change already carries
+        the accepted single-pr size:exception.
+      mutation_gap_closed: >-
+        2026-07-24, before Phase 3 started: the coordinator deleted the
+        hash-match filter in reconcileVectors() and the full sync-index.test.ts
+        suite still reported 14/14 passed — a real mutation-testing gap, since
+        both existing reconciliation tests used documents already in the
+        hash-match set, so the filter never had anything to exclude. Added a
+        new test (a document whose ruta fails to read this pass, so it never
+        enters the hash-match set and is protected from deletion by rule 1)
+        asserting the embeddings provider is NOT invoked and the vector gap is
+        NOT closed. Verified both directions: green with the filter present,
+        red when the filter was temporarily deleted (AssertionError: expected
+        [] to have a length of 1 but got +0), green again after restoring it.
+        Design's restriction confirmed correct, not a bug: a read-failed
+        document is deliberately left untouched entirely this pass (same
+        philosophy as the deletion-protection rule), not partially reconciled
+        from possibly-stale last-known-good DB content.
+    phase_3_trigger_config_visibility:
+      status: done
+      completed: 2026-07-24
+      tasks_completed:
+        [
+          "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7",
+          "3.8", "3.9", "3.10", "3.11", "3.12", "3.13",
+        ]
+      gate: "npm test: 210/210 passed; npm run typecheck: clean"
+      note: >-
+        SyncScheduler's in-flight promise dedupe (flagged by the coordinator
+        as the trickiest correctness point, per judgment-day) was verified
+        with two targeted mutations, both caught then reverted: (1) inserting
+        an await between the throttle check and the inFlight assignment in
+        maybeSync() reproduced the double-sync race — 1 test failed
+        (execute called 0 times instead of the expected 1, i.e. the second
+        concurrent call did NOT observe inFlight set); (2) removing the
+        `this.inFlight = null` line from runTracked()'s finally block
+        reproduced a permanently wedged scheduler — 3 tests failed (execute
+        stuck at 1 call instead of advancing to 2 on the next window). Both
+        mutations restored immediately after confirming red, full suite
+        green again (210/210). The end-to-end test (3.11) caught one test
+        authoring bug of its own during GREEN: the original/edited file
+        content shared the word "contenido", so a lexical assertion checking
+        "old content is gone" passed for the wrong reason; fixed with fully
+        disjoint single-token vocabulary per file version, not a production
+        bug.
+  verify:
+    status: done
+    artifact: verify-report.md
+    completed: 2026-07-24
+    verdict: pass-with-warnings
+    note: >-
+      Independent verification (not the apply agent's self-report): re-ran
+      npm test (210/210) and npm run typecheck (clean) before and after every
+      check. Confirmed all 5 judgment-day resolutions honored in code (no
+      PRAGMA user_version, no ultimoIntentoFallido, erroresLectura subtree
+      prefix rule, chunk-granular idempotent replaceEmbeddings, per-document
+      concurrency guarantee) and all CLAUDE.md architectural invariants
+      (domain purity, ports-first, saveEmbeddings INSERT-only, FTS5 'delete'
+      command form, BigInt chunks_vec keys). Mapped every scenario across the
+      3 delta specs to a passing test. Performed 4 independent mutations
+      against the real source (not trusting apply-progress's own mutation
+      claims): SyncScheduler in-flight dedupe race (caught), resolver-
+      rejection delete-stale-row rule (caught), per-document embed-before-
+      upsert atomicity (NOT caught — genuine gap), and search_docs handler's
+      maybeSync() wiring (NOT caught — genuine gap). All mutations reverted;
+      working tree confirmed byte-identical to pre-verification state via
+      git diff --stat (685 insertions(+), 77 deletions(-) across 16 tracked
+      files, unchanged) plus a final green npm test.
+    findings:
+      critical: 0
+      warning: 3
+      suggestion: 0
+      warning_details:
+        - >-
+          M3: no regression test would catch a future reordering of
+          SyncIndex.processNewAndChanged() that split the embed+upsert commit
+          into two separate writes (breaking the single-transaction
+          atomicity design.md calls load-bearing) as long as no crash occurs
+          mid-pass — confirmed by mutation: 210/210 still passed with the
+          reorder in place.
+        - >-
+          W2: no literal `compendio serve` subprocess/end-to-end test for the
+          "Startup sync catches offline edits" scenario — coverage is
+          bottom-up only (SyncScheduler unit test + source-read wiring),
+          consistent with design.md's own testing-strategy scoping.
+        - >-
+          W3: only the docs_overview handler's maybeSync() call is
+          regression-tested (test/server.test.ts); search_docs and read_doc
+          have no equivalent spy test — confirmed by mutation: removing
+          maybeSync() from search_docs left 210/210 passing.
+    not_blocking: >-
+      All three warnings are missing-test gaps, not code defects — the
+      shipped implementation is correct in all three cases per source
+      inspection. None require returning to sdd-apply; recommended as
+      follow-up tests before or after archiving.
+next_recommended: [sdd-archive]
+product_decisions: # confirmed by the user 2026-07-24, pre-proposal question round
+  sync_throttle_default: >-
+    30 seconds — at most one filesystem diff per 30s window, triggered lazily
+    by MCP tool calls (plus one sync at serve startup). Configurable per
+    project.
+  sync_visibility: >-
+    Incremental-sync omitidos/avisoEmbeddings surface through a sync-status
+    field in the docs_overview response (agent-visible). This touches the
+    mcp-contract spec domain.
+  old_schema_handling: >-
+    WITHDRAWN 2026-07-24 by the user. No detection, no mitigation — an
+    old-schema database is an accepted risk: compendio is in beta with
+    effectively no installed base, so a database generated by an older build
+    breaking is uninteresting. Review also disproved the original premise (the
+    current schema is already nullable and nothing stamps user_version, so the
+    gate would have forced a full re-embed on every pre-existing database, not
+    only legacy NOT NULL ones). Remedy for anyone affected: delete .compendio/
+    or run compendio index once.
+  sync_visibility_amendment: >-
+    2026-07-24 — the sincronizacion field surfaces only omitidos and
+    avisoEmbeddings, as originally specified. The ultimoIntentoFallido field the
+    design had added for whole-pass sync failures was dropped by the user; such
+    a failure is logged to stderr only.

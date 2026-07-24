@@ -4,12 +4,14 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const readFileMock = vi.hoisted(() => vi.fn());
+const readdirMock = vi.hoisted(() => vi.fn());
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return {
     ...actual,
     readFile: (...args: Parameters<typeof actual.readFile>) => readFileMock(...args),
+    readdir: (...args: Parameters<typeof actual.readdir>) => readdirMock(...args),
   };
 });
 
@@ -20,6 +22,14 @@ async function realReadFile(path: unknown): Promise<string> {
   return actual.readFile(path as string, "utf8");
 }
 
+async function realReaddir(
+  path: unknown,
+  options: unknown,
+): Promise<unknown> {
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  return actual.readdir(path as string, options as Parameters<typeof actual.readdir>[1]);
+}
+
 describe("FileDocumentSource", () => {
   let dir: string;
 
@@ -27,6 +37,8 @@ describe("FileDocumentSource", () => {
     dir = mkdtempSync(join(tmpdir(), "compendio-fds-"));
     readFileMock.mockReset();
     readFileMock.mockImplementation(async (path: unknown) => realReadFile(path));
+    readdirMock.mockReset();
+    readdirMock.mockImplementation(async (path: unknown, options: unknown) => realReaddir(path, options));
   });
 
   afterEach(() => {
@@ -60,5 +72,36 @@ describe("FileDocumentSource", () => {
 
     expect(result.files.map((f) => f.ruta)).toEqual(["good.md"]);
     expect(result.erroresLectura).toEqual([{ ruta: "bad.md", error: "permiso denegado" }]);
+  });
+
+  it("reports an unreadable subdirectory in erroresLectura, without files beneath it, and does not throw", async () => {
+    writeFileSync(join(dir, "raiz.md"), "contenido raiz");
+    mkdirSync(join(dir, "guias"));
+    writeFileSync(join(dir, "guias", "oculto.md"), "contenido oculto");
+    readdirMock.mockImplementation(async (path: unknown, options: unknown) => {
+      if (String(path).endsWith("guias")) {
+        throw new Error("permiso denegado en el directorio");
+      }
+      return realReaddir(path, options);
+    });
+
+    const source = new FileDocumentSource(dir, []);
+    const result = await source.discover();
+
+    expect(result.files.map((f) => f.ruta)).toEqual(["raiz.md"]);
+    expect(result.erroresLectura).toEqual([{ ruta: "guias", error: "permiso denegado en el directorio" }]);
+  });
+
+  it("still throws when the docs root itself cannot be read", async () => {
+    readdirMock.mockImplementation(async (path: unknown) => {
+      if (path === dir) {
+        throw new Error("directorio raiz inaccesible");
+      }
+      return [];
+    });
+
+    const source = new FileDocumentSource(dir, []);
+
+    await expect(source.discover()).rejects.toThrow(/directorio raiz inaccesible/);
   });
 });

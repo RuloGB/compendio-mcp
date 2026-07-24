@@ -139,6 +139,11 @@ program
     const root = program.opts<GlobalOptions>().root;
     const container = createContainer({ root });
     const server = createMcpServer(container);
+    // Synchronously assigns the startup sync pass to the scheduler's
+    // in-flight promise — NOT awaited: the stdio transport connects without
+    // waiting for it, but every tool call (including the very first) is
+    // gated on it via maybeSync() awaiting that same in-flight promise.
+    container.syncScheduler.startup();
     // stdout belongs to the MCP protocol: all logging goes to stderr.
     console.error(`compendio-mcp v${SERVER_VERSION}: servidor MCP iniciado (stdio)`);
     await server.connect(new StdioServerTransport());

@@ -4,3 +4,5 @@ dist/
 .atl/
 *.tsbuildinfo
 .codegraph/
+opencode.json
+harness/

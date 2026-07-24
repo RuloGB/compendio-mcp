@@ -5,6 +5,8 @@ import { GetOverview } from "./application/get-overview.js";
 import { IndexDocuments } from "./application/index-documents.js";
 import { ReadDocument } from "./application/read-document.js";
 import { SearchDocuments } from "./application/search-documents.js";
+import { SyncIndex } from "./application/sync-index.js";
+import { SyncScheduler } from "./application/sync-scheduler.js";
 import { crearComparadorIndice, crearConvencionPolicy } from "./domain/convencion.js";
 import { INDEX_FILE } from "./domain/index-markdown.js";
 import type { EmbeddingsProvider } from "./domain/ports.js";
@@ -37,6 +39,12 @@ export interface Container {
   getOverview: GetOverview;
   readDocument: ReadDocument;
   evaluateSearch: EvaluateSearch;
+  /** Incremental diff engine (unwired from any trigger by itself — see
+   * `syncScheduler`, which is what `cli.ts`/`server.ts` actually call). */
+  syncIndex: SyncIndex;
+  /** Owns the startup + throttled trigger for `syncIndex`, with in-flight
+   * dedupe (see `SyncScheduler`). */
+  syncScheduler: SyncScheduler;
   close(): void;
 }
 
@@ -69,6 +77,11 @@ export function createContainer(options: ContainerOptions): Container {
     k: config.search.k,
     estadosExcluidos: config.convencion.estadosExcluidos,
   });
+  const syncIndex = new SyncIndex(source, parser, store, embeddings, policy, {
+    chunking: config.chunk,
+    sinChunking: SIN_CHUNKING,
+  });
+  const syncScheduler = new SyncScheduler(syncIndex, config.sync.throttleMs);
 
   return {
     config,
@@ -79,6 +92,8 @@ export function createContainer(options: ContainerOptions): Container {
     getOverview: new GetOverview(store),
     readDocument: new ReadDocument(store),
     evaluateSearch: new EvaluateSearch(searchDocuments, () => store.hasVectors()),
+    syncIndex,
+    syncScheduler,
     close: () => store.close(),
   };
 }
