@@ -56,13 +56,13 @@ No renames in this commit. Runs against the still-Spanish tree.
 
 `refactor(domain): rename taxonomy fields and their compounds to English`
 
-- [ ] 3.1 Rename longest-first (Decision B — prevents `statuss`/`statusExcluidos` corruption): `estadosExcluidos`→`excludedStatuses`, `estados`→`statuses`, `estado`→`status`; `tipos`→`types`, `tipo`→`type`; `modulo`→`module`; `etiquetas`→`tags` (`resolveEtiquetas`→`resolveTags`, `EtiquetasResult`→`TagsResult`); `propietario`→`owner`; `actualizado`→`updated`; `porTipo`/`porModulo`→`byType`/`byModule`; `parseTipo`→`parseType`; `incluirNoVigentes`→`includeExcluded`. Full list: `design.md` Commit 3 table.
-- [ ] 3.2 **Silent-green trap (Decision A/C)**: rename the same fields in `test/fixtures/estricto/compendio.config.json` (`tipos`/`estados`/`estadosExcluidos`), the inline JSON in `config.test.ts`, and `build.ts`'s `ESTRICTO_FIXTURE_CONVENCION` field names, in this commit.
-- [ ] 3.3 **Active proof of 3.2**: re-run commit 1's deny-list subprocess assertion (`cli-subprocess.test.ts`) and confirm it still passes with the renamed JSON keys — this is the proof the tolerant-`mergeConfig` whitelist did not silently swallow the rename.
-- [ ] 3.4 Do NOT touch yet: `frontmatterFields` **values** (still `"tipo"/"modulo"/"estado"` — commit 7); `data["etiquetas"]`/`["propietario"]`/`["actualizado"]` (commit 7); SQL columns; `--tipo` flag; Zod keys.
-- [ ] 3.5 Reviewer-attention flag (no tooling catches this — Decision B): `mode`/`module` lookalikes begin appearing from this commit on; call it out in the PR body.
-- [ ] 3.6 Gate: `npm run typecheck` then `npm test`.
-- [ ] 3.7 Done when: `rg -i -n 'tipo|modulo|estado|etiqueta|propietario|actualizado|vigentes' src test` returns only the SQL layer, the commit-7 source-key literals, and Sweep A's allow-list.
+- [x] 3.1 Rename longest-first (Decision B — prevents `statuss`/`statusExcluidos` corruption): `estadosExcluidos`→`excludedStatuses`, `estados`→`statuses`, `estado`→`status`; `tipos`→`types`, `tipo`→`type`; `modulo`→`module`; `etiquetas`→`tags` (`resolveEtiquetas`→`resolveTags`, `EtiquetasResult`→`TagsResult`); `propietario`→`owner`; `actualizado`→`updated`; `porTipo`/`porModulo`→`byType`/`byModule`; `parseTipo`→`parseType`; `incluirNoVigentes`→`includeExcluded`. Full list: `design.md` Commit 3 table. Also fixed a commit-2 miss: `ReadResult`'s discriminant field name `tipo`→`type`.
+- [x] 3.2 **Silent-green trap (Decision A/C)**: rename the same fields in `test/fixtures/estricto/compendio.config.json` (`tipos`/`estados`/`estadosExcluidos`), the inline JSON in `config.test.ts`, and `build.ts`'s `ESTRICTO_FIXTURE_CONVENCION` field names, in this commit.
+- [x] 3.3 **Active proof of 3.2**: re-run commit 1's deny-list subprocess assertion (`cli-subprocess.test.ts`) and confirm it still passes with the renamed JSON keys — this is the proof the tolerant-`mergeConfig` whitelist did not silently swallow the rename.
+- [x] 3.4 Do NOT touch yet: `frontmatterFields` **values** (still `"tipo"/"modulo"/"estado"` — commit 7); `data["etiquetas"]`/`["propietario"]`/`["actualizado"]` (commit 7); SQL columns; `--tipo` flag; Zod keys.
+- [x] 3.5 Reviewer-attention flag (no tooling catches this — Decision B): `mode`/`module` lookalikes begin appearing from this commit on; call it out in the PR body.
+- [x] 3.6 Gate: `npm run typecheck` then `npm test`.
+- [x] 3.7 Done when: `rg -i -n 'tipo|modulo|estado|etiqueta|propietario|actualizado|vigentes' src test` returns only the SQL layer, the commit-7 source-key literals, and Sweep A's allow-list. (Also: commit-6-scheduled identifiers per design.md's own Commit 6 table, and one false-positive English "modulo" in `file-index-writer.ts:25` — see apply-progress.md.)
 
 ## Commit 4 — Content and structural fields (L)
 

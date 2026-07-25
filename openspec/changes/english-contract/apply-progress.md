@@ -10,7 +10,7 @@ active-proof tasks; all other commits are gated by keep-green-throughout, not ne
 |---|---|---|---|
 | 1.1/1.3 new tests | Written first against the still-Spanish tree; both would fail if the mechanism under test were broken (verified: FTS5 probe answers a real open question, deny-list test targets an existing but previously-unobserved fixture behavior) | `npm test` green — all 5 FTS5 assertions (A0-A7 folded into 5 `it` blocks) pass, deny-list assertion passes | N/A — new permanent regression tests, no refactor needed |
 | 2.3 (`listChunksMissingVectors` active proof) | N/A — extends existing coverage, not new-test-first (keep-green-throughout mode) | `npm test` green; new assertions explicitly check `missing[0]?.path`/`missing[0]?.heading` are defined before the `toEqual` | N/A |
-| 3.3/6.6/10.6 (deny-list re-run) | N/A — reuses 1.3's test unmodified | pending | pending |
+| 3.3/6.6/10.6 (deny-list re-run) | N/A — reuses 1.3's test unmodified | 3.3 done: `npm test` green with `test/fixtures/estricto/compendio.config.json`'s `tipos/estados/estadosExcluidos`→`types/statuses/excludedStatuses`; 6.6/10.6 pending | pending |
 
 ## Commit Status
 
@@ -58,7 +58,47 @@ active-proof tasks; all other commits are gated by keep-green-throughout, not ne
     (commit 5); the simulated legacy-schema DDL string in `sqlite-index-store.test.ts`'s reset() test
     (mirrors production DDL, same Decision G carve-out).
   - Gate: `npm run typecheck` clean, `npm test` 24 files / 219 tests green.
-- [ ] Commit 3 — Taxonomy fields and their compounds (L) — NOT STARTED
+- [x] **Commit 3 — Taxonomy fields and their compounds (L)** — `65e06b6`
+  - Longest-first: `estadosExcluidos`→`excludedStatuses`, `estados`→`statuses`, `estado`→`status`;
+    `tipos`→`types`, `tipo`→`type`; `modulo`→`module`; `etiquetas`→`tags` (`resolveEtiquetas`→
+    `resolveTags`, `EtiquetasResult`→`TagsResult`); `propietario`→`owner`; `actualizado`→`updated`;
+    `porTipo`/`porModulo`→`byType`/`byModule`; `parseTipo`→`parseType`; `incluirNoVigentes`→
+    `includeExcluded`.
+  - **Correction to commit 2's own record**: `ReadResult`'s discriminant FIELD name `tipo`→`type` was
+    missed in commit 2 (only the port/domain fields were done). Fixed here — the field name renames now,
+    its string VALUES (`"documento"`/`"seccion"`/etc.) stay Spanish until commit 5, per the same
+    asymmetric-rename pattern as the SQL row shapes.
+  - `camposFrontmatter`'s inner shape `{ tipo: string; modulo: string; estado: string }` → `{ type:
+    string; module: string; status: string }`: the KEYS are genuine TS property names (whole-program
+    scope), the VALUES stay `"tipo"/"modulo"/"estado"` (frozen until commit 7, Decision F). Applied
+    consistently in `config.ts`'s `DEFAULT_CONFIG`, `build.ts`, and every test fixture constructing this
+    shape.
+  - Silent-green trap (Decision A/C): `test/fixtures/estricto/compendio.config.json`'s `tipos/estados/
+    estadosExcluidos`→`types/statuses/excludedStatuses`, `config.test.ts`'s inline JSON, `build.ts`'s
+    `ESTRICTO_FIXTURE_CONVENCION`. Active proof (3.3): commit 1's deny-list subprocess assertion re-run
+    green with the renamed keys.
+  - `formatFrontmatter`'s rendered YAML labels (`tipo:`/`modulo:`/`estado:`/`propietario:`/`etiquetas:`/
+    `actualizado:`) deliberately kept Spanish — they mirror the frontmatter source-key convention, which
+    doesn't flip until commit 7. Only the `meta.X` property reads driving them were renamed.
+  - Beyond design.md's symbol table (same class of gap as commit 2, required by this commit's own
+    done-when sweep, not by the design's literal per-commit list): local vars/synthetic test paths
+    containing a root — `conEtiqueta`→`withTag`, `guias/tipo-invalido.md`→`guias/type-invalido.md`,
+    `sin-estado.md`→`sin-status.md`, `sin-tipo.md`→`sin-type.md`, a stray comment in `get-overview.ts`
+    ("sin tipo"/"sin modulo" → "no-type/no-module"), and `warnIfLegacyEstadosExcluidos`'s advice string
+    (`'convencion.estadosExcluidos'`→`'convencion.excludedStatuses'` — the ADVICE half only; the
+    retired-key DETECTION check `"estadosExcluidos" in search` stays literal since it matches a key
+    spelling that was never renamed).
+  - **False positive discovered in Decision B's root-collision check**: `file-index-writer.ts:25`'s
+    comment "the same content modulo EOL" uses the genuine English word "modulo" (mathematics/idiom for
+    "except for"), which exactly collides with the Spanish root `modulo`. Design's stated false-positive
+    audit ("none of them is a substring of an English word used here") did not catch this because it's
+    not a *substring* collision, it's an *exact-word* collision. Left as-is (correct English); flagging
+    for the final Sweep A review since it will keep appearing as an unmarked hit that is not a rename
+    miss — this is a legitimate Sweep A allow-list candidate, not something `// es-frozen:` fits (it was
+    never Spanish).
+  - Gate: `npm run typecheck` clean, `npm test` 24 files / 219 tests green, `npm run build` clean,
+    `src/domain/` purity verified (no `node:`/`better-sqlite3`/`sqlite-vec`/`@xenova`/`gray-matter`/
+    `remark` imports).
 - [ ] Commit 4 — Content and structural fields (L) — NOT STARTED
 - [ ] Commit 5 — Report and response fields (M) — NOT STARTED
 - [ ] Commit 6 — Configuration surface (M) — NOT STARTED
@@ -131,42 +171,48 @@ place the compiler stays silent even after the include is fixed.
 
 ## Resume point
 
-Commit 2 landed clean at `922f2eb`. `stash@{0}` ("wip-commit2-partial") has been dropped — no longer
-referenced anywhere.
+Commit 3 landed clean at `65e06b6`. Tree clean, `stash@{0}` reference fully retired (dropped after
+commit 2).
 
-Verified state at `922f2eb`: `npm run typecheck` clean, `npm test` 24 files / 219 tests green,
-working tree clean.
+Verified state at `65e06b6`: `npm run typecheck` clean, `npm test` 24 files / 219 tests green,
+`npm run build` clean, `src/domain/` purity verified.
 
-**Methodology note for the remaining commits (3–11)**: a bulk whole-identifier (word-boundary,
-case-sensitive) rename script was used for the majority of files in commit 2 — safe because `tsc`
-adjudicates every occurrence and the script only ever runs against a single commit's ordered,
-longest-first rename map. Files with a touch/no-touch split within the SAME file (SQL row-shape
-carve-outs per Decision G, MCP wire params staying Spanish until commit 9, discriminant string
-LITERALS staying Spanish until commit 5 while the surrounding FIELD names rename now) were edited
-fully by hand instead, because a blind regex cannot tell "this `ruta` is a property name" from "this
-`ruta` is inside a frozen string value". The same approach — script for uniform files, hand-editing
-for files with an internal carve-out — is expected to keep working through the remaining commits, with
-the carve-out file set changing per commit (consult each commit's "Explicitly NOT touched" row in
-design.md before choosing which files to script vs. hand-edit).
+**Methodology note for the remaining commits (4–11)**, confirmed working across commits 2 and 3: a
+bulk whole-identifier (word-boundary, case-sensitive) rename script for the majority of files per
+commit — safe because `tsc` adjudicates every occurrence. Files with a touch/no-touch split within the
+SAME file (SQL row-shape carve-outs per Decision G, MCP wire params staying Spanish until commit 9,
+discriminant string LITERALS staying Spanish until commit 5 while the surrounding FIELD names rename
+now, `camposFrontmatter`'s KEYS-rename-but-VALUES-frozen shape per Decision F) are edited fully by
+hand, because a blind regex cannot tell "this token is a property name" from "this token is inside a
+frozen string value or a frozen object value". Continue this approach for commits 4–11.
 
 **Also verify per-commit, not just per design table**: after any commit's rename, re-run that commit's
 own `rg -i -n '<roots>' src test` done-when check on the FULL tree (not just the files touched by the
-rename map) — local variables that merely CONTAIN a renamed root (e.g. `hashMatchRutas`, `porRuta`,
-`listedRutas`) are not always enumerated in design.md's per-commit symbol tables (which list
-types/interfaces/methods, not every local var) but WILL fail the done-when sweep if left unrenamed.
-Commit 2 needed this cleanup pass in `sync-index.ts`, `sync-index.test.ts`, `index-and-search.test.ts`,
-`generate-index-md.test.ts`, `index-markdown.test.ts`, and `evaluate-search.ts` beyond the design's
-literal symbol list — see the commit-2 entry above for the exact identifiers.
+rename map) — local variables/synthetic test-fixture identifiers that merely CONTAIN a renamed root
+(e.g. commit 2's `hashMatchRutas`/`porRuta`; commit 3's `conEtiqueta`, `sin-estado.md`, `tipo-invalido.md`)
+are not always enumerated in design.md's per-commit symbol tables (which list types/interfaces/methods,
+not every local var or fixture filename) but WILL fail the done-when sweep if left unrenamed. Also
+watch for identifiers explicitly scheduled for a LATER commit in design.md's own tables (e.g. commit 3
+deliberately left `inferirModulo`, `crearComparadorIndice`, `ConvencionConfig`, `modo` untouched even
+though they contain/relate to this commit's roots, because design.md's Commit 6 table owns their
+rename) — these are legitimate deferrals, not misses; cross-check design.md's LATER commit tables before
+"fixing" a hit that's actually scheduled ahead.
 
-Next: **Commit 3 — Taxonomy fields and their compounds (L)**. Longest-first:
-`estadosExcluidos`→`excludedStatuses`, `estados`→`statuses`, `estado`→`status`; `tipos`→`types`,
-`tipo`→`type`; `modulo`→`module`; `etiquetas`→`tags` (`resolveEtiquetas`→`resolveTags`,
-`EtiquetasResult`→`TagsResult`); `propietario`→`owner`; `actualizado`→`updated`; `porTipo`/`porModulo`→
-`byType`/`byModule`; `parseTipo`→`parseType`; `incluirNoVigentes`→`includeExcluded`. Silent-green trap
-(Decision A/C): rename the same fields in `test/fixtures/estricto/compendio.config.json`, the inline
-JSON in `config.test.ts`, and `build.ts`'s `ESTRICTO_FIXTURE_CONVENCION` field names, in this SAME
-commit — then re-run commit 1's deny-list subprocess assertion (task 3.3) to prove the tolerant
-`mergeConfig` whitelist didn't silently swallow the rename. Do NOT touch yet: `frontmatterFields`
-**values** (still `"tipo"/"modulo"/"estado"` — commit 7); `data["etiquetas"]`/`["propietario"]`/
-`["actualizado"]` (commit 7); SQL columns; `--tipo` flag; Zod keys. Reviewer-attention flag: `mode`/
-`module` lookalikes begin appearing from this commit on.
+**Discovered in commit 3, applies going forward**: `file-index-writer.ts:25`'s English idiom "modulo"
+(mathematics/"except for") is an exact-word collision with the Spanish root `modulo` that Decision B's
+stated false-positive audit did not anticipate (it only checked substring collisions, not exact-word
+ones). It will keep surfacing in every `modulo`-root sweep from here through Sweep A/B — it is correct
+English, not a rename miss, and does not fit `// es-frozen:` (never Spanish). Recommend documenting it
+in design.md's Sweep A allow-list at commit 11 rather than re-diagnosing it each commit.
+
+Next: **Commit 4 — Content and structural fields (L)**. Symbols: `contenido`→`content`, `orden`→
+`position` (Decision 2 — `order` is a SQLite reserved word), `resumen`→`summary` (`condenseResumen`/
+`displayResumen`→`condenseSummary`/`displaySummary`), `titulo`→`title`, `texto`/`textos`→`text`/`texts`,
+`extracto`→`excerpt`, `Piece.texto`, `DocSection.{titulo,texto}`, `DocOutline.{titulo,resumen,secciones}`.
+Silent-green trap (Decision A/G, same pair as commit 2): edit `listChunksMissingVectors`'s
+`c.contenido AS contenido`→`AS content` in `sqlite-index-store.ts`, in the SAME commit — extend the
+commit-2 active-proof assertion in `sqlite-index-store.test.ts` to also cover a defined, non-`undefined`
+`content` value. Do NOT touch: `chunks.contenido`/`chunks.orden` DDL, `ORDER BY orden`,
+`insertChunk`/`insertFts`/`deleteFts`, `ChunkRow`, the inline cast in `deleteDocumentRows` (all Decision
+G, commit 8). Expect the same "beyond the literal symbol table" cleanup pass this commit's own
+`rg -i -n 'contenido|orden|resumen|titulo|texto|extracto' src test` done-when check will require.
