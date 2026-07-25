@@ -129,6 +129,29 @@ describe("CLI subprocess: corpus commands", () => {
     expect(payload.resultados.length).toBeGreaterThan(0);
     expect(payload.resultados.map((r) => r.ruta)).toContain("guia-onboarding.md");
   });
+
+  it("estadosExcluidos deny-list: a borrador document is hidden by default and surfaced with --todos", () => {
+    // The fixture declares estadosExcluidos: ["borrador", "obsoleto"] and
+    // ships plan-pruebas-alertas.md in estado borrador specifically to
+    // exercise this deny-list. "plan de pruebas" is unique to that document
+    // within the fixture (checked against the other 4 docs' prose).
+    const denied = runCli(["--root", workdir, "search", "plan de pruebas alertas", "--lexico"]);
+    expect(denied.status).toBe(0);
+    const deniedPayload = JSON.parse(denied.stdout) as { resultados: { ruta: string }[] };
+    expect(deniedPayload.resultados.map((r) => r.ruta)).not.toContain("plan-pruebas-alertas.md");
+
+    const allowed = runCli([
+      "--root",
+      workdir,
+      "search",
+      "plan de pruebas alertas",
+      "--lexico",
+      "--todos",
+    ]);
+    expect(allowed.status).toBe(0);
+    const allowedPayload = JSON.parse(allowed.stdout) as { resultados: { ruta: string }[] };
+    expect(allowedPayload.resultados.map((r) => r.ruta)).toContain("plan-pruebas-alertas.md");
+  });
 });
 
 /**
