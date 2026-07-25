@@ -32,22 +32,22 @@ export function chunkOutline(outline: DocOutline, opts: ChunkingOptions): Chunk[
     pieces.push({ path: [outline.titulo], texto: outline.intro.trim() });
   }
 
-  for (const seccion of outline.secciones) {
-    const full = sectionFullText(seccion);
-    if (estimateTokens(full) <= opts.maxTokens || seccion.children.length === 0) {
-      pieces.push({ path: [seccion.titulo], texto: full });
+  for (const section of outline.sections) {
+    const full = sectionFullText(section);
+    if (estimateTokens(full) <= opts.maxTokens || section.children.length === 0) {
+      pieces.push({ path: [section.titulo], texto: full });
       continue;
     }
-    if (seccion.texto.trim().length > 0) {
-      pieces.push({ path: [seccion.titulo], texto: seccion.texto.trim() });
+    if (section.texto.trim().length > 0) {
+      pieces.push({ path: [section.titulo], texto: section.texto.trim() });
     }
-    for (const child of seccion.children) {
-      pieces.push({ path: [seccion.titulo, child.titulo], texto: sectionFullText(child) });
+    for (const child of section.children) {
+      pieces.push({ path: [section.titulo, child.titulo], texto: sectionFullText(child) });
     }
   }
 
   return mergeTinyPieces(pieces, opts).map((piece, orden) => ({
-    encabezado: piece.path.join(" > "),
+    heading: piece.path.join(" > "),
     contenido: piece.texto,
     orden,
   }));

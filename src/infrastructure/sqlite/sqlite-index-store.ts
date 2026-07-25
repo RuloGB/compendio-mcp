@@ -162,7 +162,7 @@ export class SqliteIndexStore implements IndexStore {
 
     const documentId = Number(
       insertDocument.run({
-        ruta: meta.ruta,
+        ruta: meta.path,
         titulo: meta.titulo,
         resumen: meta.resumen,
         tipo: meta.tipo ?? null,
@@ -176,10 +176,10 @@ export class SqliteIndexStore implements IndexStore {
     );
     const chunkIds = chunks.map((chunk, index) => {
       const chunkId = Number(
-        insertChunk.run(documentId, chunk.encabezado, chunk.contenido, chunk.orden)
+        insertChunk.run(documentId, chunk.heading, chunk.contenido, chunk.orden)
           .lastInsertRowid,
       );
-      insertFts.run(chunkId, chunk.contenido, chunk.encabezado);
+      insertFts.run(chunkId, chunk.contenido, chunk.heading);
       if (insertVec !== null && embeddings !== null) {
         insertVec.run(BigInt(chunkId), toBlob(embeddings[index]!));
       }
@@ -217,9 +217,9 @@ export class SqliteIndexStore implements IndexStore {
     this.db.prepare(`DELETE FROM documents WHERE id = ?`).run(documentId);
   }
 
-  deleteDocument(ruta: string): void {
+  deleteDocument(path: string): void {
     const run = this.db.transaction((): void => {
-      const doc = this.db.prepare(`SELECT id FROM documents WHERE ruta = ?`).get(ruta) as
+      const doc = this.db.prepare(`SELECT id FROM documents WHERE ruta = ?`).get(path) as
         | { id: number }
         | undefined;
       if (doc === undefined) return;
@@ -251,7 +251,7 @@ export class SqliteIndexStore implements IndexStore {
         : null;
 
     const run = this.db.transaction((): SavedDocument => {
-      const existing = findExisting.get(meta.ruta) as { id: number } | undefined;
+      const existing = findExisting.get(meta.path) as { id: number } | undefined;
       if (existing !== undefined) {
         this.deleteDocumentRows(existing.id);
       }
@@ -264,7 +264,7 @@ export class SqliteIndexStore implements IndexStore {
     if (!this.vectorsEnabled || !this.tableExists("chunks_vec")) return [];
     return this.db
       .prepare(
-        `SELECT c.id AS chunkId, d.ruta AS ruta, c.encabezado AS encabezado, c.contenido AS contenido
+        `SELECT c.id AS chunkId, d.ruta AS path, c.encabezado AS heading, c.contenido AS contenido
          FROM chunks c
          JOIN documents d ON d.id = c.document_id
          WHERE c.id NOT IN (SELECT chunk_id FROM chunks_vec)
@@ -381,8 +381,8 @@ export class SqliteIndexStore implements IndexStore {
     return rows.map(toDocument);
   }
 
-  getDocumentByRuta(ruta: string): IndexedDocument | null {
-    const row = this.db.prepare(`SELECT * FROM documents WHERE ruta = ?`).get(ruta) as
+  getDocumentByPath(path: string): IndexedDocument | null {
+    const row = this.db.prepare(`SELECT * FROM documents WHERE ruta = ?`).get(path) as
       | DocumentRow
       | undefined;
     return row === undefined ? null : toDocument(row);
@@ -473,7 +473,7 @@ function toBlob(embedding: Float32Array): Buffer {
 function toDocument(row: DocumentRow): IndexedDocument {
   const doc: IndexedDocument = {
     id: row.id,
-    ruta: row.ruta,
+    path: row.ruta,
     titulo: row.titulo,
     resumen: row.resumen,
     etiquetas: row.etiquetas === null ? [] : (JSON.parse(row.etiquetas) as string[]),
@@ -491,7 +491,7 @@ function toChunk(row: ChunkRow): IndexedChunk {
   return {
     id: row.id,
     documentId: row.document_id,
-    encabezado: row.encabezado,
+    heading: row.encabezado,
     contenido: row.contenido,
     orden: row.orden,
   };

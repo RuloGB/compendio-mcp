@@ -10,13 +10,13 @@ import type {
 import { computeHash, describeError, transformFile } from "./index-pipeline.js";
 
 export interface IndexedFileReport {
-  ruta: string;
+  path: string;
   titulo: string;
   chunks: number;
 }
 
 export interface SkippedFileReport {
-  ruta: string;
+  path: string;
   errores: string[];
 }
 
@@ -64,7 +64,7 @@ export class IndexDocuments {
 
     const indexados: IndexedFileReport[] = [];
     const omitidos: SkippedFileReport[] = erroresLectura.map((e) => ({
-      ruta: e.ruta,
+      path: e.path,
       errores: [e.error],
     }));
     const pending: { chunkId: number; texto: string }[] = [];
@@ -76,7 +76,7 @@ export class IndexDocuments {
       const result = transformFile(this.parser, this.policy, this.options, file, hash);
 
       if (!result.ok) {
-        omitidos.push({ ruta: file.ruta, errores: result.errores });
+        omitidos.push({ path: file.path, errores: result.errores });
         continue;
       }
 
@@ -85,10 +85,10 @@ export class IndexDocuments {
       chunks.forEach((chunk, i) => {
         pending.push({
           chunkId: saved.chunkIds[i]!,
-          texto: `${chunk.encabezado}\n${chunk.contenido}`,
+          texto: `${chunk.heading}\n${chunk.contenido}`,
         });
       });
-      indexados.push({ ruta: file.ruta, titulo: meta.titulo, chunks: chunks.length });
+      indexados.push({ path: file.path, titulo: meta.titulo, chunks: chunks.length });
     }
 
     const aviso = await this.embedPending(pending);

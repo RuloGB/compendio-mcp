@@ -3,7 +3,7 @@ import type { DocumentMeta } from "./model.js";
 export interface FrontmatterInput {
   /** Parsed YAML frontmatter, as returned by the markdown parser. */
   data: Record<string, unknown>;
-  ruta: string;
+  path: string;
   titulo: string;
   resumen: string;
   hash: string;

@@ -62,12 +62,12 @@ describe("RemarkMarkdownParser", () => {
 
   it("builds H2 sections with their H3 children, slices including heading lines", () => {
     const { outline } = parser.parse(SAMPLE);
-    expect(outline.secciones.map((s) => s.titulo)).toEqual([
+    expect(outline.sections.map((s) => s.titulo)).toEqual([
       "Contexto y objetivo",
       "Reglas de negocio",
       "Referencias",
     ]);
-    const reglas = outline.secciones[1]!;
+    const reglas = outline.sections[1]!;
     expect(reglas.texto.startsWith("## Reglas de negocio")).toBe(true);
     expect(reglas.texto).toContain("Intro de las reglas.");
     expect(reglas.texto).not.toContain("### Campos");
@@ -77,7 +77,7 @@ describe("RemarkMarkdownParser", () => {
 
   it("keeps H4+ headings inline inside their enclosing section", () => {
     const { outline } = parser.parse(SAMPLE);
-    const campos = outline.secciones[1]!.children[0]!;
+    const campos = outline.sections[1]!.children[0]!;
     expect(campos.texto).toContain("#### Detalle anidado");
     expect(campos.texto).toContain("| Email | obligatorio |");
   });
@@ -85,7 +85,7 @@ describe("RemarkMarkdownParser", () => {
   it("handles a document without sections", () => {
     const { outline } = parser.parse("# Solo título\n\nUn único párrafo.\n");
     expect(outline.titulo).toBe("Solo título");
-    expect(outline.secciones).toEqual([]);
+    expect(outline.sections).toEqual([]);
     expect(outline.intro).toBe("Un único párrafo.");
   });
 });

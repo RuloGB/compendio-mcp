@@ -10,13 +10,13 @@ import type { DocOutline } from "./outline.js";
 /** A raw markdown file discovered under the docs directory. */
 export interface DocumentFile {
   /** Path relative to the docs directory, POSIX separators. */
-  ruta: string;
+  path: string;
   contenido: string;
 }
 
 /** A per-file read failure discovered while walking the docs directory. */
 export interface ReadError {
-  ruta: string;
+  path: string;
   error: string;
 }
 
@@ -70,15 +70,15 @@ export interface ChunkEmbedding {
 /** One indexed chunk with no corresponding `chunks_vec` row. */
 export interface ChunkMissingVector {
   chunkId: number;
-  ruta: string;
-  encabezado: string;
+  path: string;
+  heading: string;
   contenido: string;
 }
 
 /** Result of writing the generated index file. */
 export interface IndexWriteResult {
   /** Path of the index file, as resolved by the adapter. */
-  ruta: string;
+  path: string;
   /** False when the file already had exactly the generated content. */
   cambiado: boolean;
 }
@@ -95,8 +95,8 @@ export interface IndexStore {
   saveDocument(meta: DocumentMeta, chunks: Chunk[]): SavedDocument;
   saveEmbeddings(items: ChunkEmbedding[]): void;
   /** Removes a document plus its chunks, FTS rows, and vector rows (no orphans).
-   * A no-op when the ruta is not indexed. */
-  deleteDocument(ruta: string): void;
+   * A no-op when the path is not indexed. */
+  deleteDocument(path: string): void;
   /** Atomically replaces a document (delete-if-exists, then insert):
    * documents + chunks + chunks_fts, plus chunks_vec when embeddings is
    * non-null. `embeddings`, when provided, must have one entry per chunk in
@@ -115,7 +115,7 @@ export interface IndexStore {
    * chunk that already has a vector row. */
   replaceEmbeddings(items: ChunkEmbedding[]): void;
   listDocuments(): IndexedDocument[];
-  getDocumentByRuta(ruta: string): IndexedDocument | null;
+  getDocumentByPath(path: string): IndexedDocument | null;
   getChunksByDocument(documentId: number): IndexedChunk[];
   getChunksByIds(ids: number[]): IndexedChunk[];
   getDocumentsByIds(ids: number[]): Map<number, IndexedDocument>;

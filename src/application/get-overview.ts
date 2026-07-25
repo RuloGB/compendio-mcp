@@ -5,7 +5,7 @@ import type { SyncReport } from "./sync-index.js";
 
 export interface OverviewLine {
   tipo?: string;
-  ruta: string;
+  path: string;
   resumen: string;
   estado?: string;
 }
@@ -39,7 +39,7 @@ export class GetOverview {
       porTipo,
       porModulo,
       documentos: documents.map((doc) => {
-        const line: OverviewLine = { ruta: doc.ruta, resumen: displayResumen(doc) };
+        const line: OverviewLine = { path: doc.path, resumen: displayResumen(doc) };
         if (doc.tipo !== undefined) line.tipo = doc.tipo;
         if (doc.estado !== undefined) line.estado = doc.estado;
         return line;
@@ -83,13 +83,13 @@ export function formatOverview(
   if (porModuloLine !== null) lines.push(`Por modulo: ${porModuloLine}`);
   lines.push("");
   for (const doc of overview.documentos) {
-    lines.push(formatDocLine({ tipo: doc.tipo, ruta: doc.ruta, resumen: doc.resumen, estado: doc.estado }));
+    lines.push(formatDocLine({ tipo: doc.tipo, path: doc.path, resumen: doc.resumen, estado: doc.estado }));
   }
   if (sincronizacion !== null && sincronizacion !== undefined) {
     lines.push("");
     lines.push("Sincronizacion:");
     for (const omitido of sincronizacion.omitidos) {
-      lines.push(`AVISO ${omitido.ruta}: ${omitido.errores.join("; ")}`);
+      lines.push(`AVISO ${omitido.path}: ${omitido.errores.join("; ")}`);
     }
     if (sincronizacion.avisoEmbeddings !== undefined) {
       lines.push(`AVISO ${sincronizacion.avisoEmbeddings}`);

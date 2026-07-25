@@ -9,14 +9,14 @@ function section(titulo: string, chars: number, children: DocSection[] = []): Do
   return { titulo, texto: `## ${titulo}\n\n${"x".repeat(chars)}`, children };
 }
 
-function outline(secciones: DocSection[], intro = ""): DocOutline {
-  return { titulo: "Doc de prueba", resumen: "Resumen.", intro, secciones };
+function outline(sections: DocSection[], intro = ""): DocOutline {
+  return { titulo: "Doc de prueba", resumen: "Resumen.", intro, sections };
 }
 
 describe("chunkOutline", () => {
   it("creates one chunk per H2 section when sizes are within limits", () => {
     const chunks = chunkOutline(outline([section("Contexto", 200), section("Reglas", 250)]), OPTS);
-    expect(chunks.map((c) => c.encabezado)).toEqual(["Contexto", "Reglas"]);
+    expect(chunks.map((c) => c.heading)).toEqual(["Contexto", "Reglas"]);
     expect(chunks[0]!.contenido).toContain("## Contexto");
     expect(chunks.map((c) => c.orden)).toEqual([0, 1]);
   });
@@ -26,7 +26,7 @@ describe("chunkOutline", () => {
       outline([section("Contexto", 200)], "Párrafo de resumen con contexto suficiente."),
       OPTS,
     );
-    expect(chunks[0]!.encabezado).toBe("Doc de prueba");
+    expect(chunks[0]!.heading).toBe("Doc de prueba");
     expect(chunks[0]!.contenido).toContain("Párrafo de resumen");
   });
 
@@ -37,7 +37,7 @@ describe("chunkOutline", () => {
     ]);
     big.texto = `## Reglas de negocio\n\n${"i".repeat(150)}`;
     const chunks = chunkOutline(outline([big]), OPTS);
-    expect(chunks.map((c) => c.encabezado)).toEqual([
+    expect(chunks.map((c) => c.heading)).toEqual([
       "Reglas de negocio",
       "Reglas de negocio > Campos",
       "Reglas de negocio > Duplicidad",
@@ -60,7 +60,7 @@ describe("chunkOutline", () => {
       OPTS,
     );
     expect(chunks).toHaveLength(1);
-    expect(chunks[0]!.encabezado).toBe("Contexto");
+    expect(chunks[0]!.heading).toBe("Contexto");
     expect(chunks[0]!.contenido).toContain("## Referencias");
     expect(chunks[0]!.contenido).toContain("## Notas");
   });

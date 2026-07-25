@@ -48,7 +48,7 @@ describe("resolveEtiquetas", () => {
 
 describe("aplicarCamposOpcionales", () => {
   function baseMeta(): DocumentMeta {
-    return { ruta: "a.md", titulo: "A", resumen: "R", etiquetas: [], hash: "h" };
+    return { path: "a.md", titulo: "A", resumen: "R", etiquetas: [], hash: "h" };
   }
 
   it("attaches a trimmed propietario when present", () => {

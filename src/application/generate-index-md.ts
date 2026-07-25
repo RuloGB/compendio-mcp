@@ -6,7 +6,7 @@ import type { SkippedFileReport } from "./index-documents.js";
 
 export interface IndexMdReport {
   /** Path of the index file, as resolved by the writer. */
-  ruta: string;
+  path: string;
   /** False when INDEX.md already had the generated content. */
   cambiado: boolean;
   /** Documents listed in the index. */
@@ -34,30 +34,30 @@ export class GenerateIndexMd {
     const { files, erroresLectura } = await this.source.discover();
     const entries: IndexEntry[] = [];
     const omitidos: SkippedFileReport[] = erroresLectura
-      .filter((e) => e.ruta !== INDEX_FILE)
-      .map((e) => ({ ruta: e.ruta, errores: [e.error] }));
+      .filter((e) => e.path !== INDEX_FILE)
+      .map((e) => ({ path: e.path, errores: [e.error] }));
 
     for (const file of files) {
       // The index never lists itself, even if the config exclude was overridden.
-      if (file.ruta === INDEX_FILE) continue;
+      if (file.path === INDEX_FILE) continue;
 
       let parsed;
       try {
         parsed = this.parser.parse(file.contenido);
       } catch (error) {
-        omitidos.push({ ruta: file.ruta, errores: [describeError(error)] });
+        omitidos.push({ path: file.path, errores: [describeError(error)] });
         continue;
       }
 
       const resolution = this.policy.resolver({
         data: parsed.data,
-        ruta: file.ruta,
+        path: file.path,
         titulo: parsed.outline.titulo,
         resumen: parsed.outline.resumen,
         hash: createHash("sha256").update(file.contenido, "utf8").digest("hex"),
       });
       if (!resolution.ok) {
-        omitidos.push({ ruta: file.ruta, errores: resolution.errores });
+        omitidos.push({ path: file.path, errores: resolution.errores });
         continue;
       }
       entries.push(resolution.meta);
@@ -65,7 +65,7 @@ export class GenerateIndexMd {
 
     const escrito = await this.writer.write(renderIndexMd(entries, this.comparar));
     return {
-      ruta: escrito.ruta,
+      path: escrito.path,
       cambiado: escrito.cambiado,
       documentos: entries.length,
       omitidos,

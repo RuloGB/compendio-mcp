@@ -124,10 +124,10 @@ describe("CLI subprocess: corpus commands", () => {
   it("search exits 0 and writes parseable JSON to stdout", () => {
     const run = runCli(["--root", workdir, "search", "onboarding de un servicio", "--lexico"]);
     expect(run.status).toBe(0);
-    const payload = JSON.parse(run.stdout) as { modo: string; resultados: { ruta: string }[] };
+    const payload = JSON.parse(run.stdout) as { modo: string; resultados: { path: string }[] };
     expect(payload.modo).toBe("lexico");
     expect(payload.resultados.length).toBeGreaterThan(0);
-    expect(payload.resultados.map((r) => r.ruta)).toContain("guia-onboarding.md");
+    expect(payload.resultados.map((r) => r.path)).toContain("guia-onboarding.md");
   });
 
   it("estadosExcluidos deny-list: a borrador document is hidden by default and surfaced with --todos", () => {
@@ -137,8 +137,8 @@ describe("CLI subprocess: corpus commands", () => {
     // within the fixture (checked against the other 4 docs' prose).
     const denied = runCli(["--root", workdir, "search", "plan de pruebas alertas", "--lexico"]);
     expect(denied.status).toBe(0);
-    const deniedPayload = JSON.parse(denied.stdout) as { resultados: { ruta: string }[] };
-    expect(deniedPayload.resultados.map((r) => r.ruta)).not.toContain("plan-pruebas-alertas.md");
+    const deniedPayload = JSON.parse(denied.stdout) as { resultados: { path: string }[] };
+    expect(deniedPayload.resultados.map((r) => r.path)).not.toContain("plan-pruebas-alertas.md");
 
     const allowed = runCli([
       "--root",
@@ -149,8 +149,8 @@ describe("CLI subprocess: corpus commands", () => {
       "--todos",
     ]);
     expect(allowed.status).toBe(0);
-    const allowedPayload = JSON.parse(allowed.stdout) as { resultados: { ruta: string }[] };
-    expect(allowedPayload.resultados.map((r) => r.ruta)).toContain("plan-pruebas-alertas.md");
+    const allowedPayload = JSON.parse(allowed.stdout) as { resultados: { path: string }[] };
+    expect(allowedPayload.resultados.map((r) => r.path)).toContain("plan-pruebas-alertas.md");
   });
 });
 
@@ -198,8 +198,8 @@ describe("CLI subprocess: invoked through a link (npx / global install)", () => 
     // command parsed nothing and did nothing. Assert on the output.
     expect(run.status).toBe(0);
     expect(run.stdout.trim().length).toBeGreaterThan(0);
-    const payload = JSON.parse(run.stdout) as { resultados: { ruta: string }[] };
-    expect(payload.resultados.map((r) => r.ruta)).toContain("guia-onboarding.md");
+    const payload = JSON.parse(run.stdout) as { resultados: { path: string }[] };
+    expect(payload.resultados.map((r) => r.path)).toContain("guia-onboarding.md");
   });
 
   it("reports --version through the link too", (ctx) => {

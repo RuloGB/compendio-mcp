@@ -58,7 +58,7 @@ export function transformFile(
 
   const resolution = policy.resolver({
     data: parsed.data,
-    ruta: file.ruta,
+    path: file.path,
     titulo: parsed.outline.titulo,
     resumen: parsed.outline.resumen,
     hash,
@@ -68,7 +68,7 @@ export function transformFile(
     return { ok: false, errores: resolution.errores };
   }
 
-  const chunks = isSinChunking(file.ruta, options.sinChunking)
+  const chunks = isSinChunking(file.path, options.sinChunking)
     ? wholeDocumentChunk(resolution.meta.titulo, parsed.body)
     : chunkOutline(parsed.outline, options.chunking);
 
@@ -79,13 +79,13 @@ export function transformFile(
   return { ok: true, meta: resolution.meta, chunks };
 }
 
-function isSinChunking(ruta: string, sinChunking: string[]): boolean {
-  const basename = ruta.split("/").pop() ?? ruta;
-  return sinChunking.some((entry) => entry === ruta || entry === basename);
+function isSinChunking(path: string, sinChunking: string[]): boolean {
+  const basename = path.split("/").pop() ?? path;
+  return sinChunking.some((entry) => entry === path || entry === basename);
 }
 
 function wholeDocumentChunk(titulo: string, body: string): Chunk[] {
   const contenido = body.trim();
   if (contenido.length === 0) return [];
-  return [{ encabezado: titulo, contenido, orden: 0 }];
+  return [{ heading: titulo, contenido, orden: 0 }];
 }

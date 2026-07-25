@@ -29,7 +29,7 @@ function cfgEstricto(overrides: Partial<ConvencionConfig> = {}): ConvencionConfi
 }
 
 const BASE_INPUT = {
-  ruta: "auth/login.md",
+  path: "auth/login.md",
   titulo: "Iniciar sesion",
   resumen: "Como iniciar sesion.",
   hash: "abc123",
@@ -46,11 +46,11 @@ describe("humanizarNombreArchivo", () => {
 });
 
 describe("inferirModulo", () => {
-  it("returns the first POSIX segment when ruta contains a slash", () => {
+  it("returns the first POSIX segment when path contains a slash", () => {
     expect(inferirModulo("auth/login.md")).toBe("auth");
   });
 
-  it("returns undefined for a root-level ruta with no slash", () => {
+  it("returns undefined for a root-level path with no slash", () => {
     expect(inferirModulo("readme.md")).toBeUndefined();
   });
 });
@@ -82,7 +82,7 @@ describe("crearConvencionPolicy — libre", () => {
 
   it("leaves modulo absent for a root-level file", () => {
     const policy = crearConvencionPolicy(cfgLibre());
-    const result = policy.resolver({ ...BASE_INPUT, ruta: "readme.md", data: {} });
+    const result = policy.resolver({ ...BASE_INPUT, path: "readme.md", data: {} });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.meta.modulo).toBeUndefined();
@@ -233,28 +233,28 @@ describe("crearConvencionPolicy — camposFrontmatter", () => {
 });
 
 describe("crearComparadorIndice", () => {
-  function entry(ruta: string, tipo: string): IndexEntry {
-    return { ruta, titulo: "t", resumen: "r", tipo: tipo as never, estado: "vigente" as never };
+  function entry(path: string, tipo: string): IndexEntry {
+    return { path, titulo: "t", resumen: "r", tipo: tipo as never, estado: "vigente" as never };
   }
 
-  it("defaults to alphabetical order by ruta", () => {
+  it("defaults to alphabetical order by path", () => {
     const comparar = crearComparadorIndice(cfgLibre());
     const entries = [entry("b.md", "guia"), entry("a.md", "guia")];
     const sorted = [...entries].sort(comparar);
-    expect(sorted.map((e) => e.ruta)).toEqual(["a.md", "b.md"]);
+    expect(sorted.map((e) => e.path)).toEqual(["a.md", "b.md"]);
   });
 
-  it("under estricto with declared tipos, sorts by declared order then alphabetically by ruta", () => {
+  it("under estricto with declared tipos, sorts by declared order then alphabetically by path", () => {
     const comparar = crearComparadorIndice(cfgEstricto({ tipos: ["guia", "adr"] }));
     const entries = [entry("z.md", "adr"), entry("b.md", "guia"), entry("a.md", "guia")];
     const sorted = [...entries].sort(comparar);
-    expect(sorted.map((e) => e.ruta)).toEqual(["a.md", "b.md", "z.md"]);
+    expect(sorted.map((e) => e.path)).toEqual(["a.md", "b.md", "z.md"]);
   });
 
   it("falls back to alphabetical order when estricto has no declared tipos", () => {
     const comparar = crearComparadorIndice(cfgEstricto());
     const entries = [entry("b.md", "guia"), entry("a.md", "adr")];
     const sorted = [...entries].sort(comparar);
-    expect(sorted.map((e) => e.ruta)).toEqual(["a.md", "b.md"]);
+    expect(sorted.map((e) => e.path)).toEqual(["a.md", "b.md"]);
   });
 });

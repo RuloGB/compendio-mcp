@@ -135,7 +135,7 @@ describe("SyncScheduler — lastReport", () => {
   });
 
   it("reflects the last known-good pass after a successful sync", async () => {
-    const report = fakeReport({ omitidos: [{ ruta: "a.md", errores: ["x"] }] });
+    const report = fakeReport({ omitidos: [{ path: "a.md", errores: ["x"] }] });
     const execute = vi.fn().mockResolvedValue(report);
     const scheduler = new SyncScheduler(fakeSyncer(execute), 1000, () => 0);
 

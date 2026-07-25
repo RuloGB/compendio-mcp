@@ -6,7 +6,7 @@
 /** Metadata of an indexed markdown document (one per .md file). */
 export interface DocumentMeta {
   /** Path relative to the docs directory, POSIX separators. */
-  ruta: string;
+  path: string;
   /** H1 title. */
   titulo: string;
   /** First paragraph after the H1. */
@@ -27,7 +27,7 @@ export interface DocumentMeta {
 /** A section-level fragment of a document (one per H2/H3, after merging). */
 export interface Chunk {
   /** Heading path, e.g. "Reglas de negocio > Reglas de duplicidad". */
-  encabezado: string;
+  heading: string;
   /** Raw markdown of the section, including its heading line. */
   contenido: string;
   /** Position of the chunk within the document. */
@@ -55,9 +55,9 @@ export interface SearchFilters {
 }
 
 export interface SearchResultItem {
-  ruta: string;
+  path: string;
   titulo: string;
-  seccion: string;
+  section: string;
   extracto: string;
   /** Absent when the document has no estado (never rendered as "" or a placeholder). */
   estado?: string;

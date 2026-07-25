@@ -17,7 +17,7 @@ describe("ReadDocument over the ejemplos corpus", () => {
   });
 
   it("returns the full document with its H1 restored", () => {
-    const result = harness.read.execute({ ruta: "leadsviewer/validacion-formulario.md" });
+    const result = harness.read.execute({ path: "leadsviewer/validacion-formulario.md" });
     expect(result.tipo).toBe("documento");
     if (result.tipo !== "documento") return;
     expect(result.contenido.startsWith("# Validación del formulario de alta de leads")).toBe(true);
@@ -27,7 +27,7 @@ describe("ReadDocument over the ejemplos corpus", () => {
   });
 
   it("does not duplicate the H1 of documents indexed as a single chunk", () => {
-    const result = harness.read.execute({ ruta: "glosario.md" });
+    const result = harness.read.execute({ path: "glosario.md" });
     expect(result.tipo).toBe("documento");
     if (result.tipo !== "documento") return;
     expect(result.contenido.match(/^# Glosario/gm)).toHaveLength(1);
@@ -35,16 +35,16 @@ describe("ReadDocument over the ejemplos corpus", () => {
 
   it("finds a section by partial, accent-insensitive heading", () => {
     const result = harness.read.execute({
-      ruta: "leadsviewer/validacion-formulario.md",
-      seccion: "reglas de duplicidad",
+      path: "leadsviewer/validacion-formulario.md",
+      section: "reglas de duplicidad",
     });
     expect(result.tipo).toBe("seccion");
     if (result.tipo !== "seccion") return;
     expect(result.contenido).toContain("Un lead se considera duplicado");
   });
 
-  it("suggests the 3 closest paths when the ruta does not exist", () => {
-    const result = harness.read.execute({ ruta: "leadsviewer/validacion-formulari.md" });
+  it("suggests the 3 closest paths when the path does not exist", () => {
+    const result = harness.read.execute({ path: "leadsviewer/validacion-formulari.md" });
     expect(result.tipo).toBe("ruta-no-encontrada");
     if (result.tipo !== "ruta-no-encontrada") return;
     expect(result.sugerencias).toHaveLength(3);
@@ -53,18 +53,18 @@ describe("ReadDocument over the ejemplos corpus", () => {
 
   it("lists available sections when the requested one does not exist", () => {
     const result = harness.read.execute({
-      ruta: "leadsviewer/validacion-formulario.md",
-      seccion: "seccion inventada",
+      path: "leadsviewer/validacion-formulario.md",
+      section: "seccion inventada",
     });
     expect(result.tipo).toBe("seccion-no-encontrada");
     if (result.tipo !== "seccion-no-encontrada") return;
-    expect(result.seccionesDisponibles.length).toBeGreaterThan(0);
+    expect(result.availableSections.length).toBeGreaterThan(0);
   });
 });
 
 describe("formatFrontmatter — conditional rendering of absent fields", () => {
   function baseMeta(overrides: Partial<DocumentMeta> = {}): DocumentMeta {
-    return { ruta: "a.md", titulo: "A", resumen: "r", etiquetas: [], hash: "h", ...overrides };
+    return { path: "a.md", titulo: "A", resumen: "r", etiquetas: [], hash: "h", ...overrides };
   }
 
   it("renders all three lines when tipo/modulo/estado are present", () => {

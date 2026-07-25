@@ -67,9 +67,9 @@ export class SearchDocuments {
       const doc = documents.get(chunk.documentId);
       if (doc === undefined) continue;
       const item: SearchResultItem = {
-        ruta: doc.ruta,
+        path: doc.path,
         titulo: doc.titulo,
-        seccion: chunk.encabezado,
+        section: chunk.heading,
         extracto: buildExcerpt(chunk.contenido),
         score: Number(entry.score.toFixed(4)),
       };

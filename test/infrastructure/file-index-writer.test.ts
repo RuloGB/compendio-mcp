@@ -19,7 +19,7 @@ describe("FileIndexWriter", () => {
     const writer = new FileIndexWriter(dir, "INDEX.md");
     const result = await writer.write("# Índice\n");
     expect(result.cambiado).toBe(true);
-    expect(result.ruta).toBe(join(dir, "INDEX.md"));
+    expect(result.path).toBe(join(dir, "INDEX.md"));
     expect(await readFile(join(dir, "INDEX.md"), "utf8")).toBe("# Índice\n");
   });
 

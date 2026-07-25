@@ -108,8 +108,8 @@ describe("loadConfig", () => {
 
     const store = new SqliteIndexStore(":memory:");
     store.saveDocument(
-      { ruta: "a.md", titulo: "A", resumen: "r", estado: "borrador", etiquetas: [], hash: "h" },
-      [{ encabezado: "A", contenido: "contenido de prueba unico irrepetible", orden: 0 }],
+      { path: "a.md", titulo: "A", resumen: "r", estado: "borrador", etiquetas: [], hash: "h" },
+      [{ heading: "A", contenido: "contenido de prueba unico irrepetible", orden: 0 }],
     );
     // Mirrors composition.ts's wiring: SearchDefaults comes from
     // config.convencion.estadosExcluidos (default []), never config.search.
@@ -118,7 +118,7 @@ describe("loadConfig", () => {
       estadosExcluidos: config.convencion.estadosExcluidos,
     });
     const response = await search.execute({ query: "contenido de prueba unico irrepetible" });
-    expect(response.resultados.map((r) => r.ruta)).toContain("a.md");
+    expect(response.resultados.map((r) => r.path)).toContain("a.md");
 
     store.close();
     await rm(projectDir, { recursive: true, force: true });

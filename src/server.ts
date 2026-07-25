@@ -44,7 +44,7 @@ export function createMcpServer(container: Container): McpServer {
       title: "Mapa de la documentacion",
       description:
         "Devuelve el mapa del corpus documental: recuento por tipo y modulo, y una linea por " +
-        "documento ([tipo] ruta — resumen (estado)). Es el primer paso recomendado antes de buscar.",
+        "documento ([tipo] path — resumen (estado)). Es el primer paso recomendado antes de buscar.",
       inputSchema: {},
     },
     async () => {
@@ -61,8 +61,8 @@ export function createMcpServer(container: Container): McpServer {
       title: "Busqueda en la documentacion",
       description:
         "Busqueda hibrida (lexica BM25 + semantica) en lenguaje natural sobre la documentacion " +
-        "del proyecto, con filtros por metadatos. Devuelve fragmentos compactos (ruta, seccion, " +
-        "extracto); usa read_doc para leer una seccion completa. Si el proyecto declara " +
+        "del proyecto, con filtros por metadatos. Devuelve fragmentos compactos (path, section, " +
+        "extracto); usa read_doc para leer una section completa. Si el proyecto declara " +
         "convencion.estadosExcluidos, los documentos en esos estados quedan fuera salvo " +
         "incluir_no_vigentes; si no lo declara, no se excluye ningun documento por su estado.",
       inputSchema: {
@@ -98,20 +98,20 @@ export function createMcpServer(container: Container): McpServer {
     {
       title: "Lectura de un documento",
       description:
-        "Devuelve una seccion concreta de un documento (o el documento completo si no se indica " +
-        "seccion), con su frontmatter. Si la ruta no existe, responde con las 3 rutas mas parecidas.",
+        "Devuelve una section concreta de un documento (o el documento completo si no se indica " +
+        "section), con su frontmatter. Si la path no existe, responde con las 3 paths mas parecidas.",
       inputSchema: {
-        ruta: z.string().min(1).describe("Ruta del documento relativa al directorio de docs"),
+        ruta: z.string().min(1).describe("Path del documento relativa al directorio de docs"),
         seccion: z
           .string()
           .optional()
-          .describe("Encabezado (o parte) de la seccion a leer, p. ej. 'Reglas de negocio'"),
+          .describe("Heading (o parte) de la section a leer, p. ej. 'Reglas de negocio'"),
       },
     },
     async (args) => {
       await container.syncScheduler.maybeSync();
-      const request: { ruta: string; seccion?: string } = { ruta: args.ruta };
-      if (args.seccion !== undefined) request.seccion = args.seccion;
+      const request: { path: string; section?: string } = { path: args.ruta };
+      if (args.seccion !== undefined) request.section = args.seccion;
       const result = container.readDocument.execute(request);
       return { content: [{ type: "text", text: formatReadResult(result) }] };
     },
@@ -130,15 +130,15 @@ function formatReadResult(
       return `${formatFrontmatter(result.meta)}\n\n${result.contenido}`;
     case "ruta-no-encontrada":
       return [
-        `No existe ningun documento indexado con la ruta "${result.ruta}".`,
-        "Rutas mas parecidas:",
+        `No existe ningun documento indexado con la path "${result.path}".`,
+        "Paths mas parecidas:",
         ...result.sugerencias.map((s) => `- ${s}`),
       ].join("\n");
     case "seccion-no-encontrada":
       return [
-        `El documento "${result.meta.ruta}" no tiene ninguna seccion que coincida con "${result.seccion}".`,
-        "Secciones disponibles:",
-        ...result.seccionesDisponibles.map((s) => `- ${s}`),
+        `El documento "${result.meta.path}" no tiene ninguna section que coincida con "${result.section}".`,
+        "Available sections:",
+        ...result.availableSections.map((s) => `- ${s}`),
       ].join("\n");
   }
 }

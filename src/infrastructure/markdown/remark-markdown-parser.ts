@@ -67,7 +67,7 @@ function buildOutline(
   const introEnd = firstH2?.start ?? body.length;
   const intro = body.slice(parsed.h1End, introEnd).trim();
 
-  const secciones: DocSection[] = [];
+  const sections: DocSection[] = [];
   for (let i = 0; i < headings.length; i++) {
     const heading = headings[i]!;
     if (heading.depth !== 2) continue;
@@ -89,14 +89,14 @@ function buildOutline(
       });
     }
 
-    secciones.push({
+    sections.push({
       titulo: heading.titulo,
       texto: body.slice(heading.start, ownEnd).trim(),
       children,
     });
   }
 
-  return { titulo: parsed.titulo, resumen: parsed.resumen, intro, secciones };
+  return { titulo: parsed.titulo, resumen: parsed.resumen, intro, sections };
 }
 
 /** Offset where the next heading of the given depth starts, from `from`. */

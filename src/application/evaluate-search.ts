@@ -45,7 +45,7 @@ export class EvaluateSearch {
         k: k * CHUNK_FETCH_FACTOR,
         forzarLexico,
       });
-      const rankedDocs = uniqueInOrder(response.resultados.map((r) => r.ruta));
+      const rankedDocs = uniqueInOrder(response.resultados.map((r) => r.path));
       const index = rankedDocs.indexOf(normalizePath(caso.esperado));
       outcomes.push({ ...caso, posicion: index === -1 ? null : index + 1 });
     }
@@ -53,10 +53,10 @@ export class EvaluateSearch {
   }
 }
 
-function uniqueInOrder(rutas: string[]): string[] {
-  return [...new Set(rutas.map(normalizePath))];
+function uniqueInOrder(paths: string[]): string[] {
+  return [...new Set(paths.map(normalizePath))];
 }
 
-function normalizePath(ruta: string): string {
-  return ruta.replaceAll("\\", "/").trim();
+function normalizePath(path: string): string {
+  return path.replaceAll("\\", "/").trim();
 }

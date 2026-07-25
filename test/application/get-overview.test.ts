@@ -16,25 +16,25 @@ function fakeReport(overrides: Partial<SyncReport> = {}): SyncReport {
   };
 }
 
-function seed(store: SqliteIndexStore, overrides: Partial<DocumentMeta> & { ruta: string }): void {
+function seed(store: SqliteIndexStore, overrides: Partial<DocumentMeta> & { path: string }): void {
   const meta: DocumentMeta = {
-    ruta: overrides.ruta,
-    titulo: overrides.titulo ?? overrides.ruta,
+    path: overrides.path,
+    titulo: overrides.titulo ?? overrides.path,
     resumen: overrides.resumen ?? "contenido",
     etiquetas: overrides.etiquetas ?? [],
-    hash: overrides.hash ?? overrides.ruta,
+    hash: overrides.hash ?? overrides.path,
     ...(overrides.tipo !== undefined ? { tipo: overrides.tipo } : {}),
     ...(overrides.modulo !== undefined ? { modulo: overrides.modulo } : {}),
     ...(overrides.estado !== undefined ? { estado: overrides.estado } : {}),
   };
-  store.saveDocument(meta, [{ encabezado: "H", contenido: "contenido", orden: 0 }]);
+  store.saveDocument(meta, [{ heading: "H", contenido: "contenido", orden: 0 }]);
 }
 
 describe("GetOverview — empty taxonomy omission", () => {
   it("omits the 'Por tipo:' and 'Por modulo:' lines when no document defines them", () => {
     const store = new SqliteIndexStore(":memory:");
-    seed(store, { ruta: "a.md" });
-    seed(store, { ruta: "b.md" });
+    seed(store, { path: "a.md" });
+    seed(store, { path: "b.md" });
 
     const overview = new GetOverview(store).execute();
     expect(overview.porTipo).toEqual({});
@@ -50,8 +50,8 @@ describe("GetOverview — empty taxonomy omission", () => {
 describe("GetOverview — partial tipo coverage", () => {
   it("counts only documents that define tipo, with no synthetic bucket", () => {
     const store = new SqliteIndexStore(":memory:");
-    seed(store, { ruta: "a.md", tipo: "guia" });
-    seed(store, { ruta: "b.md" }); // no tipo
+    seed(store, { path: "a.md", tipo: "guia" });
+    seed(store, { path: "b.md" }); // no tipo
 
     const overview = new GetOverview(store).execute();
     expect(overview.porTipo).toEqual({ guia: 1 });
@@ -65,14 +65,14 @@ describe("GetOverview — partial tipo coverage", () => {
 });
 
 describe("GetOverview — per-document line ordering and segment omission", () => {
-  it("orders lines alphabetically by ruta and omits absent tipo/estado segments", () => {
+  it("orders lines alphabetically by path and omits absent tipo/estado segments", () => {
     const store = new SqliteIndexStore(":memory:");
-    seed(store, { ruta: "z.md", tipo: "guia", estado: "vigente" });
-    seed(store, { ruta: "a.md" }); // no tipo, no estado
-    seed(store, { ruta: "m.md", tipo: "adr" }); // tipo only
+    seed(store, { path: "z.md", tipo: "guia", estado: "vigente" });
+    seed(store, { path: "a.md" }); // no tipo, no estado
+    seed(store, { path: "m.md", tipo: "adr" }); // tipo only
 
     const overview = new GetOverview(store).execute();
-    expect(overview.documentos.map((d) => d.ruta)).toEqual(["a.md", "m.md", "z.md"]);
+    expect(overview.documentos.map((d) => d.path)).toEqual(["a.md", "m.md", "z.md"]);
 
     const salida = formatOverview(overview);
     const lineas = salida.split("\n").filter((l) => l.startsWith("- "));
@@ -87,7 +87,7 @@ describe("GetOverview resumen fallback", () => {
   it("shows the title when the document has no intro paragraph", () => {
     const store = new SqliteIndexStore(":memory:");
     const meta: DocumentMeta = {
-      ruta: "guias/transversal-sin-resumen.md",
+      path: "guias/transversal-sin-resumen.md",
       titulo: "Guía sin resumen",
       resumen: "",
       tipo: "guia",
@@ -96,7 +96,7 @@ describe("GetOverview resumen fallback", () => {
       etiquetas: [],
       hash: "abc",
     };
-    store.saveDocument(meta, [{ encabezado: "Sección", contenido: "## Sección\n\nTexto.", orden: 0 }]);
+    store.saveDocument(meta, [{ heading: "Sección", contenido: "## Sección\n\nTexto.", orden: 0 }]);
 
     const overview = new GetOverview(store).execute();
     expect(overview.documentos[0]!.resumen).toBe("Guía sin resumen");
@@ -118,8 +118,8 @@ describe("toSincronizacionInfo — content-based omission", () => {
   });
 
   it("surfaces omitidos when the most recent pass skipped a document", () => {
-    const report = fakeReport({ omitidos: [{ ruta: "a.md", errores: ["motivo"] }] });
-    expect(toSincronizacionInfo(report)).toEqual({ omitidos: [{ ruta: "a.md", errores: ["motivo"] }] });
+    const report = fakeReport({ omitidos: [{ path: "a.md", errores: ["motivo"] }] });
+    expect(toSincronizacionInfo(report)).toEqual({ omitidos: [{ path: "a.md", errores: ["motivo"] }] });
   });
 
   it("surfaces avisoEmbeddings when the most recent pass degraded to lexical-only", () => {
@@ -134,7 +134,7 @@ describe("toSincronizacionInfo — content-based omission", () => {
 describe("formatOverview — sincronizacion block", () => {
   it("omits the block entirely when sincronizacion is null or undefined", () => {
     const store = new SqliteIndexStore(":memory:");
-    seed(store, { ruta: "a.md" });
+    seed(store, { path: "a.md" });
     const overview = new GetOverview(store).execute();
 
     expect(formatOverview(overview)).not.toContain("Sincronizacion");
@@ -145,11 +145,11 @@ describe("formatOverview — sincronizacion block", () => {
 
   it("renders omitidos and avisoEmbeddings when sincronizacion has content", () => {
     const store = new SqliteIndexStore(":memory:");
-    seed(store, { ruta: "a.md" });
+    seed(store, { path: "a.md" });
     const overview = new GetOverview(store).execute();
 
     const salida = formatOverview(overview, {
-      omitidos: [{ ruta: "roto.md", errores: ["permiso denegado"] }],
+      omitidos: [{ path: "roto.md", errores: ["permiso denegado"] }],
       avisoEmbeddings: "embeddings no disponibles: busqueda en modo lexico",
     });
 

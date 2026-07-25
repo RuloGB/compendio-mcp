@@ -6,7 +6,7 @@ export const INDEX_FILE = "INDEX.md";
 export const MAX_RESUMEN_CHARS = 140;
 
 /** The subset of document metadata the index line needs. */
-export type IndexEntry = Pick<DocumentMeta, "ruta" | "titulo" | "resumen" | "tipo" | "estado">;
+export type IndexEntry = Pick<DocumentMeta, "path" | "titulo" | "resumen" | "tipo" | "estado">;
 
 const TITULO_INDICE = "# Índice de la documentación";
 const AVISO_GENERADO =
@@ -32,23 +32,23 @@ export function displayResumen(doc: { resumen: string; titulo: string }): string
  */
 export function formatDocLine(doc: {
   tipo: string | undefined;
-  ruta: string;
+  path: string;
   resumen: string;
   estado: string | undefined;
 }): string {
   const tipoSegment = doc.tipo !== undefined ? `[${doc.tipo}] ` : "";
   const estadoSegment = doc.estado !== undefined ? ` (${doc.estado})` : "";
-  return `- ${tipoSegment}${doc.ruta} — ${doc.resumen}${estadoSegment}`;
+  return `- ${tipoSegment}${doc.path} — ${doc.resumen}${estadoSegment}`;
 }
 
-/** Default ordering: alphabetical by `ruta` (the zero-config/libre default). */
+/** Default ordering: alphabetical by `path` (the zero-config/libre default). */
 function compararAlfabetico(a: IndexEntry, b: IndexEntry): number {
-  return a.ruta.localeCompare(b.ruta);
+  return a.path.localeCompare(b.path);
 }
 
 /**
  * Renders INDEX.md: one line per document. Ordering is delegated to an
- * injectable comparator (default = alphabetical by `ruta`); pass the
+ * injectable comparator (default = alphabetical by `path`); pass the
  * `estricto` declared-taxonomy comparator from `crearComparadorIndice` to
  * order by the declared `tipos` sequence instead.
  */
@@ -59,7 +59,7 @@ export function renderIndexMd(
   const lines = [...docs].sort(comparar).map((doc) =>
     formatDocLine({
       tipo: doc.tipo,
-      ruta: doc.ruta,
+      path: doc.path,
       resumen: displayResumen(doc),
       estado: doc.estado,
     }),

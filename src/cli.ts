@@ -37,7 +37,7 @@ program
       async (container) => {
         const report = await container.indexDocuments.execute();
         for (const omitido of report.omitidos) {
-          console.warn(`AVISO ${omitido.ruta}: ${omitido.errores.join("; ")}`);
+          console.warn(`AVISO ${omitido.path}: ${omitido.errores.join("; ")}`);
         }
         if (report.avisoEmbeddings !== undefined) {
           console.warn(`AVISO ${report.avisoEmbeddings}`);
@@ -62,11 +62,11 @@ program
       const report = await container.generateIndexMd.execute();
       for (const omitido of report.omitidos) {
         console.warn(
-          `AVISO ${omitido.ruta}: ${omitido.errores.join("; ")} (no aparece en INDEX.md)`,
+          `AVISO ${omitido.path}: ${omitido.errores.join("; ")} (no aparece en INDEX.md)`,
         );
       }
       const resultado = report.cambiado ? "actualizado" : "sin cambios";
-      console.log(`INDEX.md ${resultado}: ${report.documentos} documentos en ${report.ruta}`);
+      console.log(`INDEX.md ${resultado}: ${report.documentos} documentos en ${report.path}`);
     });
   });
 

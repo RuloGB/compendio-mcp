@@ -14,10 +14,10 @@ export class FileIndexWriter implements IndexFileWriter {
   ) {}
 
   async write(contenido: string): Promise<IndexWriteResult> {
-    const ruta = join(this.docsDir, this.fileName);
+    const path = join(this.docsDir, this.fileName);
     let existente: string | null = null;
     try {
-      existente = await readFile(ruta, "utf8");
+      existente = await readFile(path, "utf8");
     } catch {
       // First generation: the file does not exist yet.
     }
@@ -25,10 +25,10 @@ export class FileIndexWriter implements IndexFileWriter {
     // same content modulo EOL means up to date — rewriting would only churn
     // mtimes and report a phantom change.
     if (existente !== null && normalizeEol(existente) === contenido) {
-      return { ruta, cambiado: false };
+      return { path, cambiado: false };
     }
-    await writeFile(ruta, contenido, "utf8");
-    return { ruta, cambiado: true };
+    await writeFile(path, contenido, "utf8");
+    return { path, cambiado: true };
   }
 }
 

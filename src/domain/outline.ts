@@ -19,5 +19,5 @@ export interface DocOutline {
   /** Raw markdown between the H1 line and the first H2 (excludes the H1 line). */
   intro: string;
   /** H2-level sections, each with its H3 children. Deeper headings stay inline. */
-  secciones: DocSection[];
+  sections: DocSection[];
 }

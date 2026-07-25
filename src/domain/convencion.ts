@@ -36,14 +36,14 @@ function leerCampo(data: Record<string, unknown>, key: string): string | undefin
 }
 
 /** First POSIX path segment, i.e. the folder-derived modulo; undefined for root-level files. */
-export function inferirModulo(ruta: string): string | undefined {
-  const idx = ruta.indexOf("/");
-  return idx === -1 ? undefined : ruta.slice(0, idx);
+export function inferirModulo(path: string): string | undefined {
+  const idx = path.indexOf("/");
+  return idx === -1 ? undefined : path.slice(0, idx);
 }
 
 /** Basename minus `.md`, `-`/`_` -> space, collapse+trim whitespace, sentence-case the first character. */
-export function humanizarNombreArchivo(ruta: string): string {
-  const base = ruta.split("/").pop() ?? ruta;
+export function humanizarNombreArchivo(path: string): string {
+  const base = path.split("/").pop() ?? path;
   const sinExtension = base.endsWith(".md") ? base.slice(0, -3) : base;
   const colapsado = sinExtension.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
   if (colapsado.length === 0) return colapsado;
@@ -65,13 +65,13 @@ function crearPoliticaLibre(cfg: ConvencionConfig): ConvencionPolicy {
 
       const titulo = isNonEmptyString(input.titulo)
         ? input.titulo.trim()
-        : humanizarNombreArchivo(input.ruta);
+        : humanizarNombreArchivo(input.path);
       const tipo = leerCampo(data, cfg.camposFrontmatter.tipo);
       const estado = leerCampo(data, cfg.camposFrontmatter.estado);
-      const modulo = leerCampo(data, cfg.camposFrontmatter.modulo) ?? inferirModulo(input.ruta);
+      const modulo = leerCampo(data, cfg.camposFrontmatter.modulo) ?? inferirModulo(input.path);
 
       const meta: DocumentMeta = {
-        ruta: input.ruta,
+        path: input.path,
         titulo,
         resumen: input.resumen.trim(),
         etiquetas: etiquetasResult.etiquetas,
@@ -127,7 +127,7 @@ function crearPoliticaEstricta(cfg: ConvencionConfig): ConvencionPolicy {
       }
 
       const meta: DocumentMeta = {
-        ruta: input.ruta,
+        path: input.path,
         titulo: input.titulo.trim(),
         resumen: input.resumen.trim(),
         etiquetas: etiquetasResult.etiquetas,
@@ -149,8 +149,8 @@ export function crearConvencionPolicy(cfg: ConvencionConfig): ConvencionPolicy {
 
 /**
  * Builds the INDEX.md / docs_overview ordering comparator: default
- * alphabetical by `ruta`; under `estricto` with a declared `tipos` taxonomy,
- * declared-order-then-alphabetical-by-`ruta` tie-break.
+ * alphabetical by `path`; under `estricto` with a declared `tipos` taxonomy,
+ * declared-order-then-alphabetical-by-`path` tie-break.
  */
 export function crearComparadorIndice(
   cfg: ConvencionConfig,
@@ -160,8 +160,8 @@ export function crearComparadorIndice(
     return (a, b) => {
       const diff = tipos.indexOf(a.tipo ?? "") - tipos.indexOf(b.tipo ?? "");
       if (diff !== 0) return diff;
-      return a.ruta.localeCompare(b.ruta);
+      return a.path.localeCompare(b.path);
     };
   }
-  return (a, b) => a.ruta.localeCompare(b.ruta);
+  return (a, b) => a.path.localeCompare(b.path);
 }

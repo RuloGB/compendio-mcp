@@ -18,7 +18,7 @@ export class FileDocumentSource implements DocumentSource {
     const files: DocumentFile[] = [];
     const erroresLectura: ReadError[] = [];
     await this.walk(this.docsDir, "", files, erroresLectura);
-    files.sort((a, b) => a.ruta.localeCompare(b.ruta));
+    files.sort((a, b) => a.path.localeCompare(b.path));
     return { files, erroresLectura };
   }
 
@@ -38,27 +38,27 @@ export class FileDocumentSource implements DocumentSource {
             (error instanceof Error ? error.message : String(error)),
         );
       }
-      erroresLectura.push({ ruta: prefix, error: error instanceof Error ? error.message : String(error) });
+      erroresLectura.push({ path: prefix, error: error instanceof Error ? error.message : String(error) });
       return;
     }
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
-      const ruta = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
       if (entry.isDirectory()) {
-        await this.walk(join(dir, entry.name), ruta, out, erroresLectura);
+        await this.walk(join(dir, entry.name), path, out, erroresLectura);
         continue;
       }
       if (!entry.name.toLowerCase().endsWith(".md")) continue;
-      if (this.isExcluded(ruta, entry.name)) continue;
+      if (this.isExcluded(path, entry.name)) continue;
       try {
-        out.push({ ruta, contenido: await readFile(join(dir, entry.name), "utf8") });
+        out.push({ path, contenido: await readFile(join(dir, entry.name), "utf8") });
       } catch (error) {
-        erroresLectura.push({ ruta, error: error instanceof Error ? error.message : String(error) });
+        erroresLectura.push({ path, error: error instanceof Error ? error.message : String(error) });
       }
     }
   }
 
-  private isExcluded(ruta: string, basename: string): boolean {
-    return this.exclude.some((entry) => entry === ruta || entry === basename);
+  private isExcluded(path: string, basename: string): boolean {
+    return this.exclude.some((entry) => entry === path || entry === basename);
   }
 }

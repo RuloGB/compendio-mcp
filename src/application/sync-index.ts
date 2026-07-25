@@ -29,22 +29,22 @@ interface PassState {
   indexados: IndexedFileReport[];
   omitidos: SkippedFileReport[];
   eliminados: string[];
-  /** Rutas whose hash matched the persisted value this pass — the set the
+  /** Paths whose hash matched the persisted value this pass — the set the
    * vector-coverage reconciliation phase is restricted to. */
-  hashMatchRutas: Set<string>;
+  hashMatchPaths: Set<string>;
   avisoEmbeddings?: string;
 }
 
 /**
  * Incremental sync pass: diffs the discovered corpus against the persisted
- * index by `ruta`+`hash` (`IndexStore.listDocuments()`), so only new,
+ * index by `path`+`hash` (`IndexStore.listDocuments()`), so only new,
  * changed, or deleted documents do work. Three augmentation rules, all owned
  * here (see design.md's "SyncIndex" decisions):
  *
- * 1. Read failures (`erroresLectura`) exclude both the reported `ruta` and
- *    every indexed `ruta` beneath it from the delete-candidate set.
- * 2. Under `estricto`, a resolver rejection on an already-indexed `ruta`
- *    deletes that stale row; on a brand-new `ruta` it is a plain skip.
+ * 1. Read failures (`erroresLectura`) exclude both the reported `path` and
+ *    every indexed `path` beneath it from the delete-candidate set.
+ * 2. Under `estricto`, a resolver rejection on an already-indexed `path`
+ *    deletes that stale row; on a brand-new `path` it is a plain skip.
  * 3. Vector-coverage reconciliation is chunk-granular
  *    (`listChunksMissingVectors()`), restricted to this pass's hash-match
  *    set, and written with the idempotent `replaceEmbeddings`.
@@ -70,9 +70,9 @@ export class SyncIndex {
 
     const state: PassState = {
       indexados: [],
-      omitidos: erroresLectura.map((e) => ({ ruta: e.ruta, errores: [e.error] })),
+      omitidos: erroresLectura.map((e) => ({ path: e.path, errores: [e.error] })),
       eliminados: [],
-      hashMatchRutas: new Set(),
+      hashMatchPaths: new Set(),
     };
 
     await this.processNewAndChanged(files, existing, state);
@@ -94,29 +94,29 @@ export class SyncIndex {
 
   /** New/changed documents: embeds each document's own chunks first, then
    * commits via `upsertDocument` (documents+chunks+fts+vectors together, one
-   * transaction). A resolver rejection on a known ruta deletes the stale
-   * row; on a new ruta it is a plain skip. */
+   * transaction). A resolver rejection on a known path deletes the stale
+   * row; on a new path it is a plain skip. */
   private async processNewAndChanged(
     files: DocumentFile[],
     existing: IndexedDocument[],
     state: PassState,
   ): Promise<void> {
-    const existingByRuta = new Map(existing.map((doc) => [doc.ruta, doc]));
+    const existingByPath = new Map(existing.map((doc) => [doc.path, doc]));
 
     for (const file of files) {
       const hash = computeHash(file.contenido);
-      const existingDoc = existingByRuta.get(file.ruta);
+      const existingDoc = existingByPath.get(file.path);
 
       if (existingDoc !== undefined && existingDoc.hash === hash) {
-        state.hashMatchRutas.add(file.ruta);
+        state.hashMatchPaths.add(file.path);
         continue;
       }
 
       const result = transformFile(this.parser, this.policy, this.options, file, hash);
       if (!result.ok) {
-        state.omitidos.push({ ruta: file.ruta, errores: result.errores });
+        state.omitidos.push({ path: file.path, errores: result.errores });
         if (existingDoc !== undefined) {
-          this.tryDelete(file.ruta, state, false);
+          this.tryDelete(file.path, state, false);
         }
         continue;
       }
@@ -127,7 +127,7 @@ export class SyncIndex {
         state.avisoEmbeddings = "indexado sin embeddings (proveedor no disponible): busqueda en modo lexico";
       } else {
         try {
-          const texts = chunks.map((c) => `passage: ${c.encabezado}\n${c.contenido}`);
+          const texts = chunks.map((c) => `passage: ${c.heading}\n${c.contenido}`);
           chunkEmbeddings = await this.embeddings.embed(texts);
         } catch (error) {
           state.avisoEmbeddings = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
@@ -136,15 +136,15 @@ export class SyncIndex {
 
       try {
         this.store.upsertDocument(meta, chunks, chunkEmbeddings);
-        state.indexados.push({ ruta: file.ruta, titulo: meta.titulo, chunks: chunks.length });
+        state.indexados.push({ path: file.path, titulo: meta.titulo, chunks: chunks.length });
       } catch (error) {
-        state.omitidos.push({ ruta: file.ruta, errores: [describeError(error)] });
+        state.omitidos.push({ path: file.path, errores: [describeError(error)] });
       }
     }
   }
 
-  /** A ruta present in the index but absent from disk is deleted — unless
-   * protected by this pass's erroresLectura (rule 1: exact ruta or subtree
+  /** A path present in the index but absent from disk is deleted — unless
+   * protected by this pass's erroresLectura (rule 1: exact path or subtree
    * prefix). */
   private deleteMissingDocuments(
     files: DocumentFile[],
@@ -152,12 +152,12 @@ export class SyncIndex {
     erroresLectura: ReadError[],
     state: PassState,
   ): void {
-    const discoveredRutas = new Set(files.map((f) => f.ruta));
-    const protectedRutas = erroresLectura.map((e) => e.ruta);
+    const discoveredPaths = new Set(files.map((f) => f.path));
+    const protectedPaths = erroresLectura.map((e) => e.path);
     for (const doc of existing) {
-      if (discoveredRutas.has(doc.ruta)) continue;
-      if (isProtected(doc.ruta, protectedRutas)) continue;
-      this.tryDelete(doc.ruta, state, true);
+      if (discoveredPaths.has(doc.path)) continue;
+      if (isProtected(doc.path, protectedPaths)) continue;
+      this.tryDelete(doc.path, state, true);
     }
   }
 
@@ -168,13 +168,13 @@ export class SyncIndex {
     if (this.embeddings === null) return;
     const missing = this.store
       .listChunksMissingVectors()
-      .filter((chunk) => state.hashMatchRutas.has(chunk.ruta));
+      .filter((chunk) => state.hashMatchPaths.has(chunk.path));
 
-    for (const [ruta, chunksMissing] of groupByRuta(missing)) {
+    for (const [path, chunksMissing] of groupByPath(missing)) {
       let vectors: Float32Array[];
       try {
         vectors = await this.embeddings.embed(
-          chunksMissing.map((c) => `passage: ${c.encabezado}\n${c.contenido}`),
+          chunksMissing.map((c) => `passage: ${c.heading}\n${c.contenido}`),
         );
       } catch (error) {
         state.avisoEmbeddings = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
@@ -185,37 +185,37 @@ export class SyncIndex {
           chunksMissing.map((c, i) => ({ chunkId: c.chunkId, embedding: vectors[i]! })),
         );
       } catch (error) {
-        state.omitidos.push({ ruta, errores: [describeError(error)] });
+        state.omitidos.push({ path, errores: [describeError(error)] });
       }
     }
   }
 
-  /** Deletes a document, reporting `ruta` in `eliminados` only for a
+  /** Deletes a document, reporting `path` in `eliminados` only for a
    * disk-absence deletion (never for a resolver-rejection deletion). A
    * store-level failure is a per-document skip, reported in `omitidos`
    * instead of aborting the pass. */
-  private tryDelete(ruta: string, state: PassState, reportAsEliminado: boolean): void {
+  private tryDelete(path: string, state: PassState, reportAsEliminado: boolean): void {
     try {
-      this.store.deleteDocument(ruta);
-      if (reportAsEliminado) state.eliminados.push(ruta);
+      this.store.deleteDocument(path);
+      if (reportAsEliminado) state.eliminados.push(path);
     } catch (error) {
-      state.omitidos.push({ ruta, errores: [describeError(error)] });
+      state.omitidos.push({ path, errores: [describeError(error)] });
     }
   }
 }
 
-/** True when `ruta` is exactly a failed ruta, or lies beneath one (the
- * `<ruta>/` prefix rule that protects an entire failed subtree). */
-function isProtected(ruta: string, failedRutas: string[]): boolean {
-  return failedRutas.some((failed) => ruta === failed || ruta.startsWith(`${failed}/`));
+/** True when `path` is exactly a failed path, or lies beneath one (the
+ * `<path>/` prefix rule that protects an entire failed subtree). */
+function isProtected(path: string, failedPaths: string[]): boolean {
+  return failedPaths.some((failed) => path === failed || path.startsWith(`${failed}/`));
 }
 
-function groupByRuta(chunks: ChunkMissingVector[]): Map<string, ChunkMissingVector[]> {
-  const byRuta = new Map<string, ChunkMissingVector[]>();
+function groupByPath(chunks: ChunkMissingVector[]): Map<string, ChunkMissingVector[]> {
+  const byPath = new Map<string, ChunkMissingVector[]>();
   for (const chunk of chunks) {
-    const list = byRuta.get(chunk.ruta) ?? [];
+    const list = byPath.get(chunk.path) ?? [];
     list.push(chunk);
-    byRuta.set(chunk.ruta, list);
+    byPath.set(chunk.path, list);
   }
-  return byRuta;
+  return byPath;
 }

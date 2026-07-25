@@ -9,7 +9,7 @@ import {
 
 function entry(overrides: Partial<IndexEntry>): IndexEntry {
   return {
-    ruta: "auth/doc.md",
+    path: "auth/doc.md",
     titulo: "Documento",
     resumen: "Resumen breve",
     tipo: "guia",
@@ -18,7 +18,7 @@ function entry(overrides: Partial<IndexEntry>): IndexEntry {
   };
 }
 
-function listedRutas(salida: string): string[] {
+function listedPaths(salida: string): string[] {
   return salida
     .split("\n")
     .filter((line) => line.startsWith("- "))
@@ -26,15 +26,15 @@ function listedRutas(salida: string): string[] {
 }
 
 describe("renderIndexMd", () => {
-  it("defaults to alphabetical order by ruta with no comparator supplied", () => {
-    const salida = renderIndexMd([entry({ ruta: "b.md" }), entry({ ruta: "a.md" })]);
-    expect(listedRutas(salida)).toEqual(["a.md", "b.md"]);
+  it("defaults to alphabetical order by path with no comparator supplied", () => {
+    const salida = renderIndexMd([entry({ path: "b.md" }), entry({ path: "a.md" })]);
+    expect(listedPaths(salida)).toEqual(["a.md", "b.md"]);
   });
 
   it("uses an injected comparator when supplied", () => {
-    const inverso = (a: IndexEntry, b: IndexEntry) => b.ruta.localeCompare(a.ruta);
-    const salida = renderIndexMd([entry({ ruta: "a.md" }), entry({ ruta: "b.md" })], inverso);
-    expect(listedRutas(salida)).toEqual(["b.md", "a.md"]);
+    const inverso = (a: IndexEntry, b: IndexEntry) => b.path.localeCompare(a.path);
+    const salida = renderIndexMd([entry({ path: "a.md" }), entry({ path: "b.md" })], inverso);
+    expect(listedPaths(salida)).toEqual(["b.md", "a.md"]);
   });
 
   it("collapses whitespace and truncates long summaries", () => {
@@ -61,7 +61,7 @@ describe("renderIndexMd", () => {
 
 describe("formatDocLine — omits absent tipo/estado segments", () => {
   it("omits both segments when tipo and estado are absent", () => {
-    const linea = formatDocLine({ tipo: undefined, ruta: "a.md", resumen: "r", estado: undefined });
+    const linea = formatDocLine({ tipo: undefined, path: "a.md", resumen: "r", estado: undefined });
     expect(linea).toBe("- a.md — r");
     expect(linea).not.toContain("[");
     expect(linea).not.toContain("(");
@@ -69,19 +69,19 @@ describe("formatDocLine — omits absent tipo/estado segments", () => {
   });
 
   it("includes tipo and omits estado when only tipo is present", () => {
-    const linea = formatDocLine({ tipo: "guia", ruta: "a.md", resumen: "r", estado: undefined });
+    const linea = formatDocLine({ tipo: "guia", path: "a.md", resumen: "r", estado: undefined });
     expect(linea).toBe("- [guia] a.md — r");
     expect(linea).not.toContain("(");
   });
 
   it("includes estado and omits tipo when only estado is present", () => {
-    const linea = formatDocLine({ tipo: undefined, ruta: "a.md", resumen: "r", estado: "vigente" });
+    const linea = formatDocLine({ tipo: undefined, path: "a.md", resumen: "r", estado: "vigente" });
     expect(linea).toBe("- a.md — r (vigente)");
     expect(linea).not.toContain("[");
   });
 
   it("includes both segments when both are present", () => {
-    const linea = formatDocLine({ tipo: "guia", ruta: "a.md", resumen: "r", estado: "vigente" });
+    const linea = formatDocLine({ tipo: "guia", path: "a.md", resumen: "r", estado: "vigente" });
     expect(linea).toBe("- [guia] a.md — r (vigente)");
   });
 });

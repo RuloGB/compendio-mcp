@@ -3,19 +3,19 @@ import type { IndexStore } from "../domain/ports.js";
 import { closestMatches, normalize } from "../domain/similarity.js";
 
 export interface ReadRequest {
-  ruta: string;
-  seccion?: string;
+  path: string;
+  section?: string;
 }
 
 export type ReadResult =
   | { tipo: "documento"; meta: DocumentMeta; contenido: string }
-  | { tipo: "seccion"; meta: DocumentMeta; seccion: string; contenido: string }
-  | { tipo: "ruta-no-encontrada"; ruta: string; sugerencias: string[] }
+  | { tipo: "seccion"; meta: DocumentMeta; section: string; contenido: string }
+  | { tipo: "ruta-no-encontrada"; path: string; sugerencias: string[] }
   | {
       tipo: "seccion-no-encontrada";
       meta: DocumentMeta;
-      seccion: string;
-      seccionesDisponibles: string[];
+      section: string;
+      availableSections: string[];
     };
 
 const SUGGESTION_LIMIT = 3;
@@ -29,18 +29,18 @@ export class ReadDocument {
   constructor(private readonly store: IndexStore) {}
 
   execute(request: ReadRequest): ReadResult {
-    const doc = this.store.getDocumentByRuta(request.ruta);
+    const doc = this.store.getDocumentByPath(request.path);
     if (doc === null) {
-      const rutas = this.store.listDocuments().map((d) => d.ruta);
+      const paths = this.store.listDocuments().map((d) => d.path);
       return {
         tipo: "ruta-no-encontrada",
-        ruta: request.ruta,
-        sugerencias: closestMatches(request.ruta, rutas, SUGGESTION_LIMIT),
+        path: request.path,
+        sugerencias: closestMatches(request.path, paths, SUGGESTION_LIMIT),
       };
     }
 
     const chunks = this.store.getChunksByDocument(doc.id);
-    if (request.seccion === undefined || request.seccion.trim().length === 0) {
+    if (request.section === undefined || request.section.trim().length === 0) {
       const body = chunks.map((c) => c.contenido).join("\n\n");
       // Intro chunks exclude the H1 line; restore it unless the body already
       // starts with one (documents indexed without chunking keep theirs).
@@ -51,29 +51,29 @@ export class ReadDocument {
     // A section may live merged inside a bigger chunk (small sections are
     // fused at indexing time), so match both the chunk heading path and the
     // heading lines inside its content.
-    const wanted = normalize(request.seccion);
+    const wanted = normalize(request.section);
     const matching = chunks.filter(
       (c) =>
-        normalize(c.encabezado).includes(wanted) ||
+        normalize(c.heading).includes(wanted) ||
         headingsIn(c.contenido).some((h) => normalize(h).includes(wanted)),
     );
     if (matching.length === 0) {
       const disponibles = new Set<string>();
       for (const chunk of chunks) {
-        disponibles.add(chunk.encabezado);
+        disponibles.add(chunk.heading);
         for (const heading of headingsIn(chunk.contenido)) disponibles.add(heading);
       }
       return {
         tipo: "seccion-no-encontrada",
         meta: doc,
-        seccion: request.seccion,
-        seccionesDisponibles: [...disponibles],
+        section: request.section,
+        availableSections: [...disponibles],
       };
     }
     return {
       tipo: "seccion",
       meta: doc,
-      seccion: request.seccion,
+      section: request.section,
       contenido: matching.map((c) => c.contenido).join("\n\n"),
     };
   }
