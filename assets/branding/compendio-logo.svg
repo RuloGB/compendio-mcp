@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" width="320" height="320" role="img" aria-label="Compendio logo: an open book with one highlighted fragment">
+  <defs>
+    <linearGradient id="stroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c6bff"/>
+      <stop offset="0.55" stop-color="#4f9dfb"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- corpus: the muted lines of documentation on both pages -->
+    <g stroke="#37506b" stroke-width="9">
+      <path d="M74 132 L130 128"/>
+      <path d="M74 162 L130 158"/>
+      <path d="M74 192 L118 189"/>
+      <path d="M190 128 L246 132"/>
+      <path d="M190 189 L234 192"/>
+    </g>
+
+    <!-- the one fragment actually retrieved -->
+    <path d="M190 158 L246 162" stroke="#22d3ee" stroke-width="11"/>
+
+    <!-- the open book -->
+    <g stroke="url(#stroke)" stroke-width="14">
+      <path d="M160 104 C132 84 96 78 40 82 L40 216 C96 212 132 218 160 238"/>
+      <path d="M160 104 C188 84 224 78 280 82 L280 216 C224 212 188 218 160 238"/>
+      <path d="M160 104 L160 238"/>
+    </g>
+  </g>
+
+  <!-- sparkles -->
+  <g fill="#22d3ee">
+    <path d="M281 40 C284 51 290 57 301 60 C290 63 284 69 281 80 C278 69 272 63 261 60 C272 57 278 51 281 40 Z"/>
+    <path d="M305 88 C306.6 94 310 97.4 316 99 C310 100.6 306.6 104 305 110 C303.4 104 300 100.6 294 99 C300 97.4 303.4 94 305 88 Z" opacity="0.85"/>
+  </g>
+</svg>

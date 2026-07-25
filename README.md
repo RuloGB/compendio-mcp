@@ -1,127 +1,79 @@
-# compendio-mcp
+<p align="center">
+  <img width="1280" height="640" alt="compendio-mcp — your project's documentation, served to any agent in the fewest possible tokens" src="assets/branding/compendio-banner.png" />
+</p>
 
-*Your project's documentation, served to any agent in the fewest possible tokens.*
+<p align="center">
+  <strong>Your project's documentation, served to any agent in the fewest possible tokens.</strong><br>
+  <em>A local RAG retrieval layer exposed as an MCP server. Your agent stops grepping and dumping whole files — it reaches the right paragraph instead.</em>
+</p>
 
-Compendio is an MCP server that indexes a project's markdown documentation and exposes it to any AI agent through local hybrid search: lexical (FTS5/BM25) + semantic (embeddings), combined with Reciprocal Rank Fusion. Everything runs locally: a single SQLite file, an embeddings model on CPU, and zero network calls in operation.
+<p align="center">
+  <a href="https://www.npmjs.com/package/compendio-mcp"><img src="https://img.shields.io/npm/v/compendio-mcp.svg" alt="npm"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/npm/l/compendio-mcp.svg" alt="license"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/compendio-mcp.svg" alt="node"></a>
+</p>
 
-Compendio works on **any folder of `.md` files with zero configuration** — no required frontmatter, no config file. If your project already maintains a documentation taxonomy (types, modules, lifecycle states), an optional [documentation convention](docs/convencion-documentacion.md) lets you additionally enforce it.
+<p align="center">
+  <a href="#what-compendio-does">What it does</a> &bull;
+  <a href="#requirements">Requirements</a> &bull;
+  <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#configuration">Configuration</a> &bull;
+  <a href="#mcp-tools">MCP Tools</a> &bull;
+  <a href="#cli">CLI</a> &bull;
+  <a href="#how-it-works">How it works</a> &bull;
+  <a href="#incremental-reindex">Incremental reindex</a> &bull;
+  <a href="#spanish-first-by-design">Spanish-first</a> &bull;
+  <a href="docs/convencion-documentacion.md">Full docs</a>
+</p>
+
+---
+
+## The problem
+
+Your agent doesn't know your documentation. So it does what it can: `grep`, then `cat` a 400-line file to answer a question that lived in one paragraph. Three files later the context window is full of noise and the answer is still a guess.
+
+Attaching the whole `docs/` folder doesn't fix it — it just moves the waste earlier. Neither does keyword search: nobody writes questions using the exact words the document uses.
+
+## What Compendio does
+
+Compendio indexes your markdown documentation and gives any AI agent three tools to find and read exactly what it needs.
+
+- 🔍 **Hybrid retrieval, not grep** — keyword search finds the exact term, semantic search finds the paraphrase. Compendio runs both and merges the results.
+- ✂️ **Token-frugal by design** — orient for ~10 tokens per document, search for a handful of fragments, read a single section. Never the whole corpus.
+- 🔒 **100% local** — one SQLite file, embeddings on CPU, zero network calls at query time. No API keys, no Docker, no services, nothing leaves your machine.
+- ♻️ **Stays current** — a running server picks up your documentation edits on its own. No watcher process, no manual rebuild loop.
+- 🗣️ **Spanish-first** — the tool contract, the accent handling and the reference corpus are built for Spanish documentation. See [Spanish-first, by design](#spanish-first-by-design).
+- 🧩 **Zero configuration** — works on *any* folder of `.md` files. No required frontmatter, no config file. An optional [documentation convention](#documentation-convention-optional) is there if your team already has a taxonomy to enforce.
 
 ## Requirements
 
 - Node.js ≥ 20.
-- Nothing else: no Docker, no services, no API keys.
+- Nothing else.
 
 ## Quick start
 
-Use Compendio in any project that has (or will have) markdown documentation.
+**1. Install it.**
 
-1. **Install it.** Either globally, to get the short `compendio` command:
-
-   ```bash
-   npm install -g compendio-mcp
-   ```
-
-   or run it on demand through `npx` with no install step — in that case use `npx compendio-mcp <command>` instead of `compendio <command>` everywhere below (`npx` does not add `compendio` to your PATH):
-
-   ```bash
-   npx compendio-mcp index
-   ```
-
-2. **Point it at your `.md` files.** By default Compendio reads `docs/` at the project root. There is nothing else to do: files with no frontmatter at all index fine — the H1 heading becomes the title (falling back to a humanized filename when there is no H1), and the folder a file lives in becomes its module. If you want to filter by `tipo`/`estado` later, add frontmatter for those fields as you go; nothing requires it up front, and no config file is needed to get started.
-
-3. **Index it** from the project root:
-
-   ```bash
-   compendio index
-   ```
-
-   This creates `.compendio/compendio.db` (add `.compendio/` to your `.gitignore`). On the first run the embeddings model is downloaded (`Xenova/multilingual-e5-small`, tens of MB) and cached to disk; from then on operation is 100% offline. If the model download or load fails, Compendio **does not crash**: it indexes and searches in lexical-only mode and signals it in its responses with `"modo": "lexico"`.
-
-4. **Try it from the terminal** (optional, before wiring up a client):
-
-   ```bash
-   compendio overview
-   compendio search "your question here"
-   ```
-
-5. **Register it as an MCP server** in your client — see [Registration in MCP clients](#registration-in-mcp-clients) below.
-
-No configuration file is required to index a project — every field in `compendio.config.json` has a default (see [Configuration](#configuration-compendioconfigjson) below), and the bundled `ejemplos/` corpus ships with no config file at all.
-
-## CLI
-
-| Command | What it does |
-|---|---|
-| `compendio index` | Reindexes all documentation (`--dir` for another directory, `--lexico` to skip embeddings) |
-| `compendio index-md` | Generates or updates `docs/INDEX.md` — one line per document — from the corpus frontmatter (`--dir` for another directory) |
-| `compendio search "..."` | Hybrid search with filters: `--tipo`, `--modulo`, `--etiquetas`, `-k`, `--todos`, `--lexico` |
-| `compendio overview` | Map of the indexed corpus |
-| `compendio eval` | Evaluates the goldenset and compares hybrid vs lexical (`--goldenset`, `-k`) |
-| `compendio serve` | Starts the MCP server over stdio |
-
-Global option `-C, --root <dir>`: project root (where `compendio.config.json` and `.compendio/` live).
-
-`--tipo` accepts any string — it is a project-defined open value, not a fixed list, and an unrecognized value is never treated as an error. `--todos` includes documents that a project's `convencion.estadosExcluidos` would otherwise exclude from search (nothing is excluded by default — see [Documentation convention](#documentation-convention-optional) below).
-
-## MCP tools
-
-Designed as *progressive disclosure*: orient cheaply → search cheaply → read only what is needed.
-
-1. **`docs_overview()`** — corpus map: counts by type and module (each bucket appears only when at least one document defines that field), and one line per document (`[tipo] ruta — resumen (estado)`, with the `[tipo]`/`(estado)` segments omitted for documents that don't define them). ~10 tokens per document.
-2. **`search_docs({ query, tipo?, modulo?, etiquetas?, k?, incluir_no_vigentes? })`** — the top k fragments (5 by default, at most 2 per document), with path, section, excerpt and score (`estado` is included only when the document has one). `tipo` is an open, project-defined string. Documents whose `estado` is listed in the project's `convencion.estadosExcluidos` are excluded unless `incluir_no_vigentes` is set; with nothing declared (the default), nothing is excluded and the flag is a no-op.
-3. **`read_doc({ ruta, seccion? })`** — a specific section (or the full document) with its frontmatter (`tipo:`/`modulo:`/`estado:` lines are rendered only when present). If the path does not exist, it responds with the 3 most similar paths instead of a blunt error.
-
-## Documentation convention (optional)
-
-Compendio has two modes, selected by `convencion.modo` in `compendio.config.json`:
-
-- **`libre`** (default, zero-config) — never rejects a file for missing metadata. `titulo` comes from the first H1 (falling back to a humanized filename when there is none); `modulo` is inferred from the first folder segment under `docsDir` (a file directly under `docsDir` has no `modulo`); `tipo` and `estado` are read from frontmatter when present and left absent otherwise — they are never invented. An empty string or YAML `null` in frontmatter is treated exactly as if the field were absent. Frontmatter always wins over inference when both are available.
-- **`estricto`** (opt-in) — a linter, not an inference engine: every document needs an H1 (no filename fallback) and non-empty `tipo`/`modulo`/`estado`. If a project declares `convencion.tipos`/`convencion.estados`, each of `tipo`/`estado` is checked against its own declared list independently (`modulo` never has a taxonomy — it is always presence-only, whatever is declared for the other two). If a taxonomy isn't declared for a field, that field falls back to presence-only validation. Files that fail validation are skipped and reported in `omitidos`, exactly as under `libre`'s own resilience rules (unreadable file, unparseable frontmatter, or a document with no indexable content).
-
-Reproducing a fixed taxonomy (`tipo`/`estado` restricted to a declared list, `borrador`/`obsoleto` hidden from search by default) is an explicit opt-in — see `test/fixtures/estricto/compendio.config.json` in this repository for a complete worked example:
-
-```jsonc
-{
-  "convencion": {
-    "modo": "estricto",
-    "tipos": ["funcional", "adr", "api", "qa", "guia"],
-    "estados": ["borrador", "vigente", "obsoleto"],
-    "estadosExcluidos": ["borrador", "obsoleto"]
-  }
-}
+```bash
+npm install -g compendio-mcp
 ```
 
-See [`docs/convencion-documentacion.md`](docs/convencion-documentacion.md) for the fully authored convention this repository's own `docs/` follows, including file-naming and internal-structure guidance beyond what Compendio itself validates.
+To update Compendio later, run that same command again — it always pulls the latest published version.
 
-## Configuration (`compendio.config.json`)
+**2. Register it as an MCP server** in your client, pointed at your project root.
 
-Optional; every field has a default value:
+**Claude Code** (`.mcp.json` at the repo root):
 
 ```json
 {
-  "docsDir": "docs",
-  "exclude": ["INDEX.md"],
-  "db": ".compendio/compendio.db",
-  "embeddings": { "provider": "local", "model": "Xenova/multilingual-e5-small" },
-  "chunk": { "minTokens": 100, "maxTokens": 800 },
-  "search": { "k": 5 },
-  "convencion": {
-    "modo": "libre",
-    "estadosExcluidos": [],
-    "camposFrontmatter": { "tipo": "tipo", "modulo": "modulo", "estado": "estado" }
+  "mcpServers": {
+    "compendio": {
+      "command": "compendio",
+      "args": ["serve"]
+    }
   }
 }
 ```
-
-Declaring only part of the `convencion` block (or of `camposFrontmatter`) merges with these defaults field by field — it never wipes the sibling fields you didn't mention.
-
-`camposFrontmatter` lets a project map `tipo`/`modulo`/`estado` to non-standard frontmatter keys (e.g. `{ "tipo": "type" }` reads a document's `type:` field as `tipo`). Two fields can map to the same source key; both simply read that key's value.
-
-**`search.estadosExcluidos` is retired** — `estadosExcluidos` now lives under `convencion` (shown above). A config that still declares `search.estadosExcluidos` prints a one-line deprecation notice to stderr and the value is otherwise ignored; it is not silently migrated.
-
-## Registration in MCP clients
-
-Compendio is a standard MCP server over stdio and is registered the same way in all four clients. The package is published on [npm](https://www.npmjs.com/package/compendio-mcp), so the examples below use `npx`; to run a local checkout instead (development), replace it with `node <path-to-compendio>/dist/cli.js serve`.
 
 **OpenCode** (`opencode.json`):
 
@@ -130,21 +82,8 @@ Compendio is a standard MCP server over stdio and is registered the same way in 
   "mcp": {
     "compendio": {
       "type": "local",
-      "command": ["npx", "compendio-mcp", "serve"],
+      "command": ["compendio", "serve"],
       "enabled": true
-    }
-  }
-}
-```
-
-**Claude Code** (`.mcp.json` at the repo root):
-
-```json
-{
-  "mcpServers": {
-    "compendio": {
-      "command": "npx",
-      "args": ["compendio-mcp", "serve"]
     }
   }
 }
@@ -157,8 +96,8 @@ Compendio is a standard MCP server over stdio and is registered the same way in 
   "servers": {
     "compendio": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["compendio-mcp", "serve"]
+      "command": "compendio",
+      "args": ["serve"]
     }
   }
 }
@@ -170,31 +109,146 @@ Compendio is a standard MCP server over stdio and is registered the same way in 
 {
   "mcpServers": {
     "compendio": {
-      "command": "npx",
-      "args": ["compendio-mcp", "serve"]
+      "command": "compendio",
+      "args": ["serve"]
     }
   }
 }
 ```
 
-The server does **not** reindex on its own: run `compendio index` before starting the client (or after changing the documentation). Incremental reindexing and file-watching are phase 2.
+**3. That's it.** By default Compendio reads `docs/` at the project root. On startup the server indexes everything it finds — no separate index step, no config file. Add `.compendio/` to your `.gitignore`.
 
-This repository includes a `.mcp.json` that serves the `ejemplos/` corpus so you can try the tools from Claude Code with zero configuration.
+> **First run is the slow one.** The embeddings model (tens of MB) is downloaded and cached the first time, and your agent's first tool call waits for it. To pay that cost up front, run `compendio index` once from the project root before starting the client. From then on everything is offline.
+
+> **Windows note.** Some MCP clients can't spawn the `compendio.cmd` shim directly. If the server fails to start with `ENOENT`, use `"command": "npx"` with `"args": ["compendio-mcp", "serve"]`.
+
+## Configuration
+
+Entirely optional — every field has a default, and Compendio works with no config file at all. Create `compendio.config.json` at your project root only to override what you need:
+
+```json
+{
+  "docsDir": "docs",
+  "exclude": ["INDEX.md"],
+  "db": ".compendio/compendio.db",
+  "embeddings": { "provider": "local", "model": "Xenova/multilingual-e5-small" },
+  "chunk": { "minTokens": 100, "maxTokens": 800 },
+  "search": { "k": 5 },
+  "sync": { "throttleMs": 30000 },
+  "convencion": {
+    "modo": "libre",
+    "estadosExcluidos": [],
+    "camposFrontmatter": { "tipo": "tipo", "modulo": "modulo", "estado": "estado" }
+  }
+}
+```
+
+| Key | What it's for |
+|---|---|
+| `docsDir` | Where your markdown lives, relative to the project root |
+| `exclude` | Filenames to skip when indexing |
+| `db` | Where the SQLite index file is written |
+| `search.k` | Default number of fragments returned per search |
+| `chunk` | Fragment size bounds, in tokens |
+| `sync.throttleMs` | Minimum interval between automatic reindex passes |
+| `convencion` | Optional documentation taxonomy — see below |
+
+Declaring only part of the `convencion` block merges with the defaults field by field; it never wipes the siblings you didn't mention. `camposFrontmatter` maps `tipo`/`modulo`/`estado` onto non-standard frontmatter keys (e.g. `{ "tipo": "type" }` reads a document's `type:` field as `tipo`).
+
+### Documentation convention (optional)
+
+Two modes, selected by `convencion.modo`:
+
+- **`libre`** (default, zero-config) — never rejects a file for missing metadata. The title comes from the first H1 (falling back to a humanized filename), the module is inferred from the folder, and `tipo`/`estado` are read from frontmatter when present and left absent otherwise.
+- **`estricto`** (opt-in) — a linter: every document needs an H1 and non-empty `tipo`/`modulo`/`estado`, validated against the lists your project declares. Files that fail are skipped and reported, never breaking the run.
+
+```jsonc
+{
+  "convencion": {
+    "modo": "estricto",
+    "tipos": ["funcional", "adr", "api", "qa", "guia"],
+    "estados": ["borrador", "vigente", "obsoleto"],
+    "estadosExcluidos": ["borrador", "obsoleto"]
+  }
+}
+```
+
+`estadosExcluidos` hides documents from search by lifecycle state — drafts and deprecated pages stop polluting results. See [`docs/convencion-documentacion.md`](docs/convencion-documentacion.md) for the full convention this repository's own docs follow.
+
+## MCP tools
+
+Designed as *progressive disclosure*: orient cheaply → search cheaply → read only what is needed.
+
+**1. `docs_overview()`** — the corpus map. Counts by type and module, plus one line per document. Roughly **10 tokens per document**.
+
+**2. `search_docs({ query, tipo?, modulo?, etiquetas?, k?, incluir_no_vigentes? })`** — the top *k* fragments (5 by default, at most 2 per document), each with path, section, excerpt and score. `tipo` is an open, project-defined string, not a fixed list.
+
+**3. `read_doc({ ruta, seccion? })`** — one section, or the whole document. A path that doesn't exist returns the 3 most similar paths instead of an error, so the agent self-corrects instead of retrying blind.
+
+## CLI
+
+| Command | What it does |
+|---|---|
+| `compendio serve` | Starts the MCP server over stdio |
+| `compendio index` | Full rebuild of the index |
+| `compendio search "..."` | Hybrid search with filters: `--tipo`, `--modulo`, `--etiquetas`, `-k`, `--todos` |
+| `compendio overview` | Map of the indexed corpus |
+| `compendio index-md` | Generates or updates `docs/INDEX.md` — one line per document |
+| `compendio eval` | Measures retrieval quality against a goldenset |
+
+Global option `-C, --root <dir>`: project root. Add `--lexico` to `index` or `search` to skip embeddings entirely.
+
+## How it works
+
+```
+docs/**/*.md
+     │
+     ├─▶ split into fragments at heading boundaries (tables are never cut)
+     │
+     ├─▶ index each fragment twice ─┬─ full-text (keywords)
+     │                              └─ embeddings (meaning)
+     │
+     └─▶ one file: .compendio/compendio.db
+```
+
+At query time both indexes are searched independently and their rankings are merged with **Reciprocal Rank Fusion** — a rank-based merge with no weights to tune blindly. The agent gets back the smallest set of relevant fragments.
+
+Compendio is the **retrieval** half of RAG. It never calls an LLM and generates nothing: it finds the right paragraphs and gets out of the way.
+
+If the embeddings model is unavailable, Compendio doesn't crash — it degrades to keyword-only search and says so in its responses.
+
+## Incremental reindex
+
+Documentation changes while you work, and Compendio keeps up on its own.
+
+A running server reindexes at startup and then, at most once per throttle window (30 s by default), whenever your agent calls a tool. Each pass compares content hashes against what's already indexed, so only new, changed and deleted documents do any work — an unchanged corpus costs nothing. If a pass fails, it's logged and the tool still answers against the current index.
+
+`compendio index` remains the authoritative full rebuild. Reach for it after a large restructuring, or if you ever suspect the index has drifted.
+
+## Spanish-first, by design
+
+Compendio is built for **Spanish-language documentation**, and that shows up in the product, not just the examples:
+
+- **The MCP contract is in Spanish.** Tool parameters (`ruta`, `tipo`, `modulo`, `etiquetas`, `seccion`), response fields and the tool descriptions the agent reads are all Spanish. Agents reason about your docs in the same language your team writes them in.
+- **Accents are handled properly.** Search is diacritic-insensitive, so *validación* and *validacion* match. In a Spanish corpus this is not a nicety — accent-sensitive search silently loses results.
+- **The reference corpus and evaluation set are Spanish.** The quality numbers below reflect real Spanish retrieval, not translated English.
+
+The embeddings model is multilingual, so English or mixed-language documents index and retrieve fine. Spanish is the language the product was designed and tuned around, not a restriction on what you can index.
 
 ## How much does semantics add over grep?
 
-Measured with `compendio eval` on the example corpus (`ejemplos/`: 11 documents, 27 chunks, **no `compendio.config.json`** — the zero-config path itself) and its goldenset of 22 real questions:
+Measured with `compendio eval` on the example corpus (`ejemplos/`: 11 documents, 27 chunks, **no config file** — the zero-config path itself) and its goldenset of 22 real questions:
 
 | mode | recall@5 | MRR | failures |
 |---|---|---|---|
-| hybrid | **1.00** | **0.943** | 0 |
-| lexical | 0.95 | 0.857 | 1 |
+| **hybrid** | **1.00** | **0.943** | **0** |
+| keyword-only | 0.95 | 0.857 | 1 |
 
-- Lexical mode is already strong when the question uses the corpus terminology.
-- The semantic gap appears with paraphrases and synonyms: «¿Qué endpoint hay que llamar para crear un lead?» drops out of the top 5 in lexical mode and the hybrid leg recovers it; questions with zero lexical overlap with the matching document's wording are solved only by the semantic leg.
-- Full index of the example corpus: a few seconds including model download/load. With the model warm, hybrid search responds in 5–20 ms and lexical in <5 ms (MVP requirement: <500 ms).
+- Keyword search is already strong when the question uses the corpus terminology.
+- The gap opens on paraphrases and synonyms: *«¿Qué endpoint hay que llamar para crear un lead?»* falls out of the top 5 without embeddings, and the semantic leg recovers it. Questions with zero word overlap with the matching document are solved *only* by semantics.
+- Speed: with the model warm, hybrid search answers in **5–20 ms**.
 
-`compendio eval` reproduces this table at any time; it is also the instrument for tuning chunking and `k` without guessing.
+`compendio eval` reproduces this table at any time — it's also the instrument for tuning chunking and `k` without guessing.
 
 ## Architecture
 
@@ -202,25 +256,15 @@ Hexagonal: the core knows nothing about SQLite, transformers.js, or the filesyst
 
 ```
 src/
-├── domain/            # pure, no dependencies: model, chunking, RRF, metrics, convencion policy
-│   └── ports.ts       # DocumentSource, MarkdownParser, IndexStore, EmbeddingsProvider
-├── application/       # use cases: IndexDocuments, SearchDocuments, GetOverview,
-│                      # ReadDocument, EvaluateSearch, GenerateIndexMd
-├── infrastructure/    # adapters: SQLite (FTS5 + sqlite-vec), remark + gray-matter,
-│                      # filesystem, transformers.js, configuration
-├── composition.ts     # composition root (wiring)
+├── domain/            # pure, no dependencies: model, chunking, ranking, convencion policy
+├── application/       # use cases
+├── infrastructure/    # adapters: SQLite, markdown parsing, filesystem, embeddings
+├── composition.ts     # composition root — start here to see the whole app
 ├── cli.ts             # input adapter: commander
 └── server.ts          # input adapter: MCP server (stdio)
 ```
 
-Key decisions:
-
-- **SQLite + sqlite-vec** instead of a dedicated vector database: zero ops, right for corpora of hundreds of documents. The vector leg is isolated in the adapter; migrating would be a local change.
-- **Heading-based chunking** (H2, and H3 if the section exceeds the maximum), merging tiny sections. Cuts happen only at heading boundaries, so **tables are never split**.
-- **RRF** (`score = Σ 1/(60 + rank)`) to fuse rankings: no weights to tune blindly.
-- **FTS5 with `remove_diacritics 2`**: «validación» and «validacion» match — essential in a Spanish corpus.
-- **Graceful degradation**: any failure of the embeddings runtime leaves the system in lexical mode, never takes it down.
-- **`tipo`/`modulo`/`estado` are optional, project-defined strings**, resolved by an injected `ConvencionPolicy` (`libre` inference vs `estricto` validation) — see [Documentation convention](#documentation-convention-optional).
+Every external dependency sits behind a port in `src/domain/ports.ts`. Swapping the vector store or the embeddings provider is a local change in one adapter, not a rewrite.
 
 ## Development
 
@@ -228,15 +272,21 @@ Key decisions:
 npm install
 npm run build       # compiles to dist/
 npm test            # vitest: domain, adapters and integration
+npm run typecheck   # tsc --noEmit
 npm run dev -- ...  # CLI without compiling (tsx)
 ```
 
-The integration tests use a deterministic embeddings provider (no downloads) and the real `ejemplos/` corpus.
+Integration tests use a deterministic embeddings provider (no downloads) against the real `ejemplos/` corpus.
 
 Try the CLI against the bundled example corpus without installing the package:
 
 ```bash
 node dist/cli.js --root ejemplos index
-node dist/cli.js --root ejemplos eval
 node dist/cli.js --root ejemplos search "¿cuándo se considera duplicado un lead?"
 ```
+
+This repository ships a `.mcp.json` that serves the `ejemplos/` corpus, so you can try the tools from Claude Code with zero configuration.
+
+## License
+
+MIT © Raúl García Barciela

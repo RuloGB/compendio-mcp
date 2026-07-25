@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-label="compendio-mcp — your project's documentation, served to any agent in the fewest possible tokens">
+  <defs>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c6bff"/>
+      <stop offset="0.55" stop-color="#4f9dfb"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7154e7"/>
+      <stop offset="1" stop-color="#1fbfd8"/>
+    </linearGradient>
+    <radialGradient id="glowViolet" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#6d5cff" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#6d5cff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowCyan" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <style>
+      .sans { font-family: "Segoe UI", Inter, "Helvetica Neue", Arial, sans-serif; }
+      .mono { font-family: Consolas, "JetBrains Mono", "SF Mono", Menlo, monospace; }
+    </style>
+  </defs>
+
+  <!-- background -->
+  <rect width="1280" height="640" fill="#090c12"/>
+  <ellipse cx="1010" cy="250" rx="500" ry="440" fill="url(#glowViolet)"/>
+  <ellipse cx="1140" cy="430" rx="420" ry="380" fill="url(#glowCyan)"/>
+
+  <!-- wordmark -->
+  <text class="sans" x="72" y="172" font-size="62" font-weight="700" letter-spacing="-1">
+    <tspan fill="#22d3ee">compendio</tspan><tspan fill="#9aa4b2">-mcp</tspan>
+  </text>
+
+  <!-- tagline -->
+  <text class="sans" x="72" y="234" font-size="27" font-weight="600" fill="#eef2f7">Your project&#8217;s documentation, served to any</text>
+  <text class="sans" x="72" y="270" font-size="27" font-weight="600" fill="#eef2f7">agent in the fewest possible tokens.</text>
+
+  <!-- capability cards -->
+  <g>
+    <rect x="72"  y="318" width="150" height="64" rx="10" fill="#0f1219" stroke="#1b2330"/>
+    <text class="mono" x="90"  y="347" font-size="16" font-weight="700" fill="#eef2f7">docs_overview</text>
+    <text class="sans" x="90"  y="367" font-size="12.5" fill="#22d3ee">map the corpus</text>
+
+    <rect x="243" y="318" width="138" height="64" rx="10" fill="#0f1219" stroke="#1b2330"/>
+    <text class="mono" x="261" y="347" font-size="16" font-weight="700" fill="#eef2f7">search_docs</text>
+    <text class="sans" x="261" y="367" font-size="12.5" fill="#22d3ee">hybrid retrieval</text>
+
+    <rect x="402" y="318" width="106" height="64" rx="10" fill="#0f1219" stroke="#1b2330"/>
+    <text class="mono" x="420" y="347" font-size="16" font-weight="700" fill="#eef2f7">read_doc</text>
+    <text class="sans" x="420" y="367" font-size="12.5" fill="#22d3ee">one section</text>
+
+    <rect x="529" y="318" width="124" height="64" rx="10" fill="#0f1219" stroke="#1b2330"/>
+    <text class="mono" x="547" y="347" font-size="16" font-weight="700" fill="#eef2f7">100% local</text>
+    <text class="sans" x="547" y="367" font-size="12.5" fill="#22d3ee">no API keys</text>
+  </g>
+
+  <!-- config snippet -->
+  <g>
+    <rect x="72" y="418" width="624" height="48" rx="10" fill="#0f1219" stroke="#1b2330"/>
+    <circle cx="98"  cy="442" r="5.5" fill="#ff5f56"/>
+    <circle cx="116" cy="442" r="5.5" fill="#ffbd2e"/>
+    <circle cx="134" cy="442" r="5.5" fill="#27c93f"/>
+    <text class="mono" x="160" y="448" font-size="16" xml:space="preserve"><tspan fill="#22d3ee">"compendio"</tspan><tspan fill="#7d8797">: { </tspan><tspan fill="#22d3ee">"command"</tspan><tspan fill="#7d8797">: </tspan><tspan fill="#7ee787">"compendio"</tspan><tspan fill="#7d8797">, </tspan><tspan fill="#22d3ee">"args"</tspan><tspan fill="#7d8797">: [</tspan><tspan fill="#7ee787">"serve"</tspan><tspan fill="#7d8797">] }</tspan></text>
+  </g>
+
+  <!-- footer -->
+  <text class="sans" x="72" y="512" font-size="14.5" xml:space="preserve"><tspan fill="#6b8090">github.com/RuloGB/compendio-mcp</tspan><tspan fill="#4a5866">  &#183;  </tspan><tspan fill="#5b6b7a">npm i -g compendio-mcp</tspan><tspan fill="#4a5866">  &#183;  </tspan><tspan fill="#5b6b7a">MIT</tspan></text>
+
+  <!-- mark -->
+  <g transform="translate(801 90) scale(1.4)">
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <g stroke="#37506b" stroke-width="9">
+        <path d="M74 132 L130 128"/>
+        <path d="M74 162 L130 158"/>
+        <path d="M74 192 L118 189"/>
+        <path d="M190 128 L246 132"/>
+        <path d="M190 189 L234 192"/>
+      </g>
+      <path d="M190 158 L246 162" stroke="#22d3ee" stroke-width="11"/>
+      <g stroke="url(#mark)" stroke-width="14">
+        <path d="M160 104 C132 84 96 78 40 82 L40 216 C96 212 132 218 160 238"/>
+        <path d="M160 104 C188 84 224 78 280 82 L280 216 C224 212 188 218 160 238"/>
+        <path d="M160 104 L160 238"/>
+      </g>
+    </g>
+    <g fill="#22d3ee">
+      <path d="M281 40 C284 51 290 57 301 60 C290 63 284 69 281 80 C278 69 272 63 261 60 C272 57 278 51 281 40 Z"/>
+      <path d="M305 88 C306.6 94 310 97.4 316 99 C310 100.6 306.6 104 305 110 C303.4 104 300 100.6 294 99 C300 97.4 303.4 94 305 88 Z" opacity="0.85"/>
+    </g>
+  </g>
+
+  <!-- accent bar -->
+  <rect x="0" y="634" width="1280" height="6" fill="url(#bar)"/>
+</svg>
