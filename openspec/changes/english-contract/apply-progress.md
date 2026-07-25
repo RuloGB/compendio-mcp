@@ -152,7 +152,57 @@ active-proof tasks; all other commits are gated by keep-green-throughout, not ne
     except for the identifier renames — no dropped space, no reordering) directly in the diff.
   - Gate: `npm run typecheck` clean, `npm test` 24 files / 219 tests green, `npm run build` clean,
     `src/domain/` purity verified.
-- [ ] Commit 5 — Report and response fields (M) — NOT STARTED
+- [x] **Commit 5 — Report and response fields (M)** — `a56eaaf`
+  - `omitidos`→`skipped`, `indexados`→`indexed`, `eliminados`→`deleted`, `avisoEmbeddings`→
+    `embeddingsWarning`, `duracionMs`→`durationMs`, `resultados`→`results`,
+    `SearchResponse.modo`/`IndexReport.modo`/`SyncReport.modo`→`mode`, `sincronizacion`→`sync`,
+    `SincronizacionInfo`→`SyncInfo`, `toSincronizacionInfo`→`toSyncInfo`, `errores`→`errors`,
+    `erroresLectura`→`readErrors`, `cambiado`→`changed`, `existente`→`existing`, `escrito`→`written`,
+    `forzarLexico`→`forceLexical`.
+  - Value literals (hand-edited — string content the lexer script correctly refuses to touch):
+    `SearchMode` `"hibrido"`/`"lexico"`→`"hybrid"`/`"lexical"` (incl. `EvalReport.hibrido`/`.lexico`
+    keys, which ARE identifiers, script-renamed); `ReadResult` discriminants `"documento"`/`"seccion"`/
+    `"ruta-no-encontrada"`/`"seccion-no-encontrada"`→`"document"`/`"section"`/`"path-not-found"`/
+    `"section-not-found"`. Eval fields: `pregunta`→`question`, `esperado`→`expected`, `posicion`→`rank`
+    (Decision K), `fallos`→`failures`, `casos`→`cases`.
+  - Frozen boundary (task 5.5): `cli.ts`'s `loadGoldenset` literals `"pregunta"`/`"esperado"` stay
+    Spanish — `// es-frozen:` markers added at all 3 cited lines (the error message + both key reads).
+  - **This commit's own mechanism note, distinct from commit 4's**: unlike commits 2-4, this commit
+    mixes plain identifier renames (safe for `rename-safe.mjs`) with genuine VALUE LITERAL renames the
+    script correctly refuses to touch (`SearchMode`'s string values, `ReadResult`'s discriminant tags) —
+    those were hand-edited per exact `rg` location after mapping every occurrence.
+  - **Scope-leak caught and fixed via diff review, not by the test suite**: the rename map's bare
+    `lexico`→`lexical` (needed for `EvalReport`'s field/local-var identifiers) also matched `cli.ts`'s
+    own `--lexico`-flag-mirroring option fields (`options.lexico`, the `index`/`search` command option
+    type shapes) — those must stay Spanish until commit 9 since the flag itself hasn't renamed. Full
+    diff review of `cli.ts` and `composition.ts` (whose `--lexico`-referencing doc comment was also
+    touched) caught this before commit; reverted those specific spots by hand. **Same class of risk as
+    commit 3's `--tipo`/`--modulo` CLI options** — any future commit whose rename map includes a token
+    that also appears as a still-frozen CLI-flag-mirroring property name needs the same full-file diff
+    review, not just a sweep-based check (the sweep doesn't distinguish "this `.lexico` mirrors a flag"
+    from "this `.lexico` is the EvalReport field").
+  - Closed two design.md gaps (never assigned to any commit, discovered while already touching the same
+    files): `ReadResult.sugerencias`→`suggestions` (+ local var `disponibles`→`available` in
+    `read-document.ts`), `Overview`/`IndexMdReport`'s `documentos`/`totalDocumentos`→
+    `documents`/`totalDocuments`. A stale `Partial<Container>` test mock in `server.test.ts` (bypasses
+    `tsc` via `as unknown as Container`) still referenced the old `Overview` field names and only
+    surfaced as a **runtime** test failure (`overview.documents is not iterable`), not a type error —
+    worth remembering for commits 6-11: any test file that casts a fake through `as unknown as X` is
+    invisible to `tsc` and must be grepped for explicitly, not trusted because typecheck is clean.
+  - Also renamed local-variable-only leftovers required by this commit's own done-when sweep (same
+    recurring class as commits 2-4): `caso`→`item`/`fallo`→`failure`/`omitido`→`skippedItem` (singular
+    forms not literally in design.md's plural-keyed symbol table but matching the same roots),
+    `reportAsEliminado`→`reportAsDeleted`, `CASOS`→`CASES` constant, `resultado` singular locals, plus
+    several stale `describe`/`it` title strings quoting pre-rename names (`toSincronizacionInfo`,
+    `avisoEmbeddings`, `erroresLectura`, `omitidos`, `extracto` — the last one a leftover **commit 4**
+    miss, fixed here since it was in a file already open for this commit).
+  - **New false positive for the Sweep A allow-list** (same class as commit 3's `modulo`/"except for"):
+    `src/domain/fusion.ts`'s `documentOf` parameter name is the English words "document" + "Of"
+    (camelCase), which contains the Spanish root `documento` as a case-insensitive substring purely by
+    coincidence. Correct English, not a rename miss.
+  - Gate: `npm run typecheck` clean, `npm test` 24 files / 219 tests green, `npm run build` clean,
+    `src/domain/` purity verified, I2 (`unicode61 remove_diacritics 2`, exactly one line) and I4
+    (`RRF_K = 60`, unchanged) reverified directly.
 - [ ] Commit 6 — Configuration surface (M) — NOT STARTED
 - [ ] Commit 7 — Frontmatter source keys, with the corpus (S, high scrutiny) — NOT STARTED
 - [ ] Commit 8 — SQL schema (L) — NOT STARTED (fallback resolved: no `body` variant, use `content`)
@@ -223,65 +273,84 @@ place the compiler stays silent even after the include is fixed.
 
 ## Resume point
 
-Commit 4 landed clean at `ffe0a54`. Tree clean.
+Commit 5 landed clean at `a56eaaf`. Tree clean.
 
-Verified state at `ffe0a54`: `npm run typecheck` clean, `npm test` 24 files / 219 tests green,
-`npm run build` clean, `src/domain/` purity verified, invariants I1/I5 spot-checked directly in the
-diff.
+Verified state at `a56eaaf`: `npm run typecheck` clean, `npm test` 24 files / 219 tests green,
+`npm run build` clean, `src/domain/` purity verified, invariants I2/I4 reverified.
 
-**MANDATORY going forward — read before touching commit 5**: use the lexer-aware rename script
-(reconstructed from scratch each apply session under
-`.../scratchpad/rename-safe.mjs`; see the commit-4 entry above for its design — segments code vs.
-string/template-literal content, renames only in code) for ALL bulk renames in commits 5-11, never the
-plain word-boundary version. Commit 4 proved commits 2/3 got lucky: their roots (`ruta`/`tipo`/`estado`/
-etc.) rarely collided with ordinary Spanish prose in test fixture strings, so the naive script happened
-not to corrupt data — but commit 4's roots (`contenido`/`texto`/`resumen`/`titulo`) are common Spanish
-words that appear constantly as arbitrary markdown-body/search-query test content, and the naive
-version silently corrupted ~8 files' string literals (caught by diff review, NOT by the test suite,
-which stayed green on the corrupted state — the corrupted strings still coincidentally contained the
-substrings the tests searched for). Commits 5+ touch `resultados`/`errores`/`sincronizacion`/CLI+MCP
-prose strings — assume the same collision risk applies, since "did it collide with prose last time" is
-not evidence it won't this time.
+**MANDATORY going forward**: use the lexer-aware rename script (`rename-safe.mjs`, reconstructed from
+scratch each apply session in the scratchpad — segments code vs. string/template-literal content,
+renames only in code) for bulk renames. **New rule learned in commit 5**: the script is safe for plain
+FIELD renames but NEVER safe for VALUE LITERAL renames (a string whose CONTENT must change, e.g.
+`SearchMode`'s `"hibrido"`→`"hybrid"`, `ReadResult`'s discriminant tags) — those must be hand-edited
+per exact `rg` location, because the script's whole purpose is to protect string content, which is
+exactly what must NOT happen for value-literal targets. Before running the script on any future commit,
+classify each map entry as "field/identifier" (script-safe) vs. "the VALUE itself must change" (hand
+only), and never mix them in one map.
+
+**New rule learned in commit 5, second one**: even an IDENTIFIER-only rename token can leak into a
+still-frozen scope if the SAME bare word is also a property name mirroring an unrenamed CLI
+flag/wire-param (commit 5's `lexico`→`lexical` — needed for `EvalReport` — also touched `cli.ts`'s
+`--lexico`-mirroring `options.lexico`). This is NOT caught by the done-when sweep (the sweep only
+checks for LEFTOVER Spanish, not PREMATURE English). The only defense is a full-file diff review of
+every file that both (a) is in the rename script's file list AND (b) declares a CLI option/Zod schema
+key using one of the map's exact tokens — grep for `.option(` / Zod schema blocks using the token
+before running the script, and diff-review those files line by line afterward regardless of what the
+sweep says. Same failure mode as commit 3's `--tipo`/`--modulo` near-miss; now confirmed to recur, so
+treat it as a standing risk for every remaining commit, not a one-off.
 
 **Recovery pattern if a bulk rename needs reverting**: `git checkout -- .` / `git reset --hard` are
 blocked by the sandbox's destructive-command classifier. `git restore --source=HEAD -- <explicit file
-list>` is the permitted equivalent for restoring specific files to the last commit — use it, not a
-blanket revert.
+list>` is the permitted equivalent — use it, not a blanket revert.
 
-**Also verify per-commit, not just per design table**: after any commit's rename, re-run that commit's
-own `rg -i -n '<roots>' src test` done-when check on the FULL tree (not just the files touched by the
-rename map) — local variables/synthetic test-fixture identifiers/describe-title strings that literally
-quote a renamed function name (e.g. commit 4's `describe("condenseResumen"...)`, `contenidoLf`) are not
-always enumerated in design.md's per-commit symbol tables but WILL fail the done-when sweep if left
-unrenamed. Also watch for identifiers explicitly scheduled for a LATER commit in design.md's own tables
-(e.g. commit 3 deliberately left `inferirModulo`/`ConvencionConfig`/`modo` untouched — commit 6's table
-owns their rename) — legitimate deferrals, not misses; cross-check design.md's LATER commit tables
-before "fixing" a hit that's actually scheduled ahead.
+**Also verify per-commit, not just per design table**: local variables/singular forms of a renamed
+plural field (`caso`, `fallo`, `omitido`)/describe-title strings that quote a renamed
+function/field/type name are NOT always enumerated in design.md's per-commit symbol tables but WILL
+fail the done-when sweep if left unrenamed — re-run the FULL sweep after every commit, not just the
+files the rename map touched. Also watch for identifiers explicitly scheduled for a LATER commit
+(e.g. `ConvencionConfig.modo` stays until commit 6) — legitimate deferrals, not misses.
 
-**Discovered in commit 3, still applies**: `file-index-writer.ts:25`'s English idiom "modulo"
-(mathematics/"except for") is an exact-word collision with the Spanish root `modulo`, not a rename miss.
-Document it in design.md's Sweep A allow-list at commit 11 rather than re-diagnosing it each commit.
+**New risk class found in commit 5**: fake/mock objects that reach a real function through
+`as unknown as X` bypass `tsc` entirely. A stale field name inside one of these (`server.test.ts`'s
+`getOverview` fake still had `documentos`/`totalDocumentos` after the rename) surfaces only as a
+**runtime** test failure, not a type error, and `npm run typecheck` reports clean the whole time. Grep
+explicitly for `as unknown as` casts in touched test files after every commit; do not trust "typecheck
+is clean" as evidence these are consistent.
 
-**One lexer gap found in commit 4 (documented, not a recurring risk unless roots hit `Pick<>`/`Omit<>`/
-`keyof`)**: TS type-level string literals (`Pick<DocumentMeta, "titulo" | ...>`) are lexically
-indistinguishable from string data, so the lexer protects them too — `tsc` catches the resulting type
-mismatch immediately (not silent), fix by hand. `rg -n 'Pick<|Omit<|keyof '` before trusting the script
-on a commit whose roots might appear in one.
+**Design gaps found so far (never assigned to any commit; fixed opportunistically when already
+touching the same file, not deferred)**: commit 2's none; commit 5's `ReadResult.sugerencias`→
+`suggestions`, `Overview`/`IndexMdReport`'s `documentos`/`totalDocumentos`→`documents`/`totalDocuments`.
+Keep watching for more — the design's per-commit symbol tables are not exhaustive over every
+response/report-shaped field, only the ones the authors thought to list.
 
-Next: **Commit 5 — Report and response fields (M)**. Symbols: `omitidos`→`skipped`, `indexados`→
-`indexed`, `eliminados`→`deleted`, `avisoEmbeddings`→`embeddingsWarning`, `duracionMs`→`durationMs`,
-`resultados`→`results`, `SearchResponse.modo`/`IndexReport.modo`/`SyncReport.modo`→`mode`,
-`sincronizacion`→`sync`, `SincronizacionInfo`→`SyncInfo`, `toSincronizacionInfo`→`toSyncInfo`,
-`errores`→`errors`, `erroresLectura`→`readErrors`, `cambiado`→`changed`, `existente`→`existing`,
-`escrito`→`written`, `forzarLexico`→`forceLexical`. Value literals: `SearchMode` `"hibrido"`/`"lexico"`→
-`"hybrid"`/`"lexical"` (incl. `EvalReport.hibrido`/`.lexico` keys); `ReadResult` discriminants
-`"documento"`/`"seccion"`/`"ruta-no-encontrada"`/`"seccion-no-encontrada"`→`"document"`/`"section"`/
-`"path-not-found"`/`"section-not-found"`. Eval fields: `pregunta`→`question`, `esperado`→`expected`,
-`posicion`→`rank` (Decision K — NOT `position`, that's commit 4's `Chunk.position`), `fallos`→
-`failures`, `casos`→`cases`. **Frozen boundary, assigned to THIS commit**: `cli.ts`'s `loadGoldenset`
-literals `"pregunta"`/`"esperado"` stay Spanish forever (index into `ejemplos/goldenset.yaml`'s real
-keys) — add `// es-frozen:` markers to both in this commit, not later (task 5.5). This is the first
-commit with a Decision-B-flagged reviewer-attention risk already live from commit 3 (`mode`/`module`
-lookalikes) plus a NEW one of its own: two distinct `modo` symbols (`SearchResponse.modo` etc. here,
-`ConvencionConfig.modo` in commit 6) both target `mode` — expected to stay separable since they land in
-different commits, per design.md's Decision B.
+**False positives accumulated so far, for Sweep A's allow-list at commit 11** (correct English,
+collides with a Spanish root purely by spelling — do not "fix"): `file-index-writer.ts:25`'s "modulo"
+(math/"except for", commit 3); `fusion.ts`'s `documentOf` param name ("document" + "Of", commit 5).
+
+**One lexer gap (documented, only matters if a future commit's roots appear inside `Pick<>`/`Omit<>`/
+`keyof`)**: TS type-level string literals are lexically indistinguishable from string data, so the
+lexer protects them too — `tsc` catches the resulting mismatch immediately (not silent). `rg -n
+'Pick<|Omit<|keyof '` before trusting the script on such a commit.
+
+Next: **Commit 6 — Configuration surface (M)**. Symbols: `CompendioConfig.convencion`→`convention`,
+`ConvencionConfig`/`ConvencionPolicy`→`ConventionConfig`/`ConventionPolicy`, `modo`→`mode`
+(**this is the OTHER `modo` symbol — `ConvencionConfig.modo`, deliberately left untouched through
+commits 3 and 5; now it's this commit's turn**), `camposFrontmatter`→`frontmatterFields`,
+`sinChunking`→`noChunking`, `SIN_CHUNKING`→`NO_CHUNKING`, `isSinChunking`→`isNoChunking`,
+`crearConvencionPolicy`→`createConventionPolicy`, `crearPoliticaLibre`/`Estricta`→`createLoosePolicy`/
+`createStrictPolicy`, `crearComparadorIndice`→`createIndexComparator`, `leerCampo`→`readField`,
+`inferirModulo`→`inferModule`, `humanizarNombreArchivo`→`humanizeFileName`,
+`aplicarCamposOpcionales`→`applyOptionalFields`, `EJEMPLOS_CONVENCION`→`EXAMPLES_CONVENTION`,
+`EJEMPLOS_DOCS`→`EXAMPLES_DOCS`. Value literals: `"libre"`/`"estricto"`→`"loose"`/`"strict"` (VALUE
+literals — hand-edit only, same as commit 5's `SearchMode` values, never via the rename script). File
+renames: `git mv src/domain/convencion.ts src/domain/convention.ts`;
+`git mv test/domain/convencion.test.ts test/domain/convention.test.ts`. **Deletion**: remove
+`warnIfLegacyEstadosExcluidos` and its `config.test.ts` coverage (decision 5) — this function and its
+internal `"estadosExcluidos"` literal have been deliberately left alone since commit 3 specifically for
+this deletion; do not "fix" its stale-looking references before deleting the whole thing. Silent-green
+trap (Decision A/C, closing the class started in commit 3): rename `convencion`→`convention`,
+`modo`→`mode`, `"estricto"`→`"strict"` in `test/fixtures/estricto/compendio.config.json` and every
+inline JSON in `config.test.ts` — then re-run commit 1's deny-list subprocess assertion (task 6.6).
+Frozen, mark in this commit: `NO_CHUNKING = ["glosario.md"]` value unchanged; `EXAMPLES_DOCS`'s path
+literal `"../../ejemplos/docs"` unchanged — add `// es-frozen:` markers to both (invariant I6 depends
+on the first never moving).

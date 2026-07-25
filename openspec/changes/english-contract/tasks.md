@@ -79,13 +79,13 @@ No renames in this commit. Runs against the still-Spanish tree.
 
 `refactor(app): rename report and response fields to English`
 
-- [ ] 5.1 Rename: `omitidos`→`skipped`, `indexados`→`indexed`, `eliminados`→`deleted`, `avisoEmbeddings`→`embeddingsWarning`, `duracionMs`→`durationMs`, `resultados`→`results`, `SearchResponse.modo`/`IndexReport.modo`/`SyncReport.modo`→`mode`, `sincronizacion`→`sync`, `SincronizacionInfo`→`SyncInfo`, `toSincronizacionInfo`→`toSyncInfo`, `errores`→`errors`, `erroresLectura`→`readErrors`, `cambiado`→`changed`, `existente`→`existing`, `escrito`→`written`, `forzarLexico`→`forceLexical`.
-- [ ] 5.2 Rename value literals: `SearchMode` `"hibrido"`/`"lexico"`→`"hybrid"`/`"lexical"` (incl. `EvalReport.hibrido`/`.lexico` keys); `ReadResult` discriminants `"documento"`/`"seccion"`/`"ruta-no-encontrada"`/`"seccion-no-encontrada"`→`"document"`/`"section"`/`"path-not-found"`/`"section-not-found"`.
-- [ ] 5.3 Rename eval fields: `pregunta`→`question`, `esperado`→`expected`, `posicion`→`rank` (Decision K — deliberately not `position`, to avoid colliding with commit 4's `Chunk.position`), `fallos`→`failures`, `casos`→`cases`.
-- [ ] 5.4 **Frozen boundary (do NOT rename)**: `cli.ts`'s `loadGoldenset` reads the literals `"pregunta"`/`"esperado"` from `ejemplos/goldenset.yaml` — these index into a frozen file's real keys and stay Spanish forever.
-- [ ] 5.5 Add `// es-frozen: <reason>` markers to those two literals in `cli.ts` (Sweep A) — assigned to this commit specifically, not deferred.
-- [ ] 5.6 Gate: `npm run typecheck` then `npm test`.
-- [ ] 5.7 Done when: `rg -i -n 'omitid|indexad|eliminad|aviso|duracion|resultado|sincroniz|errores|cambiado|existente|escrito|forzar|hibrido|lexico|documento|pregunta|esperado|posicion|fallos|caso' src test` returns only marked or allow-listed lines.
+- [x] 5.1 Rename: `omitidos`→`skipped`, `indexados`→`indexed`, `eliminados`→`deleted`, `avisoEmbeddings`→`embeddingsWarning`, `duracionMs`→`durationMs`, `resultados`→`results`, `SearchResponse.modo`/`IndexReport.modo`/`SyncReport.modo`→`mode`, `sincronizacion`→`sync`, `SincronizacionInfo`→`SyncInfo`, `toSincronizacionInfo`→`toSyncInfo`, `errores`→`errors`, `erroresLectura`→`readErrors`, `cambiado`→`changed`, `existente`→`existing`, `escrito`→`written`, `forzarLexico`→`forceLexical`. Also closed two design.md gaps: `ReadResult.sugerencias`→`suggestions`, `Overview`/`IndexMdReport`'s `documentos`/`totalDocumentos`→`documents`/`totalDocuments`.
+- [x] 5.2 Rename value literals: `SearchMode` `"hibrido"`/`"lexico"`→`"hybrid"`/`"lexical"` (incl. `EvalReport.hibrido`/`.lexico` keys); `ReadResult` discriminants `"documento"`/`"seccion"`/`"ruta-no-encontrada"`/`"seccion-no-encontrada"`→`"document"`/`"section"`/`"path-not-found"`/`"section-not-found"`. Hand-edited (not via the rename script, which correctly protects string literal content).
+- [x] 5.3 Rename eval fields: `pregunta`→`question`, `esperado`→`expected`, `posicion`→`rank` (Decision K — deliberately not `position`, to avoid colliding with commit 4's `Chunk.position`), `fallos`→`failures`, `casos`→`cases`.
+- [x] 5.4 **Frozen boundary (do NOT rename)**: `cli.ts`'s `loadGoldenset` reads the literals `"pregunta"`/`"esperado"` from `ejemplos/goldenset.yaml` — these index into a frozen file's real keys and stay Spanish forever.
+- [x] 5.5 Add `// es-frozen: <reason>` markers to those two literals in `cli.ts` (Sweep A) — assigned to this commit specifically, not deferred.
+- [x] 5.6 Gate: `npm run typecheck` then `npm test`.
+- [x] 5.7 Done when: `rg -i -n 'omitid|indexad|eliminad|aviso|duracion|resultado|sincroniz|errores|cambiado|existente|escrito|forzar|hibrido|lexico|documento|pregunta|esperado|posicion|fallos|caso' src test` returns only marked or allow-listed lines. (Also: `cli.ts`'s still-Spanish `--lexico`-mirroring CLI options, deferred to commit 9; `fusion.ts`'s false-positive `documentOf`.)
 
 ## Commit 6 — Configuration surface (M)
 
