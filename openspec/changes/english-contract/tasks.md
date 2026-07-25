@@ -35,22 +35,22 @@ Chain strategy: size-exception
 
 No renames in this commit. Runs against the still-Spanish tree.
 
-- [ ] 1.1 Create `test/infrastructure/fts5-external-content.test.ts`: in-memory `better-sqlite3`, no `sqlite-vec`/`SqliteIndexStore` import, implementing assertions A0–A7 from `design.md` Decision D against the target DDL (bare `content` column alongside `content=` option, insert, `MATCH`, column-scoped `MATCH`, the `'delete'` command form, `integrity-check`, no collateral damage).
-- [ ] 1.2 If any of A0–A7 fails: adopt the fully-specified `body` fallback (Decision D) — physical column `body`, FTS5 `fts5(body, heading, content=chunks, …)`, `Chunk.content` stays `content` (Decision J). Record which assertion failed and the fallback decision in this commit's message.
-- [ ] 1.3 Append the deny-list subprocess assertion to `test/**/cli-subprocess.test.ts` (Decision C): `search "<query matching plan-pruebas-alertas.md>"` without `--todos` must NOT return it; the same search with `--todos` MUST return it. Uses the existing `estricto` fixture, which already declares `estadosExcluidos: ["borrador", "obsoleto"]` and ships that file in `borrador`.
-- [ ] 1.4 Gate: `npm run typecheck` then `npm test`, green on `main`'s current behavior.
-- [ ] 1.5 Done when: A0–A7 settle the FTS5 physical column name as a fact (retires the Decision A "SQL `as`-cast" silent-trap risk before commit 4/8 touch it), and 1.3's deny-list assertion is now the active proof that a dropped fixture config key fails a test — this is the regression net commits 3, 6 and 10 must keep passing.
+- [x] 1.1 Create `test/infrastructure/fts5-external-content.test.ts`: in-memory `better-sqlite3`, no `sqlite-vec`/`SqliteIndexStore` import, implementing assertions A0–A7 from `design.md` Decision D against the target DDL (bare `content` column alongside `content=` option, insert, `MATCH`, column-scoped `MATCH`, the `'delete'` command form, `integrity-check`, no collateral damage).
+- [x] 1.2 If any of A0–A7 fails: adopt the fully-specified `body` fallback (Decision D) — physical column `body`, FTS5 `fts5(body, heading, content=chunks, …)`, `Chunk.content` stays `content` (Decision J). Record which assertion failed and the fallback decision in this commit's message. **N/A — all A0–A7 passed, no fallback adopted.**
+- [x] 1.3 Append the deny-list subprocess assertion to `test/**/cli-subprocess.test.ts` (Decision C): `search "<query matching plan-pruebas-alertas.md>"` without `--todos` must NOT return it; the same search with `--todos` MUST return it. Uses the existing `estricto` fixture, which already declares `estadosExcluidos: ["borrador", "obsoleto"]` and ships that file in `borrador`.
+- [x] 1.4 Gate: `npm run typecheck` then `npm test`, green on `main`'s current behavior.
+- [x] 1.5 Done when: A0–A7 settle the FTS5 physical column name as a fact (retires the Decision A "SQL `as`-cast" silent-trap risk before commit 4/8 touch it), and 1.3's deny-list assertion is now the active proof that a dropped fixture config key fails a test — this is the regression net commits 3, 6 and 10 must keep passing.
 
 ## Commit 2 — Path-identifying fields (M)
 
 `refactor(domain): rename path-identifying fields to English`
 
-- [ ] 2.1 Rename, whole-program: `ruta`→`path`, `seccion`→`section`, `secciones`→`sections`, `seccionesDisponibles`→`availableSections`, `encabezado`→`heading`, `getDocumentByRuta`→`getDocumentByPath`, `groupByRuta`→`groupByPath`, `DocumentFile.ruta`, `ReadError.ruta`, `IndexWriteResult.ruta`, `ChunkMissingVector.{ruta,encabezado}`, `HeadingEvent` path fields. Full list: `design.md` Commit 2 table.
-- [ ] 2.2 **Silent-green trap (Decision A/G)**: in the same commit, edit `listChunksMissingVectors`'s SQL aliases in `sqlite-index-store.ts` — `d.ruta AS ruta`→`AS path`, `c.encabezado AS encabezado`→`AS heading`. `tsc` will not catch a stale alias.
-- [ ] 2.3 **Active proof of 2.2** (not implicit via a green suite): confirm/extend `sqlite-index-store.test.ts`'s `listChunksMissingVectors` coverage explicitly asserts defined, non-`undefined` `path`/`heading` values post-rename.
-- [ ] 2.4 Do NOT touch: `DocumentRow.ruta`, `ChunkRow.encabezado`, `ORDER BY ruta`, `documents.ruta` DDL, `read_doc` Zod keys, `--dir` (Decision G — row shapes track the DDL, not the domain, until commit 8).
-- [ ] 2.5 Gate: `npm run typecheck` then `npm test`.
-- [ ] 2.6 Done when: `rg -i -n 'ruta|seccion|encabezado' src test` returns only `sqlite-index-store.ts`'s SQL layer and Sweep A's allow-list.
+- [x] 2.1 Rename, whole-program: `ruta`→`path`, `seccion`→`section`, `secciones`→`sections`, `seccionesDisponibles`→`availableSections`, `encabezado`→`heading`, `getDocumentByRuta`→`getDocumentByPath`, `groupByRuta`→`groupByPath`, `DocumentFile.ruta`, `ReadError.ruta`, `IndexWriteResult.ruta`, `ChunkMissingVector.{ruta,encabezado}`, `HeadingEvent` path fields. Full list: `design.md` Commit 2 table.
+- [x] 2.2 **Silent-green trap (Decision A/G)**: in the same commit, edit `listChunksMissingVectors`'s SQL aliases in `sqlite-index-store.ts` — `d.ruta AS ruta`→`AS path`, `c.encabezado AS encabezado`→`AS heading`. `tsc` will not catch a stale alias.
+- [x] 2.3 **Active proof of 2.2** (not implicit via a green suite): confirm/extend `sqlite-index-store.test.ts`'s `listChunksMissingVectors` coverage explicitly asserts defined, non-`undefined` `path`/`heading` values post-rename.
+- [x] 2.4 Do NOT touch: `DocumentRow.ruta`, `ChunkRow.encabezado`, `ORDER BY ruta`, `documents.ruta` DDL, `read_doc` Zod keys, `--dir` (Decision G — row shapes track the DDL, not the domain, until commit 8).
+- [x] 2.5 Gate: `npm run typecheck` then `npm test`.
+- [x] 2.6 Done when: `rg -i -n 'ruta|seccion|encabezado' src test` returns only `sqlite-index-store.ts`'s SQL layer and Sweep A's allow-list.
 
 ## Commit 3 — Taxonomy fields and their compounds (L)
 
