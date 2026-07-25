@@ -6,20 +6,20 @@ import type { EmbeddingsProvider, IndexStore } from "../domain/ports.js";
 export interface SearchQuery {
   query: string;
   /** Open string, project-defined; empty/whitespace-only is treated as absent. */
-  tipo?: string;
-  modulo?: string;
-  etiquetas?: string[];
+  type?: string;
+  module?: string;
+  tags?: string[];
   k?: number;
-  /** Include documents whose estado is in the config deny-list (excluded by default). */
-  incluirNoVigentes?: boolean;
+  /** Include documents whose status is in the config deny-list (excluded by default). */
+  includeExcluded?: boolean;
   /** Skip the vector leg even when embeddings are available. */
   forzarLexico?: boolean;
 }
 
 export interface SearchDefaults {
   k: number;
-  /** Deny-list applied unless `incluirNoVigentes` is requested; default []. */
-  estadosExcluidos: string[];
+  /** Deny-list applied unless `includeExcluded` is requested; default []. */
+  excludedStatuses: string[];
 }
 
 const MAX_CHUNKS_PER_DOCUMENT = 2;
@@ -73,7 +73,7 @@ export class SearchDocuments {
         extracto: buildExcerpt(chunk.contenido),
         score: Number(entry.score.toFixed(4)),
       };
-      if (doc.estado !== undefined) item.estado = doc.estado;
+      if (doc.status !== undefined) item.status = doc.status;
       resultados.push(item);
     }
 
@@ -82,14 +82,14 @@ export class SearchDocuments {
 
   private buildFilters(query: SearchQuery): SearchFilters {
     const filters: SearchFilters = {};
-    const tipo = query.tipo?.trim();
-    if (tipo !== undefined && tipo.length > 0) filters.tipo = tipo;
-    if (query.modulo !== undefined) filters.modulo = query.modulo;
-    if (query.etiquetas !== undefined && query.etiquetas.length > 0) {
-      filters.etiquetas = query.etiquetas.map((e) => e.toLowerCase());
+    const type = query.type?.trim();
+    if (type !== undefined && type.length > 0) filters.type = type;
+    if (query.module !== undefined) filters.module = query.module;
+    if (query.tags !== undefined && query.tags.length > 0) {
+      filters.tags = query.tags.map((e) => e.toLowerCase());
     }
-    if (query.incluirNoVigentes !== true && this.defaults.estadosExcluidos.length > 0) {
-      filters.estadosExcluidos = this.defaults.estadosExcluidos;
+    if (query.includeExcluded !== true && this.defaults.excludedStatuses.length > 0) {
+      filters.excludedStatuses = this.defaults.excludedStatuses;
     }
     return filters;
   }

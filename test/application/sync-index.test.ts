@@ -19,16 +19,16 @@ import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-s
 
 const LIBRE: ConvencionConfig = {
   modo: "libre",
-  estadosExcluidos: [],
-  camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+  excludedStatuses: [],
+  camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
 };
 
 const ESTRICTO: ConvencionConfig = {
   modo: "estricto",
-  tipos: ["guia"],
-  estados: ["vigente"],
-  estadosExcluidos: [],
-  camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+  types: ["guia"],
+  statuses: ["vigente"],
+  excludedStatuses: [],
+  camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
 };
 
 const OPTIONS = { chunking: { minTokens: 10, maxTokens: 800 }, sinChunking: [] };
@@ -523,7 +523,7 @@ describe("SyncIndex — per-document write-failure resilience", () => {
   it("skips a document whose upsertDocument throws and one whose deleteDocument throws, completing the rest of the pass", async () => {
     const inner = new SqliteIndexStore(":memory:");
     inner.saveDocument(
-      { path: "a-borrar.md", titulo: "A borrar", resumen: "r", etiquetas: [], hash: "hash-antiguo" },
+      { path: "a-borrar.md", titulo: "A borrar", resumen: "r", tags: [], hash: "hash-antiguo" },
       [{ heading: "H", contenido: "contenido viejo", orden: 0 }],
     );
     const store = new ThrowingStore(inner, "falla-upsert.md", "a-borrar.md");

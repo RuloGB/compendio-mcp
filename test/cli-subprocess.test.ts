@@ -130,9 +130,9 @@ describe("CLI subprocess: corpus commands", () => {
     expect(payload.resultados.map((r) => r.path)).toContain("guia-onboarding.md");
   });
 
-  it("estadosExcluidos deny-list: a borrador document is hidden by default and surfaced with --todos", () => {
-    // The fixture declares estadosExcluidos: ["borrador", "obsoleto"] and
-    // ships plan-pruebas-alertas.md in estado borrador specifically to
+  it("excludedStatuses deny-list: a borrador document is hidden by default and surfaced with --todos", () => {
+    // The fixture declares excludedStatuses: ["borrador", "obsoleto"] and
+    // ships plan-pruebas-alertas.md in status borrador specifically to
     // exercise this deny-list. "plan de pruebas" is unique to that document
     // within the fixture (checked against the other 4 docs' prose).
     const denied = runCli(["--root", workdir, "search", "plan de pruebas alertas", "--lexico"]);

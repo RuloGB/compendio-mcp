@@ -12,14 +12,14 @@ export interface DocumentMeta {
   /** First paragraph after the H1. */
   resumen: string;
   /** Open string, project-defined; absent when not declared/inferred. */
-  tipo?: string;
+  type?: string;
   /** Open string, project-defined; absent for root-level files with no mapping/inference. */
-  modulo?: string;
+  module?: string;
   /** Open string, project-defined; absent when not declared/inferred. */
-  estado?: string;
-  propietario?: string;
-  etiquetas: string[];
-  actualizado?: string;
+  status?: string;
+  owner?: string;
+  tags: string[];
+  updated?: string;
   /** SHA-256 of the raw file content (basis for future incremental indexing). */
   hash: string;
 }
@@ -47,11 +47,11 @@ export type SearchMode = "hibrido" | "lexico";
 
 export interface SearchFilters {
   /** Open string, project-defined; empty/whitespace treated as absent by callers. */
-  tipo?: string;
-  modulo?: string;
-  etiquetas?: string[];
-  /** Deny-list: documents whose estado is in this list are excluded; NULL estado is never excluded. */
-  estadosExcluidos?: string[];
+  type?: string;
+  module?: string;
+  tags?: string[];
+  /** Deny-list: documents whose status is in this list are excluded; NULL status is never excluded. */
+  excludedStatuses?: string[];
 }
 
 export interface SearchResultItem {
@@ -59,8 +59,8 @@ export interface SearchResultItem {
   titulo: string;
   section: string;
   extracto: string;
-  /** Absent when the document has no estado (never rendered as "" or a placeholder). */
-  estado?: string;
+  /** Absent when the document has no status (never rendered as "" or a placeholder). */
+  status?: string;
   score: number;
 }
 

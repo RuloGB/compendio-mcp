@@ -75,7 +75,7 @@ export function createContainer(options: ContainerOptions): Container {
   );
   const searchDocuments = new SearchDocuments(store, embeddings, {
     k: config.search.k,
-    estadosExcluidos: config.convencion.estadosExcluidos,
+    excludedStatuses: config.convencion.excludedStatuses,
   });
   const syncIndex = new SyncIndex(source, parser, store, embeddings, policy, {
     chunking: config.chunk,

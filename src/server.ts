@@ -83,11 +83,11 @@ export function createMcpServer(container: Container): McpServer {
     async (args) => {
       await container.syncScheduler.maybeSync();
       const query: SearchQuery = { query: args.query };
-      if (args.tipo !== undefined) query.tipo = args.tipo;
-      if (args.modulo !== undefined) query.modulo = args.modulo;
-      if (args.etiquetas !== undefined) query.etiquetas = args.etiquetas;
+      if (args.tipo !== undefined) query.type = args.tipo;
+      if (args.modulo !== undefined) query.module = args.modulo;
+      if (args.etiquetas !== undefined) query.tags = args.etiquetas;
       if (args.k !== undefined) query.k = args.k;
-      if (args.incluir_no_vigentes !== undefined) query.incluirNoVigentes = args.incluir_no_vigentes;
+      if (args.incluir_no_vigentes !== undefined) query.includeExcluded = args.incluir_no_vigentes;
       const response = await container.searchDocuments.execute(query);
       return { content: [{ type: "text", text: JSON.stringify(response, null, 1) }] };
     },
@@ -123,7 +123,7 @@ export function createMcpServer(container: Container): McpServer {
 function formatReadResult(
   result: ReturnType<Container["readDocument"]["execute"]>,
 ): string {
-  switch (result.tipo) {
+  switch (result.type) {
     case "documento":
       return `${formatFrontmatter(result.meta)}\n\n${result.contenido}`;
     case "seccion":

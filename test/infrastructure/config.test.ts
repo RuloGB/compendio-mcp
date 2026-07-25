@@ -25,8 +25,8 @@ describe("loadConfig", () => {
     const config = loadConfig(join(dir, "no-such-project"));
     expect(config.convencion).toEqual({
       modo: "libre",
-      estadosExcluidos: [],
-      camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+      excludedStatuses: [],
+      camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
     });
   });
 
@@ -40,7 +40,7 @@ describe("loadConfig", () => {
     const config = loadConfig(projectDir);
     expect(config.docsDir).toBe("documentation");
     expect(config.convencion.modo).toBe("libre");
-    expect(config.convencion.estadosExcluidos).toEqual([]);
+    expect(config.convencion.excludedStatuses).toEqual([]);
     await rm(projectDir, { recursive: true, force: true });
   });
 
@@ -53,13 +53,13 @@ describe("loadConfig", () => {
     );
     const config = loadConfig(projectDir);
     expect(config.convencion.modo).toBe("estricto");
-    expect(config.convencion.estadosExcluidos).toEqual([]);
+    expect(config.convencion.excludedStatuses).toEqual([]);
     expect(config.convencion.camposFrontmatter).toEqual({
-      tipo: "tipo",
-      modulo: "modulo",
-      estado: "estado",
+      type: "tipo",
+      module: "modulo",
+      status: "estado",
     });
-    expect(config.convencion.tipos).toBeUndefined();
+    expect(config.convencion.types).toBeUndefined();
     await rm(projectDir, { recursive: true, force: true });
   });
 
@@ -67,14 +67,14 @@ describe("loadConfig", () => {
     const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-campos-"));
     await writeFile(
       join(projectDir, "compendio.config.json"),
-      JSON.stringify({ convencion: { camposFrontmatter: { tipo: "type" } } }),
+      JSON.stringify({ convencion: { camposFrontmatter: { type: "type" } } }),
       "utf8",
     );
     const config = loadConfig(projectDir);
     expect(config.convencion.camposFrontmatter).toEqual({
-      tipo: "type",
-      modulo: "modulo",
-      estado: "estado",
+      type: "type",
+      module: "modulo",
+      status: "estado",
     });
     await rm(projectDir, { recursive: true, force: true });
   });
@@ -89,7 +89,7 @@ describe("loadConfig", () => {
     const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const config = loadConfig(projectDir);
     expect(stderrSpy).toHaveBeenCalledTimes(1);
-    expect(stderrSpy.mock.calls[0]?.[0]).toContain("convencion.estadosExcluidos");
+    expect(stderrSpy.mock.calls[0]?.[0]).toContain("convencion.excludedStatuses");
     // The legacy value is never read into the returned config: `search` has
     // no `estadosExcluidos` property anywhere, only `k`.
     expect(config.search).toEqual({ k: 5 });
@@ -108,14 +108,14 @@ describe("loadConfig", () => {
 
     const store = new SqliteIndexStore(":memory:");
     store.saveDocument(
-      { path: "a.md", titulo: "A", resumen: "r", estado: "borrador", etiquetas: [], hash: "h" },
+      { path: "a.md", titulo: "A", resumen: "r", status: "borrador", tags: [], hash: "h" },
       [{ heading: "A", contenido: "contenido de prueba unico irrepetible", orden: 0 }],
     );
     // Mirrors composition.ts's wiring: SearchDefaults comes from
-    // config.convencion.estadosExcluidos (default []), never config.search.
+    // config.convencion.excludedStatuses (default []), never config.search.
     const search = new SearchDocuments(store, null, {
       k: config.search.k,
-      estadosExcluidos: config.convencion.estadosExcluidos,
+      excludedStatuses: config.convencion.excludedStatuses,
     });
     const response = await search.execute({ query: "contenido de prueba unico irrepetible" });
     expect(response.resultados.map((r) => r.path)).toContain("a.md");
@@ -140,8 +140,8 @@ describe("loadConfig", () => {
   it("DEFAULT_CONFIG.convencion matches the documented zero-config defaults", () => {
     expect(DEFAULT_CONFIG.convencion).toEqual({
       modo: "libre",
-      estadosExcluidos: [],
-      camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+      excludedStatuses: [],
+      camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
     });
   });
 

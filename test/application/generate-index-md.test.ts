@@ -13,15 +13,15 @@ import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-m
 
 const LIBRE: ConvencionConfig = {
   modo: "libre",
-  estadosExcluidos: [],
-  camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+  excludedStatuses: [],
+  camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
 };
 
 function cfgEstricto(overrides: Partial<ConvencionConfig> = {}): ConvencionConfig {
   return {
     modo: "estricto",
-    estadosExcluidos: [],
-    camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+    excludedStatuses: [],
+    camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
     ...overrides,
   };
 }
@@ -115,14 +115,14 @@ describe("GenerateIndexMd — libre mode over inline fixtures", () => {
 });
 
 describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
-  it("orders entries by declared tipos, tie-broken alphabetically by path", async () => {
+  it("orders entries by declared types, tie-broken alphabetically by path", async () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
         { path: "z.md", contenido: "---\ntipo: adr\nmodulo: m\nestado: vigente\n---\n\n# Z\n\nr\n" },
         { path: "b.md", contenido: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# B\n\nr\n" },
         { path: "a.md", contenido: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# A\n\nr\n" },
       ]),
-      cfgEstricto({ tipos: ["guia", "adr"] }),
+      cfgEstricto({ types: ["guia", "adr"] }),
     );
     const report = await useCase.execute();
 
@@ -139,17 +139,17 @@ describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
       new StaticSource([
         VALID_DOC,
         {
-          path: "guias/tipo-invalido.md",
+          path: "guias/type-invalido.md",
           contenido: "---\ntipo: no-declarado\nmodulo: m\nestado: vigente\n---\n\n# X\n\nr\n",
         },
       ]),
-      cfgEstricto({ tipos: ["guia"] }),
+      cfgEstricto({ types: ["guia"] }),
     );
     const report = await useCase.execute();
 
     expect(report.documentos).toBe(1);
     expect(report.omitidos).toHaveLength(1);
-    expect(report.omitidos[0]!.path).toBe("guias/tipo-invalido.md");
+    expect(report.omitidos[0]!.path).toBe("guias/type-invalido.md");
     expect(writer.contenido).toContain("guias/transversal-valida.md");
   });
 });
@@ -177,7 +177,7 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
         VALID_DOC,
         { path: "guias/frontmatter-roto.md", contenido: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
       ]),
-      cfgEstricto({ tipos: ["guia"] }),
+      cfgEstricto({ types: ["guia"] }),
     );
     const report = await useCase.execute();
 

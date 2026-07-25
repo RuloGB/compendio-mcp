@@ -7,10 +7,10 @@ function meta(overrides: Partial<DocumentMeta> = {}): DocumentMeta {
     path: "funcional/doc.md",
     titulo: "Documento",
     resumen: "Resumen.",
-    tipo: "funcional",
-    modulo: "leadsviewer",
-    estado: "vigente",
-    etiquetas: [],
+    type: "funcional",
+    module: "leadsviewer",
+    status: "vigente",
+    tags: [],
     hash: "h",
     ...overrides,
   };
@@ -35,20 +35,20 @@ describe("SqliteIndexStore", () => {
     expect(ids).toHaveLength(1);
   });
 
-  it("applies tipo, modulo and etiquetas filters", () => {
-    store.saveDocument(meta({ path: "a.md", etiquetas: ["lead"] }), [
+  it("applies type, module and tags filters", () => {
+    store.saveDocument(meta({ path: "a.md", tags: ["lead"] }), [
       { heading: "A", contenido: "contenido comun", orden: 0 },
     ]);
-    store.saveDocument(meta({ path: "b.md", estado: "borrador" }), [
+    store.saveDocument(meta({ path: "b.md", status: "borrador" }), [
       { heading: "B", contenido: "contenido comun", orden: 0 },
     ]);
-    store.saveDocument(meta({ path: "c.md", tipo: "adr" }), [
+    store.saveDocument(meta({ path: "c.md", type: "adr" }), [
       { heading: "C", contenido: "contenido comun", orden: 0 },
     ]);
 
     expect(store.searchLexical("comun", {}, 10)).toHaveLength(3);
-    expect(store.searchLexical("comun", { tipo: "adr" }, 10)).toHaveLength(1);
-    expect(store.searchLexical("comun", { etiquetas: ["lead"] }, 10)).toHaveLength(1);
+    expect(store.searchLexical("comun", { type: "adr" }, 10)).toHaveLength(1);
+    expect(store.searchLexical("comun", { tags: ["lead"] }, 10)).toHaveLength(1);
   });
 
   it("never breaks on FTS5 metacharacters in the query", () => {
@@ -61,7 +61,7 @@ describe("SqliteIndexStore", () => {
     const a = store.saveDocument(meta({ path: "a.md" }), [
       { heading: "A", contenido: "aaa", orden: 0 },
     ]);
-    const b = store.saveDocument(meta({ path: "b.md", estado: "borrador" }), [
+    const b = store.saveDocument(meta({ path: "b.md", status: "borrador" }), [
       { heading: "B", contenido: "bbb", orden: 0 },
     ]);
     expect(store.hasVectors()).toBe(false);
@@ -75,7 +75,7 @@ describe("SqliteIndexStore", () => {
     expect(nearest).toHaveLength(2);
     const sinBorrador = store.searchVector(
       new Float32Array([0.9, 0.1, 0]),
-      { estadosExcluidos: ["borrador"] },
+      { excludedStatuses: ["borrador"] },
       10,
     );
     expect(sinBorrador).toEqual([a.chunkIds[0]]);
@@ -102,62 +102,62 @@ describe("SqliteIndexStore", () => {
     expect(chunks.map((c) => c.id)).toEqual(reversed);
   });
 
-  it("round-trips document metadata including etiquetas and propietario", () => {
+  it("round-trips document metadata including tags and owner", () => {
     store.saveDocument(
-      meta({ etiquetas: ["lead", "rgpd"], propietario: "BA", actualizado: "2026-07-19" }),
+      meta({ tags: ["lead", "rgpd"], owner: "BA", updated: "2026-07-19" }),
       [{ heading: "A", contenido: "x", orden: 0 }],
     );
     const doc = store.getDocumentByPath("funcional/doc.md");
     expect(doc).not.toBeNull();
-    expect(doc!.etiquetas).toEqual(["lead", "rgpd"]);
-    expect(doc!.propietario).toBe("BA");
-    expect(doc!.actualizado).toBe("2026-07-19");
+    expect(doc!.tags).toEqual(["lead", "rgpd"]);
+    expect(doc!.owner).toBe("BA");
+    expect(doc!.updated).toBe("2026-07-19");
   });
 
-  it("round-trips absent tipo/modulo/estado as NULL -> undefined (Optional Persisted Metadata)", () => {
+  it("round-trips absent type/module/status as NULL -> undefined (Optional Persisted Metadata)", () => {
     store.saveDocument(
-      { path: "sin-metadata.md", titulo: "Sin metadata", resumen: "r", etiquetas: [], hash: "h" },
+      { path: "sin-metadata.md", titulo: "Sin metadata", resumen: "r", tags: [], hash: "h" },
       [{ heading: "A", contenido: "x", orden: 0 }],
     );
     const doc = store.getDocumentByPath("sin-metadata.md");
     expect(doc).not.toBeNull();
-    expect(doc!.tipo).toBeUndefined();
-    expect(doc!.modulo).toBeUndefined();
-    expect(doc!.estado).toBeUndefined();
+    expect(doc!.type).toBeUndefined();
+    expect(doc!.module).toBeUndefined();
+    expect(doc!.status).toBeUndefined();
   });
 
-  it("listDocuments orders alphabetically by path regardless of NULL/non-NULL tipo", () => {
-    store.saveDocument(meta({ path: "z.md", tipo: "adr" }), [
+  it("listDocuments orders alphabetically by path regardless of NULL/non-NULL type", () => {
+    store.saveDocument(meta({ path: "z.md", type: "adr" }), [
       { heading: "A", contenido: "x", orden: 0 },
     ]);
     store.saveDocument(
-      { path: "a.md", titulo: "A", resumen: "r", etiquetas: [], hash: "h" }, // no tipo (NULL)
+      { path: "a.md", titulo: "A", resumen: "r", tags: [], hash: "h" }, // no type (NULL)
       [{ heading: "A", contenido: "x", orden: 0 }],
     );
-    store.saveDocument(meta({ path: "m.md", tipo: "guia" }), [
+    store.saveDocument(meta({ path: "m.md", type: "guia" }), [
       { heading: "A", contenido: "x", orden: 0 },
     ]);
 
     expect(store.listDocuments().map((d) => d.path)).toEqual(["a.md", "m.md", "z.md"]);
   });
 
-  it("estadosExcluidos deny-list: NULL estado is never excluded, declared exclusion filters correctly", () => {
-    store.saveDocument(meta({ path: "borrador.md", estado: "borrador" }), [
+  it("excludedStatuses deny-list: NULL status is never excluded, declared exclusion filters correctly", () => {
+    store.saveDocument(meta({ path: "borrador.md", status: "borrador" }), [
       { heading: "A", contenido: "unico1", orden: 0 },
     ]);
-    store.saveDocument(meta({ path: "vigente.md", estado: "vigente" }), [
+    store.saveDocument(meta({ path: "vigente.md", status: "vigente" }), [
       { heading: "A", contenido: "unico1", orden: 0 },
     ]);
     store.saveDocument(
-      { path: "sin-estado.md", titulo: "T", resumen: "r", etiquetas: [], hash: "h" }, // no estado
+      { path: "sin-status.md", titulo: "T", resumen: "r", tags: [], hash: "h" }, // no status
       [{ heading: "A", contenido: "unico1", orden: 0 }],
     );
 
     const sinDenyList = store.searchLexical("unico1", {}, 10);
     expect(sinDenyList).toHaveLength(3);
 
-    const conDenyList = store.searchLexical("unico1", { estadosExcluidos: ["borrador"] }, 10);
-    expect(conDenyList).toHaveLength(2); // vigente.md and sin-estado.md remain eligible
+    const conDenyList = store.searchLexical("unico1", { excludedStatuses: ["borrador"] }, 10);
+    expect(conDenyList).toHaveLength(2); // vigente.md and sin-status.md remain eligible
   });
 });
 
@@ -343,10 +343,10 @@ describe("SqliteIndexStore — reset() schema guarantee (Pre-existing NOT NULL s
       );
     `);
 
-    // Pre-reset: inserting a document with no tipo would violate NOT NULL.
+    // Pre-reset: inserting a document with no type would violate NOT NULL.
     expect(() =>
       store.saveDocument(
-        { path: "sin-tipo.md", titulo: "T", resumen: "r", etiquetas: [], hash: "h" },
+        { path: "sin-type.md", titulo: "T", resumen: "r", tags: [], hash: "h" },
         [{ heading: "A", contenido: "x", orden: 0 }],
       ),
     ).toThrow();
@@ -356,12 +356,12 @@ describe("SqliteIndexStore — reset() schema guarantee (Pre-existing NOT NULL s
     // Post-reset: the schema is nullable, no manual .compendio/ deletion needed.
     expect(() =>
       store.saveDocument(
-        { path: "sin-tipo.md", titulo: "T", resumen: "r", etiquetas: [], hash: "h" },
+        { path: "sin-type.md", titulo: "T", resumen: "r", tags: [], hash: "h" },
         [{ heading: "A", contenido: "x", orden: 0 }],
       ),
     ).not.toThrow();
-    const doc = store.getDocumentByPath("sin-tipo.md");
-    expect(doc!.tipo).toBeUndefined();
+    const doc = store.getDocumentByPath("sin-type.md");
+    expect(doc!.type).toBeUndefined();
 
     store.close();
   });

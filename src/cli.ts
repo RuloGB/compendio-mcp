@@ -94,13 +94,13 @@ program
     ) => {
       await withContainer({}, async (container) => {
         const query: SearchQuery = { query: queryText };
-        if (options.tipo !== undefined) query.tipo = parseTipo(options.tipo);
-        if (options.modulo !== undefined) query.modulo = options.modulo;
+        if (options.tipo !== undefined) query.type = parseType(options.tipo);
+        if (options.modulo !== undefined) query.module = options.modulo;
         if (options.etiquetas !== undefined) {
-          query.etiquetas = options.etiquetas.split(",").map((e) => e.trim());
+          query.tags = options.etiquetas.split(",").map((e) => e.trim());
         }
         if (options.k !== undefined) query.k = options.k;
-        if (options.todos === true) query.incluirNoVigentes = true;
+        if (options.todos === true) query.includeExcluded = true;
         if (options.lexico === true) query.forzarLexico = true;
         const response = await container.searchDocuments.execute(query);
         console.log(JSON.stringify(response, null, 2));
@@ -174,12 +174,12 @@ function parsePositiveInt(value: string): number {
 }
 
 /**
- * `tipo` is an open, project-defined string (declared via `convencion.tipos`
+ * `tipo` is an open, project-defined string (declared via `convencion.types`
  * in `compendio.config.json`, or freeform in `libre` mode) — there is no
  * closed list to validate against at the CLI layer, so this is a passthrough,
  * never a hard exit. Exported for direct unit testing.
  */
-export function parseTipo(value: string): string {
+export function parseType(value: string): string {
   return value.trim();
 }
 

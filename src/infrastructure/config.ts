@@ -29,7 +29,7 @@ export interface CompendioConfig {
   };
   /**
    * Documentation convention: zero-config `libre` inference vs opt-in
-   * `estricto` linting. `estadosExcluidos` (search deny-list) lives here,
+   * `estricto` linting. `excludedStatuses` (search deny-list) lives here,
    * not under `search` — the retired `search.estadosExcluidos` key is
    * warn-and-ignore, not a compatibility shim (see
    * `warnIfLegacyEstadosExcluidos`).
@@ -55,8 +55,8 @@ export const DEFAULT_CONFIG: CompendioConfig = {
   sync: { throttleMs: DEFAULT_THROTTLE_MS },
   convencion: {
     modo: "libre",
-    estadosExcluidos: [],
-    camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+    excludedStatuses: [],
+    camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
   },
 };
 
@@ -96,7 +96,7 @@ function warnIfLegacyEstadosExcluidos(parsed: unknown): void {
   if (typeof search !== "object" || search === null) return;
   if ("estadosExcluidos" in search) {
     console.error(
-      `${CONFIG_FILE}: 'search.estadosExcluidos' esta obsoleto y ya no tiene ningun efecto; usa 'convencion.estadosExcluidos'.`,
+      `${CONFIG_FILE}: 'search.estadosExcluidos' esta obsoleto y ya no tiene ningun efecto; usa 'convencion.excludedStatuses'.`,
     );
   }
 }
@@ -126,7 +126,7 @@ function validThrottleMs(value: unknown): number | undefined {
 }
 
 /**
- * Two-level merge: `modo`/`tipos`/`estados`/`estadosExcluidos` are
+ * Two-level merge: `modo`/`types`/`statuses`/`excludedStatuses` are
  * whole-value replaces (same pattern as `exclude`); `camposFrontmatter`
  * merges per key so declaring one mapped field never wipes its siblings'
  * identity defaults.
@@ -135,13 +135,13 @@ function mergeConvencion(
   base: ConvencionConfig,
   override: Partial<ConvencionConfig> | undefined,
 ): ConvencionConfig {
-  const tipos = override?.tipos ?? base.tipos;
-  const estados = override?.estados ?? base.estados;
+  const types = override?.types ?? base.types;
+  const statuses = override?.statuses ?? base.statuses;
   return {
     modo: override?.modo ?? base.modo,
-    ...(tipos !== undefined ? { tipos } : {}),
-    ...(estados !== undefined ? { estados } : {}),
-    estadosExcluidos: override?.estadosExcluidos ?? base.estadosExcluidos,
+    ...(types !== undefined ? { types } : {}),
+    ...(statuses !== undefined ? { statuses } : {}),
+    excludedStatuses: override?.excludedStatuses ?? base.excludedStatuses,
     camposFrontmatter: { ...base.camposFrontmatter, ...override?.camposFrontmatter },
   };
 }

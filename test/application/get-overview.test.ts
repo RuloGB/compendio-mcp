@@ -21,11 +21,11 @@ function seed(store: SqliteIndexStore, overrides: Partial<DocumentMeta> & { path
     path: overrides.path,
     titulo: overrides.titulo ?? overrides.path,
     resumen: overrides.resumen ?? "contenido",
-    etiquetas: overrides.etiquetas ?? [],
+    tags: overrides.tags ?? [],
     hash: overrides.hash ?? overrides.path,
-    ...(overrides.tipo !== undefined ? { tipo: overrides.tipo } : {}),
-    ...(overrides.modulo !== undefined ? { modulo: overrides.modulo } : {}),
-    ...(overrides.estado !== undefined ? { estado: overrides.estado } : {}),
+    ...(overrides.type !== undefined ? { type: overrides.type } : {}),
+    ...(overrides.module !== undefined ? { module: overrides.module } : {}),
+    ...(overrides.status !== undefined ? { status: overrides.status } : {}),
   };
   store.saveDocument(meta, [{ heading: "H", contenido: "contenido", orden: 0 }]);
 }
@@ -37,8 +37,8 @@ describe("GetOverview — empty taxonomy omission", () => {
     seed(store, { path: "b.md" });
 
     const overview = new GetOverview(store).execute();
-    expect(overview.porTipo).toEqual({});
-    expect(overview.porModulo).toEqual({});
+    expect(overview.byType).toEqual({});
+    expect(overview.byModule).toEqual({});
 
     const salida = formatOverview(overview);
     expect(salida).not.toContain("Por tipo:");
@@ -47,14 +47,14 @@ describe("GetOverview — empty taxonomy omission", () => {
   });
 });
 
-describe("GetOverview — partial tipo coverage", () => {
-  it("counts only documents that define tipo, with no synthetic bucket", () => {
+describe("GetOverview — partial type coverage", () => {
+  it("counts only documents that define type, with no synthetic bucket", () => {
     const store = new SqliteIndexStore(":memory:");
-    seed(store, { path: "a.md", tipo: "guia" });
-    seed(store, { path: "b.md" }); // no tipo
+    seed(store, { path: "a.md", type: "guia" });
+    seed(store, { path: "b.md" }); // no type
 
     const overview = new GetOverview(store).execute();
-    expect(overview.porTipo).toEqual({ guia: 1 });
+    expect(overview.byType).toEqual({ guia: 1 });
     expect(overview.totalDocumentos).toBe(2);
 
     const salida = formatOverview(overview);
@@ -65,11 +65,11 @@ describe("GetOverview — partial tipo coverage", () => {
 });
 
 describe("GetOverview — per-document line ordering and segment omission", () => {
-  it("orders lines alphabetically by path and omits absent tipo/estado segments", () => {
+  it("orders lines alphabetically by path and omits absent type/status segments", () => {
     const store = new SqliteIndexStore(":memory:");
-    seed(store, { path: "z.md", tipo: "guia", estado: "vigente" });
-    seed(store, { path: "a.md" }); // no tipo, no estado
-    seed(store, { path: "m.md", tipo: "adr" }); // tipo only
+    seed(store, { path: "z.md", type: "guia", status: "vigente" });
+    seed(store, { path: "a.md" }); // no type, no status
+    seed(store, { path: "m.md", type: "adr" }); // type only
 
     const overview = new GetOverview(store).execute();
     expect(overview.documentos.map((d) => d.path)).toEqual(["a.md", "m.md", "z.md"]);
@@ -90,10 +90,10 @@ describe("GetOverview resumen fallback", () => {
       path: "guias/transversal-sin-resumen.md",
       titulo: "Guía sin resumen",
       resumen: "",
-      tipo: "guia",
-      modulo: "transversal",
-      estado: "vigente",
-      etiquetas: [],
+      type: "guia",
+      module: "transversal",
+      status: "vigente",
+      tags: [],
       hash: "abc",
     };
     store.saveDocument(meta, [{ heading: "Sección", contenido: "## Sección\n\nTexto.", orden: 0 }]);

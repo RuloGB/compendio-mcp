@@ -12,8 +12,8 @@ function entry(overrides: Partial<IndexEntry>): IndexEntry {
     path: "auth/doc.md",
     titulo: "Documento",
     resumen: "Resumen breve",
-    tipo: "guia",
-    estado: "vigente",
+    type: "guia",
+    status: "vigente",
     ...overrides,
   };
 }
@@ -59,29 +59,29 @@ describe("renderIndexMd", () => {
   });
 });
 
-describe("formatDocLine — omits absent tipo/estado segments", () => {
-  it("omits both segments when tipo and estado are absent", () => {
-    const linea = formatDocLine({ tipo: undefined, path: "a.md", resumen: "r", estado: undefined });
+describe("formatDocLine — omits absent type/status segments", () => {
+  it("omits both segments when type and status are absent", () => {
+    const linea = formatDocLine({ type: undefined, path: "a.md", resumen: "r", status: undefined });
     expect(linea).toBe("- a.md — r");
     expect(linea).not.toContain("[");
     expect(linea).not.toContain("(");
     expect(linea).not.toContain("undefined");
   });
 
-  it("includes tipo and omits estado when only tipo is present", () => {
-    const linea = formatDocLine({ tipo: "guia", path: "a.md", resumen: "r", estado: undefined });
+  it("includes type and omits status when only type is present", () => {
+    const linea = formatDocLine({ type: "guia", path: "a.md", resumen: "r", status: undefined });
     expect(linea).toBe("- [guia] a.md — r");
     expect(linea).not.toContain("(");
   });
 
-  it("includes estado and omits tipo when only estado is present", () => {
-    const linea = formatDocLine({ tipo: undefined, path: "a.md", resumen: "r", estado: "vigente" });
+  it("includes status and omits type when only status is present", () => {
+    const linea = formatDocLine({ type: undefined, path: "a.md", resumen: "r", status: "vigente" });
     expect(linea).toBe("- a.md — r (vigente)");
     expect(linea).not.toContain("[");
   });
 
   it("includes both segments when both are present", () => {
-    const linea = formatDocLine({ tipo: "guia", path: "a.md", resumen: "r", estado: "vigente" });
+    const linea = formatDocLine({ type: "guia", path: "a.md", resumen: "r", status: "vigente" });
     expect(linea).toBe("- [guia] a.md — r (vigente)");
   });
 });

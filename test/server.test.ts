@@ -73,9 +73,9 @@ describe("search_docs tool — open tipo schema", () => {
 function fakeContainerWithScheduler(maybeSync: () => Promise<void>): Container {
   return {
     syncScheduler: { maybeSync, lastReport: null },
-    getOverview: { execute: () => ({ totalDocumentos: 0, porTipo: {}, porModulo: {}, documentos: [] }) },
+    getOverview: { execute: () => ({ totalDocumentos: 0, byType: {}, byModule: {}, documentos: [] }) },
     searchDocuments: { execute: async () => ({ modo: "lexico", resultados: [] }) },
-    readDocument: { execute: () => ({ tipo: "ruta-no-encontrada", ruta: "no-importa.md", sugerencias: [] }) },
+    readDocument: { execute: () => ({ type: "ruta-no-encontrada", path: "no-importa.md", sugerencias: [] }) },
   } as unknown as Container;
 }
 

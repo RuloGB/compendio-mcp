@@ -165,12 +165,12 @@ export class SqliteIndexStore implements IndexStore {
         ruta: meta.path,
         titulo: meta.titulo,
         resumen: meta.resumen,
-        tipo: meta.tipo ?? null,
-        modulo: meta.modulo ?? null,
-        estado: meta.estado ?? null,
-        propietario: meta.propietario ?? null,
-        etiquetas: JSON.stringify(meta.etiquetas),
-        actualizado: meta.actualizado ?? null,
+        tipo: meta.type ?? null,
+        modulo: meta.module ?? null,
+        estado: meta.status ?? null,
+        propietario: meta.owner ?? null,
+        etiquetas: JSON.stringify(meta.tags),
+        actualizado: meta.updated ?? null,
         hash: meta.hash,
       }).lastInsertRowid,
     );
@@ -438,27 +438,27 @@ function toFtsQuery(query: string): string | null {
 function buildFilterSql(filters: SearchFilters): { sql: string; params: unknown[] } {
   const clauses: string[] = [];
   const params: unknown[] = [];
-  if (filters.tipo !== undefined) {
+  if (filters.type !== undefined) {
     clauses.push("d.tipo = ?");
-    params.push(filters.tipo);
+    params.push(filters.type);
   }
-  if (filters.modulo !== undefined) {
+  if (filters.module !== undefined) {
     clauses.push("d.modulo = ?");
-    params.push(filters.modulo);
+    params.push(filters.module);
   }
-  if (filters.estadosExcluidos !== undefined && filters.estadosExcluidos.length > 0) {
-    // NULL-aware deny-list: a document with no estado is never excluded.
+  if (filters.excludedStatuses !== undefined && filters.excludedStatuses.length > 0) {
+    // NULL-aware deny-list: a document with no status is never excluded.
     clauses.push(
-      `(d.estado IS NULL OR d.estado NOT IN (${filters.estadosExcluidos.map(() => "?").join(",")}))`,
+      `(d.estado IS NULL OR d.estado NOT IN (${filters.excludedStatuses.map(() => "?").join(",")}))`,
     );
-    params.push(...filters.estadosExcluidos);
+    params.push(...filters.excludedStatuses);
   }
-  if (filters.etiquetas !== undefined && filters.etiquetas.length > 0) {
+  if (filters.tags !== undefined && filters.tags.length > 0) {
     clauses.push(
       `EXISTS (SELECT 1 FROM json_each(d.etiquetas) je
-        WHERE je.value IN (${filters.etiquetas.map(() => "?").join(",")}))`,
+        WHERE je.value IN (${filters.tags.map(() => "?").join(",")}))`,
     );
-    params.push(...filters.etiquetas);
+    params.push(...filters.tags);
   }
   return {
     sql: clauses.length === 0 ? "" : `AND ${clauses.join(" AND ")}`,
@@ -476,14 +476,14 @@ function toDocument(row: DocumentRow): IndexedDocument {
     path: row.ruta,
     titulo: row.titulo,
     resumen: row.resumen,
-    etiquetas: row.etiquetas === null ? [] : (JSON.parse(row.etiquetas) as string[]),
+    tags: row.etiquetas === null ? [] : (JSON.parse(row.etiquetas) as string[]),
     hash: row.hash,
   };
-  if (row.tipo !== null) doc.tipo = row.tipo;
-  if (row.modulo !== null) doc.modulo = row.modulo;
-  if (row.estado !== null) doc.estado = row.estado;
-  if (row.propietario !== null) doc.propietario = row.propietario;
-  if (row.actualizado !== null) doc.actualizado = row.actualizado;
+  if (row.tipo !== null) doc.type = row.tipo;
+  if (row.modulo !== null) doc.module = row.modulo;
+  if (row.estado !== null) doc.status = row.estado;
+  if (row.propietario !== null) doc.owner = row.propietario;
+  if (row.actualizado !== null) doc.updated = row.actualizado;
   return doc;
 }
 

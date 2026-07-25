@@ -45,17 +45,17 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     expect(glosario?.chunks).toBe(1);
   });
 
-  it("zero-config: incluirNoVigentes is a no-op because ejemplos declares no estadosExcluidos", async () => {
+  it("zero-config: includeExcluded is a no-op because ejemplos declares no excludedStatuses", async () => {
     // informes/plan-pruebas.md keeps a light `estado: borrador` frontmatter field on purpose,
-    // to demonstrate that a declared estado alone does not exclude a document from search
-    // unless the project also opts into `convencion.estadosExcluidos`.
+    // to demonstrate that a declared status alone does not exclude a document from search
+    // unless the project also opts into `convencion.excludedStatuses`.
     const porDefecto = await harness.search.execute({ query: "borrador plan de pruebas panel", k: 10 });
     expect(porDefecto.resultados.map((r) => r.path)).toContain("informes/plan-pruebas.md");
 
     const conTodos = await harness.search.execute({
       query: "borrador plan de pruebas panel",
       k: 10,
-      incluirNoVigentes: true,
+      includeExcluded: true,
     });
     expect(conTodos.resultados.map((r) => r.path)).toContain("informes/plan-pruebas.md");
   });
@@ -72,24 +72,24 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     expect(paths).toContain("leadsviewer/validacion-formulario.md");
   });
 
-  it("filters by modulo (folder-inferred, zero-config)", async () => {
+  it("filters by module (folder-inferred, zero-config)", async () => {
     const soloInformes = await harness.search.execute({
       query: "leads",
-      modulo: "informes",
+      module: "informes",
       k: 10,
     });
     expect(soloInformes.resultados.length).toBeGreaterThan(0);
     expect(soloInformes.resultados.every((r) => r.path.startsWith("informes/"))).toBe(true);
   });
 
-  it("filters by etiquetas", async () => {
-    const conEtiqueta = await harness.search.execute({
+  it("filters by tags", async () => {
+    const withTag = await harness.search.execute({
       query: "leads fichero",
-      etiquetas: ["csv"],
+      tags: ["csv"],
       k: 10,
     });
-    expect(conEtiqueta.resultados.length).toBeGreaterThan(0);
-    expect(conEtiqueta.resultados.every((r) => r.path === "leadsviewer/importacion-csv.md")).toBe(true);
+    expect(withTag.resultados.length).toBeGreaterThan(0);
+    expect(withTag.resultados.every((r) => r.path === "leadsviewer/importacion-csv.md")).toBe(true);
   });
 
   it("returns at most 2 chunks per document", async () => {
@@ -106,24 +106,24 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     }
   });
 
-  it("returns compact results with path, section, extracto and estado when the document declares one", async () => {
+  it("returns compact results with path, section, extracto and status when the document declares one", async () => {
     const respuesta = await harness.search.execute({ query: "borrador plan de pruebas panel de informes" });
     expect(respuesta.resultados.length).toBeGreaterThan(0);
     const primero = respuesta.resultados[0]!;
     expect(primero.path).toBe("informes/plan-pruebas.md");
     expect(primero.section.length).toBeGreaterThan(0);
-    expect(primero.estado).toBe("borrador");
+    expect(primero.status).toBe("borrador");
     expect(primero.extracto.length).toBeLessThanOrEqual(300);
     expect(primero.extracto).not.toContain("###");
   });
 
-  it("omits estado from results when the document declares none (zero-config default)", async () => {
+  it("omits status from results when the document declares none (zero-config default)", async () => {
     const respuesta = await harness.search.execute({ query: "email duplicado" });
     expect(respuesta.resultados.length).toBeGreaterThan(0);
     const primero = respuesta.resultados[0]!;
     expect(primero.path.length).toBeGreaterThan(0);
     expect(primero.section.length).toBeGreaterThan(0);
-    expect(primero.estado).toBeUndefined();
+    expect(primero.status).toBeUndefined();
     expect(primero.extracto.length).toBeLessThanOrEqual(300);
     expect(primero.extracto).not.toContain("###");
   });
@@ -159,7 +159,7 @@ describe("graceful degradation to lexical mode", () => {
 // pre-migration full-convention (estricto) behavior that ejemplos/ used to
 // demonstrate before becoming the zero-config corpus. ---------------------
 
-describe("estricto synthetic fixture — declared taxonomy, tipo filtering, deny-list", () => {
+describe("estricto synthetic fixture — declared taxonomy, type filtering, deny-list", () => {
   let harness: TestHarness;
   let report: IndexReport;
 
@@ -177,20 +177,20 @@ describe("estricto synthetic fixture — declared taxonomy, tipo filtering, deny
     expect(report.indexados).toHaveLength(5);
   });
 
-  it("filters by a declared tipo from the reproduced taxonomy", async () => {
-    const soloAdr = await harness.search.execute({ query: "decisión arquitectura", tipo: "adr", k: 10 });
+  it("filters by a declared type from the reproduced taxonomy", async () => {
+    const soloAdr = await harness.search.execute({ query: "decisión arquitectura", type: "adr", k: 10 });
     expect(soloAdr.resultados.length).toBeGreaterThan(0);
     expect(soloAdr.resultados.every((r) => r.path === "decision-cache-redis.md")).toBe(true);
   });
 
-  it("excludes the declared borrador/obsoleto estados from search by default", async () => {
+  it("excludes the declared borrador/obsoleto statuses from search by default", async () => {
     const porDefecto = await harness.search.execute({ query: "alertas de inventario plan de pruebas", k: 10 });
     expect(porDefecto.resultados.map((r) => r.path)).not.toContain("plan-pruebas-alertas.md");
 
     const conTodos = await harness.search.execute({
       query: "alertas de inventario plan de pruebas",
       k: 10,
-      incluirNoVigentes: true,
+      includeExcluded: true,
     });
     expect(conTodos.resultados.map((r) => r.path)).toContain("plan-pruebas-alertas.md");
   });
@@ -200,15 +200,15 @@ describe("estricto synthetic fixture — declared taxonomy, tipo filtering, deny
 
 const LIBRE: ConvencionConfig = {
   modo: "libre",
-  estadosExcluidos: [],
-  camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+  excludedStatuses: [],
+  camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
 };
 
 function cfgEstricto(overrides: Partial<ConvencionConfig> = {}): ConvencionConfig {
   return {
     modo: "estricto",
-    estadosExcluidos: [],
-    camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+    excludedStatuses: [],
+    camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
     ...overrides,
   };
 }
@@ -236,7 +236,7 @@ function buildIndexer(
 }
 
 describe("IndexDocuments — libre mode never skips for metadata reasons", () => {
-  it("indexes a document with no frontmatter at all, with tipo/modulo/estado absent", async () => {
+  it("indexes a document with no frontmatter at all, with type/module/status absent", async () => {
     const { indexer, store } = buildIndexer(
       new StaticSource([{ path: "sin-frontmatter.md", contenido: "# Sin frontmatter\n\nTexto suelto.\n" }]),
     );
@@ -246,14 +246,14 @@ describe("IndexDocuments — libre mode never skips for metadata reasons", () =>
 
     const doc = store.getDocumentByPath("sin-frontmatter.md");
     expect(doc).not.toBeNull();
-    expect(doc!.tipo).toBeUndefined();
-    expect(doc!.estado).toBeUndefined();
+    expect(doc!.type).toBeUndefined();
+    expect(doc!.status).toBeUndefined();
     store.close();
   });
 });
 
 describe("IndexDocuments — estricto mode validates declared taxonomies", () => {
-  it("accepts a document whose tipo/estado match the declared taxonomies", async () => {
+  it("accepts a document whose type/status match the declared taxonomies", async () => {
     const { indexer, store } = buildIndexer(
       new StaticSource([
         {
@@ -261,7 +261,7 @@ describe("IndexDocuments — estricto mode validates declared taxonomies", () =>
           contenido: "---\ntipo: guia\nmodulo: auth\nestado: vigente\n---\n\n# Login\n\nResumen.\n",
         },
       ]),
-      cfgEstricto({ tipos: ["guia"], estados: ["vigente"] }),
+      cfgEstricto({ types: ["guia"], statuses: ["vigente"] }),
     );
     const report = await indexer.execute();
     expect(report.omitidos).toEqual([]);
@@ -269,7 +269,7 @@ describe("IndexDocuments — estricto mode validates declared taxonomies", () =>
     store.close();
   });
 
-  it("rejects and reports a document with a tipo outside the declared taxonomy", async () => {
+  it("rejects and reports a document with a type outside the declared taxonomy", async () => {
     const { indexer, store } = buildIndexer(
       new StaticSource([
         {
@@ -277,7 +277,7 @@ describe("IndexDocuments — estricto mode validates declared taxonomies", () =>
           contenido: "---\ntipo: no-declarado\nmodulo: auth\nestado: vigente\n---\n\n# Login\n\nResumen.\n",
         },
       ]),
-      cfgEstricto({ tipos: ["guia"] }),
+      cfgEstricto({ types: ["guia"] }),
     );
     const report = await indexer.execute();
     expect(report.indexados).toEqual([]);
@@ -365,102 +365,102 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
   });
 });
 
-// --- SearchDocuments: open tipo + estadosExcluidos deny-list -------------
+// --- SearchDocuments: open type + excludedStatuses deny-list -------------
 
 function seedDoc(
   store: SqliteIndexStore,
-  overrides: { path: string; tipo?: string; estado?: string; contenido: string },
+  overrides: { path: string; type?: string; status?: string; contenido: string },
 ): void {
   const meta = {
     path: overrides.path,
     titulo: overrides.path,
     resumen: "r",
-    etiquetas: [],
+    tags: [],
     hash: overrides.path,
-    ...(overrides.tipo !== undefined ? { tipo: overrides.tipo } : {}),
-    ...(overrides.estado !== undefined ? { estado: overrides.estado } : {}),
+    ...(overrides.type !== undefined ? { type: overrides.type } : {}),
+    ...(overrides.status !== undefined ? { status: overrides.status } : {}),
   };
   store.saveDocument(meta, [{ heading: "H", contenido: overrides.contenido, orden: 0 }]);
 }
 
-describe("SearchDocuments — open tipo filtering", () => {
-  it("filters by a project-specific tipo value not in any hardcoded list", async () => {
+describe("SearchDocuments — open type filtering", () => {
+  it("filters by a project-specific type value not in any hardcoded list", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", tipo: "runbook", contenido: "contenido unico alfa" });
-    seedDoc(store, { path: "b.md", tipo: "otro", contenido: "contenido unico alfa" });
-    const search = new SearchDocuments(store, null, { k: 10, estadosExcluidos: [] });
+    seedDoc(store, { path: "a.md", type: "runbook", contenido: "contenido unico alfa" });
+    seedDoc(store, { path: "b.md", type: "otro", contenido: "contenido unico alfa" });
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
 
-    const response = await search.execute({ query: "contenido unico alfa", tipo: "runbook" });
+    const response = await search.execute({ query: "contenido unico alfa", type: "runbook" });
     expect(response.resultados.map((r) => r.path)).toEqual(["a.md"]);
     store.close();
   });
 
-  it("treats an empty or whitespace-only tipo as absent (no filtering applied)", async () => {
+  it("treats an empty or whitespace-only type as absent (no filtering applied)", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", tipo: "runbook", contenido: "contenido unico beta" });
-    seedDoc(store, { path: "b.md", tipo: "otro", contenido: "contenido unico beta" });
-    const search = new SearchDocuments(store, null, { k: 10, estadosExcluidos: [] });
+    seedDoc(store, { path: "a.md", type: "runbook", contenido: "contenido unico beta" });
+    seedDoc(store, { path: "b.md", type: "otro", contenido: "contenido unico beta" });
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
 
-    const response = await search.execute({ query: "contenido unico beta", tipo: "   " });
+    const response = await search.execute({ query: "contenido unico beta", type: "   " });
     expect(response.resultados.map((r) => r.path).sort()).toEqual(["a.md", "b.md"]);
     store.close();
   });
 });
 
-describe("SearchDocuments — config-driven estadosExcluidos deny-list", () => {
-  it("excludes nothing when estadosExcluidos is not declared", async () => {
+describe("SearchDocuments — config-driven excludedStatuses deny-list", () => {
+  it("excludes nothing when excludedStatuses is not declared", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", estado: "borrador", contenido: "contenido unico gamma" });
-    const search = new SearchDocuments(store, null, { k: 10, estadosExcluidos: [] });
+    seedDoc(store, { path: "a.md", status: "borrador", contenido: "contenido unico gamma" });
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
 
     const response = await search.execute({ query: "contenido unico gamma" });
     expect(response.resultados.map((r) => r.path)).toContain("a.md");
     store.close();
   });
 
-  it("excludes declared estados by default, includes them with incluirNoVigentes", async () => {
+  it("excludes declared statuses by default, includes them with includeExcluded", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", estado: "borrador", contenido: "contenido unico delta" });
-    const search = new SearchDocuments(store, null, { k: 10, estadosExcluidos: ["borrador"] });
+    seedDoc(store, { path: "a.md", status: "borrador", contenido: "contenido unico delta" });
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: ["borrador"] });
 
     const excluded = await search.execute({ query: "contenido unico delta" });
     expect(excluded.resultados.map((r) => r.path)).not.toContain("a.md");
 
-    const included = await search.execute({ query: "contenido unico delta", incluirNoVigentes: true });
+    const included = await search.execute({ query: "contenido unico delta", includeExcluded: true });
     expect(included.resultados.map((r) => r.path)).toContain("a.md");
     store.close();
   });
 
-  it("is a true no-op when estadosExcluidos is not declared, regardless of incluirNoVigentes", async () => {
+  it("is a true no-op when excludedStatuses is not declared, regardless of includeExcluded", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", estado: "borrador", contenido: "contenido unico epsilon" });
-    const search = new SearchDocuments(store, null, { k: 10, estadosExcluidos: [] });
+    seedDoc(store, { path: "a.md", status: "borrador", contenido: "contenido unico epsilon" });
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
 
     const sinFlag = await search.execute({ query: "contenido unico epsilon" });
-    const conFlag = await search.execute({ query: "contenido unico epsilon", incluirNoVigentes: true });
+    const conFlag = await search.execute({ query: "contenido unico epsilon", includeExcluded: true });
     expect(sinFlag.resultados.map((r) => r.path)).toEqual(conFlag.resultados.map((r) => r.path));
     store.close();
   });
 
-  it("a document with no estado remains eligible under a declared deny-list", async () => {
+  it("a document with no status remains eligible under a declared deny-list", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", contenido: "contenido unico zeta" }); // no estado at all
-    const search = new SearchDocuments(store, null, { k: 10, estadosExcluidos: ["borrador"] });
+    seedDoc(store, { path: "a.md", contenido: "contenido unico zeta" }); // no status at all
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: ["borrador"] });
 
     const response = await search.execute({ query: "contenido unico zeta" });
     expect(response.resultados.map((r) => r.path)).toContain("a.md");
     store.close();
   });
 
-  it("omits estado from the result item when the document has none", async () => {
+  it("omits status from the result item when the document has none", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", contenido: "contenido unico eta" }); // no estado
-    const search = new SearchDocuments(store, null, { k: 10, estadosExcluidos: [] });
+    seedDoc(store, { path: "a.md", contenido: "contenido unico eta" }); // no status
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
 
     const response = await search.execute({ query: "contenido unico eta" });
     expect(response.resultados).toHaveLength(1);
-    expect(response.resultados[0]!.estado).toBeUndefined();
-    expect("estado" in response.resultados[0]!).toBe(false);
+    expect(response.resultados[0]!.status).toBeUndefined();
+    expect("status" in response.resultados[0]!).toBe(false);
     store.close();
   });
 });
@@ -484,7 +484,7 @@ describe("SyncIndex — end-to-end incremental sync over a temp docs directory",
       chunking: { minTokens: 10, maxTokens: 800 },
       sinChunking: [],
     });
-    const search = new SearchDocuments(store, embeddings, { k: 10, estadosExcluidos: [] });
+    const search = new SearchDocuments(store, embeddings, { k: 10, excludedStatuses: [] });
     const read = new ReadDocument(store);
 
     try {
@@ -524,7 +524,7 @@ describe("SyncIndex — end-to-end incremental sync over a temp docs directory",
       rmSync(join(dir, "a.md"));
       await sync.execute();
       const afterDelete = read.execute({ path: "a.md" });
-      expect(afterDelete.tipo).toBe("ruta-no-encontrada");
+      expect(afterDelete.type).toBe("ruta-no-encontrada");
       const stillThere = await search.execute({
         query: "textogammanuevodiferenteaparte",
         forzarLexico: true,

@@ -17,8 +17,8 @@ export function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-export interface EtiquetasResult {
-  etiquetas: string[];
+export interface TagsResult {
+  tags: string[];
   error?: string;
 }
 
@@ -26,27 +26,27 @@ export interface EtiquetasResult {
  * Normalizes the `etiquetas` frontmatter field: lowercased, trimmed, empty
  * entries dropped. Reports an error when present but not a list of strings.
  */
-export function resolveEtiquetas(data: Record<string, unknown>): EtiquetasResult {
+export function resolveTags(data: Record<string, unknown>): TagsResult {
   const raw = data["etiquetas"];
-  if (raw === undefined || raw === null) return { etiquetas: [] };
+  if (raw === undefined || raw === null) return { tags: [] };
   if (Array.isArray(raw) && raw.every((e) => typeof e === "string")) {
-    return { etiquetas: raw.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0) };
+    return { tags: raw.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0) };
   }
-  return { etiquetas: [], error: "'etiquetas' debe ser una lista de cadenas" };
+  return { tags: [], error: "'etiquetas' debe ser una lista de cadenas" };
 }
 
 /**
- * Attaches the optional propietario/actualizado pass-through fields to a
+ * Attaches the optional owner/updated pass-through fields to a
  * `DocumentMeta` object literal in place. Shared by both convention policies
  * so the normalization (date -> `YYYY-MM-DD`, trimming) stays in one place.
  */
 export function aplicarCamposOpcionales(meta: DocumentMeta, data: Record<string, unknown>): void {
-  const propietario = data["propietario"];
-  if (isNonEmptyString(propietario)) meta.propietario = propietario.trim();
-  const actualizado = data["actualizado"];
-  if (isNonEmptyString(actualizado)) {
-    meta.actualizado = actualizado.trim();
-  } else if (actualizado instanceof Date) {
-    meta.actualizado = actualizado.toISOString().slice(0, 10);
+  const owner = data["propietario"];
+  if (isNonEmptyString(owner)) meta.owner = owner.trim();
+  const updated = data["actualizado"];
+  if (isNonEmptyString(updated)) {
+    meta.updated = updated.trim();
+  } else if (updated instanceof Date) {
+    meta.updated = updated.toISOString().slice(0, 10);
   }
 }

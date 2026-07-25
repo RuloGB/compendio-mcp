@@ -18,18 +18,18 @@ describe("ReadDocument over the ejemplos corpus", () => {
 
   it("returns the full document with its H1 restored", () => {
     const result = harness.read.execute({ path: "leadsviewer/validacion-formulario.md" });
-    expect(result.tipo).toBe("documento");
-    if (result.tipo !== "documento") return;
+    expect(result.type).toBe("documento");
+    if (result.type !== "documento") return;
     expect(result.contenido.startsWith("# Validación del formulario de alta de leads")).toBe(true);
     expect(result.contenido).toContain("## Reglas de negocio");
-    // Zero-config document (no frontmatter): modulo comes from folder inference.
-    expect(result.meta.modulo).toBe("leadsviewer");
+    // Zero-config document (no frontmatter): module comes from folder inference.
+    expect(result.meta.module).toBe("leadsviewer");
   });
 
   it("does not duplicate the H1 of documents indexed as a single chunk", () => {
     const result = harness.read.execute({ path: "glosario.md" });
-    expect(result.tipo).toBe("documento");
-    if (result.tipo !== "documento") return;
+    expect(result.type).toBe("documento");
+    if (result.type !== "documento") return;
     expect(result.contenido.match(/^# Glosario/gm)).toHaveLength(1);
   });
 
@@ -38,15 +38,15 @@ describe("ReadDocument over the ejemplos corpus", () => {
       path: "leadsviewer/validacion-formulario.md",
       section: "reglas de duplicidad",
     });
-    expect(result.tipo).toBe("seccion");
-    if (result.tipo !== "seccion") return;
+    expect(result.type).toBe("seccion");
+    if (result.type !== "seccion") return;
     expect(result.contenido).toContain("Un lead se considera duplicado");
   });
 
   it("suggests the 3 closest paths when the path does not exist", () => {
     const result = harness.read.execute({ path: "leadsviewer/validacion-formulari.md" });
-    expect(result.tipo).toBe("ruta-no-encontrada");
-    if (result.tipo !== "ruta-no-encontrada") return;
+    expect(result.type).toBe("ruta-no-encontrada");
+    if (result.type !== "ruta-no-encontrada") return;
     expect(result.sugerencias).toHaveLength(3);
     expect(result.sugerencias[0]).toBe("leadsviewer/validacion-formulario.md");
   });
@@ -56,33 +56,33 @@ describe("ReadDocument over the ejemplos corpus", () => {
       path: "leadsviewer/validacion-formulario.md",
       section: "seccion inventada",
     });
-    expect(result.tipo).toBe("seccion-no-encontrada");
-    if (result.tipo !== "seccion-no-encontrada") return;
+    expect(result.type).toBe("seccion-no-encontrada");
+    if (result.type !== "seccion-no-encontrada") return;
     expect(result.availableSections.length).toBeGreaterThan(0);
   });
 });
 
 describe("formatFrontmatter — conditional rendering of absent fields", () => {
   function baseMeta(overrides: Partial<DocumentMeta> = {}): DocumentMeta {
-    return { path: "a.md", titulo: "A", resumen: "r", etiquetas: [], hash: "h", ...overrides };
+    return { path: "a.md", titulo: "A", resumen: "r", tags: [], hash: "h", ...overrides };
   }
 
   it("renders all three lines when tipo/modulo/estado are present", () => {
-    const salida = formatFrontmatter(baseMeta({ tipo: "guia", modulo: "auth", estado: "vigente" }));
+    const salida = formatFrontmatter(baseMeta({ type: "guia", module: "auth", status: "vigente" }));
     expect(salida).toContain("tipo: guia");
     expect(salida).toContain("modulo: auth");
     expect(salida).toContain("estado: vigente");
   });
 
   it("omits only the modulo line when modulo is absent", () => {
-    const salida = formatFrontmatter(baseMeta({ tipo: "guia", estado: "vigente" }));
+    const salida = formatFrontmatter(baseMeta({ type: "guia", status: "vigente" }));
     expect(salida).toContain("tipo: guia");
     expect(salida).not.toContain("modulo:");
     expect(salida).toContain("estado: vigente");
   });
 
   it("omits tipo and estado when only modulo is present", () => {
-    const salida = formatFrontmatter(baseMeta({ modulo: "auth" }));
+    const salida = formatFrontmatter(baseMeta({ module: "auth" }));
     expect(salida).not.toContain("tipo:");
     expect(salida).toContain("modulo: auth");
     expect(salida).not.toContain("estado:");

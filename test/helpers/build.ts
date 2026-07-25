@@ -14,32 +14,32 @@ export const EJEMPLOS_DOCS = fileURLToPath(new URL("../../ejemplos/docs", import
 
 /**
  * ejemplos/ is the product's zero-config pitch corpus (post-D1 migration):
- * no declared taxonomy, folder-as-modulo inference, mostly frontmatter-free.
+ * no declared taxonomy, folder-as-module inference, mostly frontmatter-free.
  * `ejemplos/` ships NO config file at all, so this mirrors what `loadConfig`
  * returns for it: `DEFAULT_CONFIG.convencion`, i.e. `libre` with nothing
  * excluded. Keep the two in sync if the defaults ever change.
  */
 export const EJEMPLOS_CONVENCION: ConvencionConfig = {
   modo: "libre",
-  estadosExcluidos: [],
-  camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+  excludedStatuses: [],
+  camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
 };
 
 /**
  * Secondary synthetic fixture (D1.3) reproducing the full-convention
  * behavior `ejemplos/` used to demonstrate before the zero-config migration:
- * declared `tipos`/`estados` matching the retired `TIPOS`/`ESTADOS`
- * constants, and the same `estadosExcluidos` deny-list.
+ * declared `types`/`statuses` matching the retired `TIPOS`/`ESTADOS`
+ * constants, and the same `excludedStatuses` deny-list.
  */
 export const ESTRICTO_FIXTURE_DOCS = fileURLToPath(
   new URL("../fixtures/estricto/docs", import.meta.url),
 );
 export const ESTRICTO_FIXTURE_CONVENCION: ConvencionConfig = {
   modo: "estricto",
-  tipos: ["funcional", "adr", "api", "qa", "guia"],
-  estados: ["borrador", "vigente", "obsoleto"],
-  estadosExcluidos: ["borrador", "obsoleto"],
-  camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+  types: ["funcional", "adr", "api", "qa", "guia"],
+  statuses: ["borrador", "vigente", "obsoleto"],
+  excludedStatuses: ["borrador", "obsoleto"],
+  camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
 };
 
 export interface TestHarness {
@@ -70,7 +70,7 @@ export function buildHarness(
   );
   const search = new SearchDocuments(store, embeddings, {
     k: 5,
-    estadosExcluidos: convencion.estadosExcluidos,
+    excludedStatuses: convencion.excludedStatuses,
   });
   return {
     store,

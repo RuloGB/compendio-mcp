@@ -1,7 +1,7 @@
 import {
   aplicarCamposOpcionales,
   isNonEmptyString,
-  resolveEtiquetas,
+  resolveTags,
   type FrontmatterInput,
   type FrontmatterResult,
 } from "./frontmatter.js";
@@ -14,14 +14,14 @@ import type { DocumentMeta } from "./model.js";
  */
 export interface ConvencionConfig {
   modo: "libre" | "estricto";
-  /** Declared tipo taxonomy; enforced only under estricto. */
-  tipos?: string[];
-  /** Declared estado taxonomy; enforced only under estricto. */
-  estados?: string[];
+  /** Declared type taxonomy; enforced only under estricto. */
+  types?: string[];
+  /** Declared status taxonomy; enforced only under estricto. */
+  statuses?: string[];
   /** Deny-list applied by search; default []. */
-  estadosExcluidos: string[];
-  /** Frontmatter source key per field; default identity ({ tipo: "tipo", ... }). */
-  camposFrontmatter: { tipo: string; modulo: string; estado: string };
+  excludedStatuses: string[];
+  /** Frontmatter source key per field; default identity ({ type: "tipo", ... }). */
+  camposFrontmatter: { type: string; module: string; status: string };
 }
 
 /** Resolves raw frontmatter+parse output into validated document metadata. */
@@ -35,7 +35,7 @@ function leerCampo(data: Record<string, unknown>, key: string): string | undefin
   return isNonEmptyString(raw) ? raw.trim() : undefined;
 }
 
-/** First POSIX path segment, i.e. the folder-derived modulo; undefined for root-level files. */
+/** First POSIX path segment, i.e. the folder-derived module; undefined for root-level files. */
 export function inferirModulo(path: string): string | undefined {
   const idx = path.indexOf("/");
   return idx === -1 ? undefined : path.slice(0, idx);
@@ -58,28 +58,28 @@ function crearPoliticaLibre(cfg: ConvencionConfig): ConvencionPolicy {
   return {
     resolver(input: FrontmatterInput): FrontmatterResult {
       const { data } = input;
-      const etiquetasResult = resolveEtiquetas(data);
-      if (etiquetasResult.error !== undefined) {
-        return { ok: false, errores: [etiquetasResult.error] };
+      const tagsResult = resolveTags(data);
+      if (tagsResult.error !== undefined) {
+        return { ok: false, errores: [tagsResult.error] };
       }
 
       const titulo = isNonEmptyString(input.titulo)
         ? input.titulo.trim()
         : humanizarNombreArchivo(input.path);
-      const tipo = leerCampo(data, cfg.camposFrontmatter.tipo);
-      const estado = leerCampo(data, cfg.camposFrontmatter.estado);
-      const modulo = leerCampo(data, cfg.camposFrontmatter.modulo) ?? inferirModulo(input.path);
+      const type = leerCampo(data, cfg.camposFrontmatter.type);
+      const status = leerCampo(data, cfg.camposFrontmatter.status);
+      const module = leerCampo(data, cfg.camposFrontmatter.module) ?? inferirModulo(input.path);
 
       const meta: DocumentMeta = {
         path: input.path,
         titulo,
         resumen: input.resumen.trim(),
-        etiquetas: etiquetasResult.etiquetas,
+        tags: tagsResult.tags,
         hash: input.hash,
       };
-      if (tipo !== undefined) meta.tipo = tipo;
-      if (modulo !== undefined) meta.modulo = modulo;
-      if (estado !== undefined) meta.estado = estado;
+      if (type !== undefined) meta.type = type;
+      if (module !== undefined) meta.module = module;
+      if (status !== undefined) meta.status = status;
       aplicarCamposOpcionales(meta, data);
       return { ok: true, meta };
     },
@@ -96,31 +96,31 @@ function crearPoliticaEstricta(cfg: ConvencionConfig): ConvencionPolicy {
       const { data } = input;
       const errores: string[] = [];
 
-      const tipo = leerCampo(data, cfg.camposFrontmatter.tipo);
-      if (tipo === undefined) {
-        errores.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.tipo}'`);
-      } else if (cfg.tipos !== undefined && !cfg.tipos.includes(tipo)) {
-        errores.push(`'tipo' invalido: "${tipo}" (permitidos: ${cfg.tipos.join(", ")})`);
+      const type = leerCampo(data, cfg.camposFrontmatter.type);
+      if (type === undefined) {
+        errores.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.type}'`);
+      } else if (cfg.types !== undefined && !cfg.types.includes(type)) {
+        errores.push(`'type' invalido: "${type}" (permitidos: ${cfg.types.join(", ")})`);
       }
 
-      const modulo = leerCampo(data, cfg.camposFrontmatter.modulo);
-      if (modulo === undefined) {
-        errores.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.modulo}'`);
+      const module = leerCampo(data, cfg.camposFrontmatter.module);
+      if (module === undefined) {
+        errores.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.module}'`);
       }
 
-      const estado = leerCampo(data, cfg.camposFrontmatter.estado);
-      if (estado === undefined) {
-        errores.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.estado}'`);
-      } else if (cfg.estados !== undefined && !cfg.estados.includes(estado)) {
-        errores.push(`'estado' invalido: "${estado}" (permitidos: ${cfg.estados.join(", ")})`);
+      const status = leerCampo(data, cfg.camposFrontmatter.status);
+      if (status === undefined) {
+        errores.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.status}'`);
+      } else if (cfg.statuses !== undefined && !cfg.statuses.includes(status)) {
+        errores.push(`'status' invalido: "${status}" (permitidos: ${cfg.statuses.join(", ")})`);
       }
 
       if (!isNonEmptyString(input.titulo)) {
         errores.push("el documento no tiene titulo H1");
       }
 
-      const etiquetasResult = resolveEtiquetas(data);
-      if (etiquetasResult.error !== undefined) errores.push(etiquetasResult.error);
+      const tagsResult = resolveTags(data);
+      if (tagsResult.error !== undefined) errores.push(tagsResult.error);
 
       if (errores.length > 0) {
         return { ok: false, errores };
@@ -130,12 +130,12 @@ function crearPoliticaEstricta(cfg: ConvencionConfig): ConvencionPolicy {
         path: input.path,
         titulo: input.titulo.trim(),
         resumen: input.resumen.trim(),
-        etiquetas: etiquetasResult.etiquetas,
+        tags: tagsResult.tags,
         hash: input.hash,
       };
-      if (tipo !== undefined) meta.tipo = tipo;
-      if (modulo !== undefined) meta.modulo = modulo;
-      if (estado !== undefined) meta.estado = estado;
+      if (type !== undefined) meta.type = type;
+      if (module !== undefined) meta.module = module;
+      if (status !== undefined) meta.status = status;
       aplicarCamposOpcionales(meta, data);
       return { ok: true, meta };
     },
@@ -149,16 +149,16 @@ export function crearConvencionPolicy(cfg: ConvencionConfig): ConvencionPolicy {
 
 /**
  * Builds the INDEX.md / docs_overview ordering comparator: default
- * alphabetical by `path`; under `estricto` with a declared `tipos` taxonomy,
+ * alphabetical by `path`; under `estricto` with a declared `types` taxonomy,
  * declared-order-then-alphabetical-by-`path` tie-break.
  */
 export function crearComparadorIndice(
   cfg: ConvencionConfig,
 ): (a: IndexEntry, b: IndexEntry) => number {
-  if (cfg.modo === "estricto" && cfg.tipos !== undefined && cfg.tipos.length > 0) {
-    const tipos = cfg.tipos;
+  if (cfg.modo === "estricto" && cfg.types !== undefined && cfg.types.length > 0) {
+    const types = cfg.types;
     return (a, b) => {
-      const diff = tipos.indexOf(a.tipo ?? "") - tipos.indexOf(b.tipo ?? "");
+      const diff = types.indexOf(a.type ?? "") - types.indexOf(b.type ?? "");
       if (diff !== 0) return diff;
       return a.path.localeCompare(b.path);
     };

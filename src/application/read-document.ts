@@ -8,11 +8,11 @@ export interface ReadRequest {
 }
 
 export type ReadResult =
-  | { tipo: "documento"; meta: DocumentMeta; contenido: string }
-  | { tipo: "seccion"; meta: DocumentMeta; section: string; contenido: string }
-  | { tipo: "ruta-no-encontrada"; path: string; sugerencias: string[] }
+  | { type: "documento"; meta: DocumentMeta; contenido: string }
+  | { type: "seccion"; meta: DocumentMeta; section: string; contenido: string }
+  | { type: "ruta-no-encontrada"; path: string; sugerencias: string[] }
   | {
-      tipo: "seccion-no-encontrada";
+      type: "seccion-no-encontrada";
       meta: DocumentMeta;
       section: string;
       availableSections: string[];
@@ -33,7 +33,7 @@ export class ReadDocument {
     if (doc === null) {
       const paths = this.store.listDocuments().map((d) => d.path);
       return {
-        tipo: "ruta-no-encontrada",
+        type: "ruta-no-encontrada",
         path: request.path,
         sugerencias: closestMatches(request.path, paths, SUGGESTION_LIMIT),
       };
@@ -45,7 +45,7 @@ export class ReadDocument {
       // Intro chunks exclude the H1 line; restore it unless the body already
       // starts with one (documents indexed without chunking keep theirs).
       const contenido = body.startsWith("# ") ? body : `# ${doc.titulo}\n\n${body}`;
-      return { tipo: "documento", meta: doc, contenido };
+      return { type: "documento", meta: doc, contenido };
     }
 
     // A section may live merged inside a bigger chunk (small sections are
@@ -64,14 +64,14 @@ export class ReadDocument {
         for (const heading of headingsIn(chunk.contenido)) disponibles.add(heading);
       }
       return {
-        tipo: "seccion-no-encontrada",
+        type: "seccion-no-encontrada",
         meta: doc,
         section: request.section,
         availableSections: [...disponibles],
       };
     }
     return {
-      tipo: "seccion",
+      type: "seccion",
       meta: doc,
       section: request.section,
       contenido: matching.map((c) => c.contenido).join("\n\n"),
@@ -95,12 +95,12 @@ function headingsIn(markdown: string): string[] {
  */
 export function formatFrontmatter(meta: DocumentMeta): string {
   const lines = ["---"];
-  if (meta.tipo !== undefined) lines.push(`tipo: ${meta.tipo}`);
-  if (meta.modulo !== undefined) lines.push(`modulo: ${meta.modulo}`);
-  if (meta.estado !== undefined) lines.push(`estado: ${meta.estado}`);
-  if (meta.propietario !== undefined) lines.push(`propietario: ${meta.propietario}`);
-  if (meta.etiquetas.length > 0) lines.push(`etiquetas: [${meta.etiquetas.join(", ")}]`);
-  if (meta.actualizado !== undefined) lines.push(`actualizado: ${meta.actualizado}`);
+  if (meta.type !== undefined) lines.push(`tipo: ${meta.type}`);
+  if (meta.module !== undefined) lines.push(`modulo: ${meta.module}`);
+  if (meta.status !== undefined) lines.push(`estado: ${meta.status}`);
+  if (meta.owner !== undefined) lines.push(`propietario: ${meta.owner}`);
+  if (meta.tags.length > 0) lines.push(`etiquetas: [${meta.tags.join(", ")}]`);
+  if (meta.updated !== undefined) lines.push(`actualizado: ${meta.updated}`);
   lines.push("---");
   return lines.join("\n");
 }

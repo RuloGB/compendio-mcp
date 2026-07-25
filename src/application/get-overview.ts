@@ -4,44 +4,44 @@ import type { SkippedFileReport } from "./index-documents.js";
 import type { SyncReport } from "./sync-index.js";
 
 export interface OverviewLine {
-  tipo?: string;
+  type?: string;
   path: string;
   resumen: string;
-  estado?: string;
+  status?: string;
 }
 
 export interface Overview {
   totalDocumentos: number;
-  porTipo: Record<string, number>;
-  porModulo: Record<string, number>;
+  byType: Record<string, number>;
+  byModule: Record<string, number>;
   documentos: OverviewLine[];
 }
 
 /**
- * Corpus map for agents: counts by tipo and modulo plus one line per document.
+ * Corpus map for agents: counts by type and module plus one line per document.
  * Budget: ~10 tokens per document, so summaries are truncated hard. Documents
- * with an absent tipo/modulo are not counted into any bucket (no synthetic
- * "sin tipo"/"sin modulo" catch-all).
+ * with an absent type/module are not counted into any bucket (no synthetic
+ * no-type/no-module catch-all).
  */
 export class GetOverview {
   constructor(private readonly store: IndexStore) {}
 
   execute(): Overview {
     const documents = this.store.listDocuments();
-    const porTipo: Record<string, number> = {};
-    const porModulo: Record<string, number> = {};
+    const byType: Record<string, number> = {};
+    const byModule: Record<string, number> = {};
     for (const doc of documents) {
-      if (doc.tipo !== undefined) porTipo[doc.tipo] = (porTipo[doc.tipo] ?? 0) + 1;
-      if (doc.modulo !== undefined) porModulo[doc.modulo] = (porModulo[doc.modulo] ?? 0) + 1;
+      if (doc.type !== undefined) byType[doc.type] = (byType[doc.type] ?? 0) + 1;
+      if (doc.module !== undefined) byModule[doc.module] = (byModule[doc.module] ?? 0) + 1;
     }
     return {
       totalDocumentos: documents.length,
-      porTipo,
-      porModulo,
+      byType,
+      byModule,
       documentos: documents.map((doc) => {
         const line: OverviewLine = { path: doc.path, resumen: displayResumen(doc) };
-        if (doc.tipo !== undefined) line.tipo = doc.tipo;
-        if (doc.estado !== undefined) line.estado = doc.estado;
+        if (doc.type !== undefined) line.type = doc.type;
+        if (doc.status !== undefined) line.status = doc.status;
         return line;
       }),
     };
@@ -77,13 +77,13 @@ export function formatOverview(
 ): string {
   const lines: string[] = [];
   lines.push(`Documentos indexados: ${overview.totalDocumentos}`);
-  const porTipoLine = formatCounts(overview.porTipo);
-  if (porTipoLine !== null) lines.push(`Por tipo: ${porTipoLine}`);
-  const porModuloLine = formatCounts(overview.porModulo);
-  if (porModuloLine !== null) lines.push(`Por modulo: ${porModuloLine}`);
+  const byTypeLine = formatCounts(overview.byType);
+  if (byTypeLine !== null) lines.push(`Por tipo: ${byTypeLine}`);
+  const byModuleLine = formatCounts(overview.byModule);
+  if (byModuleLine !== null) lines.push(`Por modulo: ${byModuleLine}`);
   lines.push("");
   for (const doc of overview.documentos) {
-    lines.push(formatDocLine({ tipo: doc.tipo, path: doc.path, resumen: doc.resumen, estado: doc.estado }));
+    lines.push(formatDocLine({ type: doc.type, path: doc.path, resumen: doc.resumen, status: doc.status }));
   }
   if (sincronizacion !== null && sincronizacion !== undefined) {
     lines.push("");

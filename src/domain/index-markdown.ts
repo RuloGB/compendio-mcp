@@ -6,7 +6,7 @@ export const INDEX_FILE = "INDEX.md";
 export const MAX_RESUMEN_CHARS = 140;
 
 /** The subset of document metadata the index line needs. */
-export type IndexEntry = Pick<DocumentMeta, "path" | "titulo" | "resumen" | "tipo" | "estado">;
+export type IndexEntry = Pick<DocumentMeta, "path" | "titulo" | "resumen" | "type" | "status">;
 
 const TITULO_INDICE = "# Índice de la documentación";
 const AVISO_GENERADO =
@@ -26,19 +26,19 @@ export function displayResumen(doc: { resumen: string; titulo: string }): string
 
 /**
  * One document per line — the format shared by INDEX.md and docs_overview.
- * Omits the `[tipo]` bracket segment and the `(estado)` parenthesized segment
+ * Omits the `[type]` bracket segment and the `(status)` parenthesized segment
  * entirely when the corresponding field is absent (never `[undefined]` or an
  * empty placeholder).
  */
 export function formatDocLine(doc: {
-  tipo: string | undefined;
+  type: string | undefined;
   path: string;
   resumen: string;
-  estado: string | undefined;
+  status: string | undefined;
 }): string {
-  const tipoSegment = doc.tipo !== undefined ? `[${doc.tipo}] ` : "";
-  const estadoSegment = doc.estado !== undefined ? ` (${doc.estado})` : "";
-  return `- ${tipoSegment}${doc.path} — ${doc.resumen}${estadoSegment}`;
+  const typeSegment = doc.type !== undefined ? `[${doc.type}] ` : "";
+  const statusSegment = doc.status !== undefined ? ` (${doc.status})` : "";
+  return `- ${typeSegment}${doc.path} — ${doc.resumen}${statusSegment}`;
 }
 
 /** Default ordering: alphabetical by `path` (the zero-config/libre default). */
@@ -50,7 +50,7 @@ function compararAlfabetico(a: IndexEntry, b: IndexEntry): number {
  * Renders INDEX.md: one line per document. Ordering is delegated to an
  * injectable comparator (default = alphabetical by `path`); pass the
  * `estricto` declared-taxonomy comparator from `crearComparadorIndice` to
- * order by the declared `tipos` sequence instead.
+ * order by the declared `types` sequence instead.
  */
 export function renderIndexMd(
   docs: IndexEntry[],
@@ -58,10 +58,10 @@ export function renderIndexMd(
 ): string {
   const lines = [...docs].sort(comparar).map((doc) =>
     formatDocLine({
-      tipo: doc.tipo,
+      type: doc.type,
       path: doc.path,
       resumen: displayResumen(doc),
-      estado: doc.estado,
+      status: doc.status,
     }),
   );
   const header = `${TITULO_INDICE}\n\n${AVISO_GENERADO}\n`;
