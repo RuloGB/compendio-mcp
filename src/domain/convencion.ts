@@ -60,7 +60,7 @@ function crearPoliticaLibre(cfg: ConvencionConfig): ConvencionPolicy {
       const { data } = input;
       const tagsResult = resolveTags(data);
       if (tagsResult.error !== undefined) {
-        return { ok: false, errores: [tagsResult.error] };
+        return { ok: false, errors: [tagsResult.error] };
       }
 
       const title = isNonEmptyString(input.title)
@@ -94,36 +94,36 @@ function crearPoliticaEstricta(cfg: ConvencionConfig): ConvencionPolicy {
   return {
     resolver(input: FrontmatterInput): FrontmatterResult {
       const { data } = input;
-      const errores: string[] = [];
+      const errors: string[] = [];
 
       const type = leerCampo(data, cfg.camposFrontmatter.type);
       if (type === undefined) {
-        errores.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.type}'`);
+        errors.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.type}'`);
       } else if (cfg.types !== undefined && !cfg.types.includes(type)) {
-        errores.push(`'type' invalido: "${type}" (permitidos: ${cfg.types.join(", ")})`);
+        errors.push(`'type' invalido: "${type}" (permitidos: ${cfg.types.join(", ")})`);
       }
 
       const module = leerCampo(data, cfg.camposFrontmatter.module);
       if (module === undefined) {
-        errores.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.module}'`);
+        errors.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.module}'`);
       }
 
       const status = leerCampo(data, cfg.camposFrontmatter.status);
       if (status === undefined) {
-        errores.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.status}'`);
+        errors.push(`frontmatter sin campo obligatorio '${cfg.camposFrontmatter.status}'`);
       } else if (cfg.statuses !== undefined && !cfg.statuses.includes(status)) {
-        errores.push(`'status' invalido: "${status}" (permitidos: ${cfg.statuses.join(", ")})`);
+        errors.push(`'status' invalido: "${status}" (permitidos: ${cfg.statuses.join(", ")})`);
       }
 
       if (!isNonEmptyString(input.title)) {
-        errores.push("el documento no tiene titulo H1");
+        errors.push("el documento no tiene titulo H1");
       }
 
       const tagsResult = resolveTags(data);
-      if (tagsResult.error !== undefined) errores.push(tagsResult.error);
+      if (tagsResult.error !== undefined) errors.push(tagsResult.error);
 
-      if (errores.length > 0) {
-        return { ok: false, errores };
+      if (errors.length > 0) {
+        return { ok: false, errors };
       }
 
       const meta: DocumentMeta = {

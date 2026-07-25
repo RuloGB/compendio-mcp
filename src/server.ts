@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { formatOverview, toSincronizacionInfo } from "./application/get-overview.js";
+import { formatOverview, toSyncInfo } from "./application/get-overview.js";
 import { formatFrontmatter } from "./application/read-document.js";
 import type { SearchQuery } from "./application/search-documents.js";
 import type { Container } from "./composition.js";
@@ -50,8 +50,8 @@ export function createMcpServer(container: Container): McpServer {
     async () => {
       await container.syncScheduler.maybeSync();
       const overview = container.getOverview.execute();
-      const sincronizacion = toSincronizacionInfo(container.syncScheduler.lastReport);
-      return { content: [{ type: "text", text: formatOverview(overview, sincronizacion) }] };
+      const sync = toSyncInfo(container.syncScheduler.lastReport);
+      return { content: [{ type: "text", text: formatOverview(overview, sync) }] };
     },
   );
 
@@ -124,17 +124,17 @@ function formatReadResult(
   result: ReturnType<Container["readDocument"]["execute"]>,
 ): string {
   switch (result.type) {
-    case "documento":
+    case "document":
       return `${formatFrontmatter(result.meta)}\n\n${result.content}`;
-    case "seccion":
+    case "section":
       return `${formatFrontmatter(result.meta)}\n\n${result.content}`;
-    case "ruta-no-encontrada":
+    case "path-not-found":
       return [
         `No existe ningun documento indexado con la path "${result.path}".`,
         "Paths mas parecidas:",
-        ...result.sugerencias.map((s) => `- ${s}`),
+        ...result.suggestions.map((s) => `- ${s}`),
       ].join("\n");
-    case "seccion-no-encontrada":
+    case "section-not-found":
       return [
         `El documento "${result.meta.path}" no tiene ninguna section que coincida con "${result.section}".`,
         "Available sections:",

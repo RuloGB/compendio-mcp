@@ -43,7 +43,7 @@ export interface IndexedChunk extends Chunk {
   documentId: number;
 }
 
-export type SearchMode = "hibrido" | "lexico";
+export type SearchMode = "hybrid" | "lexical";
 
 export interface SearchFilters {
   /** Open string, project-defined; empty/whitespace treated as absent by callers. */
@@ -65,6 +65,6 @@ export interface SearchResultItem {
 }
 
 export interface SearchResponse {
-  modo: SearchMode;
-  resultados: SearchResultItem[];
+  mode: SearchMode;
+  results: SearchResultItem[];
 }

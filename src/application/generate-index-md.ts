@@ -8,10 +8,10 @@ export interface IndexMdReport {
   /** Path of the index file, as resolved by the writer. */
   path: string;
   /** False when INDEX.md already had the generated content. */
-  cambiado: boolean;
+  changed: boolean;
   /** Documents listed in the index. */
-  documentos: number;
-  omitidos: SkippedFileReport[];
+  documents: number;
+  skipped: SkippedFileReport[];
 }
 
 /**
@@ -31,11 +31,11 @@ export class GenerateIndexMd {
   ) {}
 
   async execute(): Promise<IndexMdReport> {
-    const { files, erroresLectura } = await this.source.discover();
+    const { files, readErrors } = await this.source.discover();
     const entries: IndexEntry[] = [];
-    const omitidos: SkippedFileReport[] = erroresLectura
+    const skipped: SkippedFileReport[] = readErrors
       .filter((e) => e.path !== INDEX_FILE)
-      .map((e) => ({ path: e.path, errores: [e.error] }));
+      .map((e) => ({ path: e.path, errors: [e.error] }));
 
     for (const file of files) {
       // The index never lists itself, even if the config exclude was overridden.
@@ -45,7 +45,7 @@ export class GenerateIndexMd {
       try {
         parsed = this.parser.parse(file.content);
       } catch (error) {
-        omitidos.push({ path: file.path, errores: [describeError(error)] });
+        skipped.push({ path: file.path, errors: [describeError(error)] });
         continue;
       }
 
@@ -57,18 +57,18 @@ export class GenerateIndexMd {
         hash: createHash("sha256").update(file.content, "utf8").digest("hex"),
       });
       if (!resolution.ok) {
-        omitidos.push({ path: file.path, errores: resolution.errores });
+        skipped.push({ path: file.path, errors: resolution.errors });
         continue;
       }
       entries.push(resolution.meta);
     }
 
-    const escrito = await this.writer.write(renderIndexMd(entries, this.comparar));
+    const written = await this.writer.write(renderIndexMd(entries, this.comparar));
     return {
-      path: escrito.path,
-      cambiado: escrito.cambiado,
-      documentos: entries.length,
-      omitidos,
+      path: written.path,
+      changed: written.changed,
+      documents: entries.length,
+      skipped,
     };
   }
 }

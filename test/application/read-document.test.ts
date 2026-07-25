@@ -18,8 +18,8 @@ describe("ReadDocument over the ejemplos corpus", () => {
 
   it("returns the full document with its H1 restored", () => {
     const result = harness.read.execute({ path: "leadsviewer/validacion-formulario.md" });
-    expect(result.type).toBe("documento");
-    if (result.type !== "documento") return;
+    expect(result.type).toBe("document");
+    if (result.type !== "document") return;
     expect(result.content.startsWith("# Validación del formulario de alta de leads")).toBe(true);
     expect(result.content).toContain("## Reglas de negocio");
     // Zero-config document (no frontmatter): module comes from folder inference.
@@ -28,8 +28,8 @@ describe("ReadDocument over the ejemplos corpus", () => {
 
   it("does not duplicate the H1 of documents indexed as a single chunk", () => {
     const result = harness.read.execute({ path: "glosario.md" });
-    expect(result.type).toBe("documento");
-    if (result.type !== "documento") return;
+    expect(result.type).toBe("document");
+    if (result.type !== "document") return;
     expect(result.content.match(/^# Glosario/gm)).toHaveLength(1);
   });
 
@@ -38,17 +38,17 @@ describe("ReadDocument over the ejemplos corpus", () => {
       path: "leadsviewer/validacion-formulario.md",
       section: "reglas de duplicidad",
     });
-    expect(result.type).toBe("seccion");
-    if (result.type !== "seccion") return;
+    expect(result.type).toBe("section");
+    if (result.type !== "section") return;
     expect(result.content).toContain("Un lead se considera duplicado");
   });
 
   it("suggests the 3 closest paths when the path does not exist", () => {
     const result = harness.read.execute({ path: "leadsviewer/validacion-formulari.md" });
-    expect(result.type).toBe("ruta-no-encontrada");
-    if (result.type !== "ruta-no-encontrada") return;
-    expect(result.sugerencias).toHaveLength(3);
-    expect(result.sugerencias[0]).toBe("leadsviewer/validacion-formulario.md");
+    expect(result.type).toBe("path-not-found");
+    if (result.type !== "path-not-found") return;
+    expect(result.suggestions).toHaveLength(3);
+    expect(result.suggestions[0]).toBe("leadsviewer/validacion-formulario.md");
   });
 
   it("lists available sections when the requested one does not exist", () => {
@@ -56,8 +56,8 @@ describe("ReadDocument over the ejemplos corpus", () => {
       path: "leadsviewer/validacion-formulario.md",
       section: "seccion inventada",
     });
-    expect(result.type).toBe("seccion-no-encontrada");
-    if (result.type !== "seccion-no-encontrada") return;
+    expect(result.type).toBe("section-not-found");
+    if (result.type !== "section-not-found") return;
     expect(result.availableSections.length).toBeGreaterThan(0);
   });
 });

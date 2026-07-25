@@ -19,7 +19,7 @@ export interface PipelineSuccess {
 
 export interface PipelineFailure {
   ok: false;
-  errores: string[];
+  errors: string[];
 }
 
 export type PipelineResult = PipelineSuccess | PipelineFailure;
@@ -53,7 +53,7 @@ export function transformFile(
   try {
     parsed = parser.parse(file.content);
   } catch (error) {
-    return { ok: false, errores: [describeError(error)] };
+    return { ok: false, errors: [describeError(error)] };
   }
 
   const resolution = policy.resolver({
@@ -65,7 +65,7 @@ export function transformFile(
   });
 
   if (!resolution.ok) {
-    return { ok: false, errores: resolution.errores };
+    return { ok: false, errors: resolution.errors };
   }
 
   const chunks = isSinChunking(file.path, options.sinChunking)
@@ -73,7 +73,7 @@ export function transformFile(
     : chunkOutline(parsed.outline, options.chunking);
 
   if (chunks.length === 0) {
-    return { ok: false, errores: ["el documento no tiene contenido indexable"] };
+    return { ok: false, errors: ["el documento no tiene contenido indexable"] };
   }
 
   return { ok: true, meta: resolution.meta, chunks };

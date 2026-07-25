@@ -118,7 +118,7 @@ describe("loadConfig", () => {
       excludedStatuses: config.convencion.excludedStatuses,
     });
     const response = await search.execute({ query: "contenido de prueba unico irrepetible" });
-    expect(response.resultados.map((r) => r.path)).toContain("a.md");
+    expect(response.results.map((r) => r.path)).toContain("a.md");
 
     store.close();
     await rm(projectDir, { recursive: true, force: true });

@@ -33,21 +33,21 @@ program
   .option("--lexico", "indexa sin embeddings (solo busqueda lexica)")
   .action(async (options: { dir?: string; lexico?: boolean }) => {
     await withContainer(
-      { docsDir: options.dir, forzarLexico: options.lexico },
+      { docsDir: options.dir, forceLexical: options.lexico },
       async (container) => {
         const report = await container.indexDocuments.execute();
-        for (const omitido of report.omitidos) {
-          console.warn(`AVISO ${omitido.path}: ${omitido.errores.join("; ")}`);
+        for (const skippedItem of report.skipped) {
+          console.warn(`AVISO ${skippedItem.path}: ${skippedItem.errors.join("; ")}`);
         }
-        if (report.avisoEmbeddings !== undefined) {
-          console.warn(`AVISO ${report.avisoEmbeddings}`);
+        if (report.embeddingsWarning !== undefined) {
+          console.warn(`AVISO ${report.embeddingsWarning}`);
         }
         console.log(
-          `Indexados ${report.indexados.length} documentos (${report.totalChunks} chunks) ` +
-            `en ${report.duracionMs} ms [modo ${report.modo}]`,
+          `Indexados ${report.indexed.length} documentos (${report.totalChunks} chunks) ` +
+            `en ${report.durationMs} ms [modo ${report.mode}]`,
         );
-        if (report.omitidos.length > 0) {
-          console.log(`Omitidos ${report.omitidos.length} documentos con frontmatter invalido.`);
+        if (report.skipped.length > 0) {
+          console.log(`Omitidos ${report.skipped.length} documentos con frontmatter invalido.`);
         }
       },
     );
@@ -60,13 +60,13 @@ program
   .action(async (options: { dir?: string }) => {
     await withContainer({ docsDir: options.dir }, async (container) => {
       const report = await container.generateIndexMd.execute();
-      for (const omitido of report.omitidos) {
+      for (const skippedItem of report.skipped) {
         console.warn(
-          `AVISO ${omitido.path}: ${omitido.errores.join("; ")} (no aparece en INDEX.md)`,
+          `AVISO ${skippedItem.path}: ${skippedItem.errors.join("; ")} (no aparece en INDEX.md)`,
         );
       }
-      const resultado = report.cambiado ? "actualizado" : "sin cambios";
-      console.log(`INDEX.md ${resultado}: ${report.documentos} documentos en ${report.path}`);
+      const resultado = report.changed ? "actualizado" : "sin cambios";
+      console.log(`INDEX.md ${resultado}: ${report.documents} documentos en ${report.path}`);
     });
   });
 
@@ -101,7 +101,7 @@ program
         }
         if (options.k !== undefined) query.k = options.k;
         if (options.todos === true) query.includeExcluded = true;
-        if (options.lexico === true) query.forzarLexico = true;
+        if (options.lexico === true) query.forceLexical = true;
         const response = await container.searchDocuments.execute(query);
         console.log(JSON.stringify(response, null, 2));
       });
@@ -124,11 +124,11 @@ program
   .option("-k, --k <n>", "k para recall@k", parsePositiveInt)
   .action(async (options: { goldenset: string; k?: number }) => {
     const root = program.opts<GlobalOptions>().root;
-    const casos = loadGoldenset(resolve(root, options.goldenset));
+    const cases = loadGoldenset(resolve(root, options.goldenset));
     await withContainer({}, async (container) => {
       const k = options.k ?? container.config.search.k;
-      const report = await container.evaluateSearch.execute(casos, k);
-      printEvalReport(report.lexico, report.hibrido, k);
+      const report = await container.evaluateSearch.execute(cases, k);
+      printEvalReport(report.lexical, report.hybrid, k);
     });
   });
 
@@ -150,13 +150,13 @@ program
   });
 
 async function withContainer(
-  options: { docsDir?: string | undefined; forzarLexico?: boolean | undefined },
+  options: { docsDir?: string | undefined; forceLexical?: boolean | undefined },
   action: (container: Container) => Promise<void>,
 ): Promise<void> {
   const root = program.opts<GlobalOptions>().root;
   const containerOptions: Parameters<typeof createContainer>[0] = { root };
   if (options.docsDir !== undefined) containerOptions.docsDir = options.docsDir;
-  if (options.forzarLexico !== undefined) containerOptions.forzarLexico = options.forzarLexico;
+  if (options.forceLexical !== undefined) containerOptions.forceLexical = options.forceLexical;
   const container = createContainer(containerOptions);
   try {
     await action(container);
@@ -193,47 +193,50 @@ function loadGoldenset(path: string): EvalCase[] {
   }
   const parsed = parseYaml(raw) as unknown;
   if (!Array.isArray(parsed)) {
+    // es-frozen: quotes ejemplos/goldenset.yaml's real (frozen) key names
     console.error("El goldenset debe ser una lista YAML de { pregunta, esperado }.");
     process.exit(2);
   }
-  const casos: EvalCase[] = [];
+  const cases: EvalCase[] = [];
   for (const entry of parsed) {
-    const pregunta = (entry as Record<string, unknown>)["pregunta"];
-    const esperado = (entry as Record<string, unknown>)["esperado"];
-    if (typeof pregunta !== "string" || typeof esperado !== "string") {
+    // es-frozen: indexes into ejemplos/goldenset.yaml's real (frozen) keys
+    const question = (entry as Record<string, unknown>)["pregunta"];
+    // es-frozen: indexes into ejemplos/goldenset.yaml's real (frozen) keys
+    const expected = (entry as Record<string, unknown>)["esperado"];
+    if (typeof question !== "string" || typeof expected !== "string") {
       console.error(`Entrada invalida en el goldenset: ${JSON.stringify(entry)}`);
       process.exit(2);
     }
-    casos.push({ pregunta, esperado });
+    cases.push({ question, expected });
   }
-  return casos;
+  return cases;
 }
 
 function printEvalReport(
-  lexico: EvalSummary,
-  hibrido: EvalSummary | undefined,
+  lexical: EvalSummary,
+  hybrid: EvalSummary | undefined,
   k: number,
 ): void {
-  console.log(`Goldenset: ${lexico.casos} preguntas | k = ${k}\n`);
-  const header = `modo      recall@${k}   MRR      fallos`;
+  console.log(`Goldenset: ${lexical.cases} preguntas | k = ${k}\n`);
+  const header = `modo      recall@${k}   MRR      failures`;
   console.log(header);
   console.log("-".repeat(header.length));
-  if (hibrido !== undefined) {
-    console.log(formatEvalRow("hibrido", hibrido));
+  if (hybrid !== undefined) {
+    console.log(formatEvalRow("hybrid", hybrid));
   }
-  console.log(formatEvalRow("lexico", lexico));
-  if (hibrido === undefined) {
-    console.log("\nEl indice no tiene vectores: solo se evalua el modo lexico.");
+  console.log(formatEvalRow("lexical", lexical));
+  if (hybrid === undefined) {
+    console.log("\nEl indice no tiene vectores: solo se evalua el modo lexical.");
   }
   for (const [modo, summary] of [
-    ["hibrido", hibrido],
-    ["lexico", lexico],
+    ["hybrid", hybrid],
+    ["lexical", lexical],
   ] as const) {
-    if (summary === undefined || summary.fallos.length === 0) continue;
-    console.log(`\nFallos en modo ${modo}:`);
-    for (const fallo of summary.fallos) {
-      const posicion = fallo.posicion === null ? "no aparece" : `posicion ${fallo.posicion}`;
-      console.log(`- "${fallo.pregunta}" -> ${fallo.esperado} (${posicion})`);
+    if (summary === undefined || summary.failures.length === 0) continue;
+    console.log(`\nFailures en modo ${modo}:`);
+    for (const failure of summary.failures) {
+      const rank = failure.rank === null ? "no aparece" : `posicion ${failure.rank}`;
+      console.log(`- "${failure.question}" -> ${failure.expected} (${rank})`);
     }
   }
 }
@@ -243,7 +246,7 @@ function formatEvalRow(modo: string, summary: EvalSummary): string {
     modo.padEnd(10) +
     summary.recallAtK.toFixed(2).padEnd(11) +
     summary.mrr.toFixed(3).padEnd(9) +
-    String(summary.fallos.length)
+    String(summary.failures.length)
   );
 }
 

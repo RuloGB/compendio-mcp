@@ -11,10 +11,10 @@ export interface OverviewLine {
 }
 
 export interface Overview {
-  totalDocumentos: number;
+  totalDocuments: number;
   byType: Record<string, number>;
   byModule: Record<string, number>;
-  documentos: OverviewLine[];
+  documents: OverviewLine[];
 }
 
 /**
@@ -35,10 +35,10 @@ export class GetOverview {
       if (doc.module !== undefined) byModule[doc.module] = (byModule[doc.module] ?? 0) + 1;
     }
     return {
-      totalDocumentos: documents.length,
+      totalDocuments: documents.length,
       byType,
       byModule,
-      documentos: documents.map((doc) => {
+      documents: documents.map((doc) => {
         const line: OverviewLine = { path: doc.path, summary: displaySummary(doc) };
         if (doc.type !== undefined) line.type = doc.type;
         if (doc.status !== undefined) line.status = doc.status;
@@ -50,49 +50,49 @@ export class GetOverview {
 
 /** Sync-status surfaced in `docs_overview`: what the most recent incremental
  * sync pass had to report, if anything. */
-export interface SincronizacionInfo {
-  omitidos: SkippedFileReport[];
-  avisoEmbeddings?: string;
+export interface SyncInfo {
+  skipped: SkippedFileReport[];
+  embeddingsWarning?: string;
 }
 
 /**
- * Maps `SyncScheduler.lastReport` to `SincronizacionInfo`. The omission rule
+ * Maps `SyncScheduler.lastReport` to `SyncInfo`. The omission rule
  * is CONTENT-based, not presence-based: `null` both when there is no report
- * yet, AND when the most recent pass had nothing to report (empty `omitidos`
- * and no `avisoEmbeddings`) — `runTracked()` sets `lastReport` after every
+ * yet, AND when the most recent pass had nothing to report (empty `skipped`
+ * and no `embeddingsWarning`) — `runTracked()` sets `lastReport` after every
  * completed pass, including a fully clean one, so a presence-only rule would
  * render an empty block forever after the first successful pass.
  */
-export function toSincronizacionInfo(report: SyncReport | null): SincronizacionInfo | null {
+export function toSyncInfo(report: SyncReport | null): SyncInfo | null {
   if (report === null) return null;
-  if (report.omitidos.length === 0 && report.avisoEmbeddings === undefined) return null;
-  const info: SincronizacionInfo = { omitidos: report.omitidos };
-  if (report.avisoEmbeddings !== undefined) info.avisoEmbeddings = report.avisoEmbeddings;
+  if (report.skipped.length === 0 && report.embeddingsWarning === undefined) return null;
+  const info: SyncInfo = { skipped: report.skipped };
+  if (report.embeddingsWarning !== undefined) info.embeddingsWarning = report.embeddingsWarning;
   return info;
 }
 
 export function formatOverview(
   overview: Overview,
-  sincronizacion?: SincronizacionInfo | null,
+  sync?: SyncInfo | null,
 ): string {
   const lines: string[] = [];
-  lines.push(`Documentos indexados: ${overview.totalDocumentos}`);
+  lines.push(`Documentos indexados: ${overview.totalDocuments}`);
   const byTypeLine = formatCounts(overview.byType);
   if (byTypeLine !== null) lines.push(`Por tipo: ${byTypeLine}`);
   const byModuleLine = formatCounts(overview.byModule);
   if (byModuleLine !== null) lines.push(`Por modulo: ${byModuleLine}`);
   lines.push("");
-  for (const doc of overview.documentos) {
+  for (const doc of overview.documents) {
     lines.push(formatDocLine({ type: doc.type, path: doc.path, summary: doc.summary, status: doc.status }));
   }
-  if (sincronizacion !== null && sincronizacion !== undefined) {
+  if (sync !== null && sync !== undefined) {
     lines.push("");
     lines.push("Sincronizacion:");
-    for (const omitido of sincronizacion.omitidos) {
-      lines.push(`AVISO ${omitido.path}: ${omitido.errores.join("; ")}`);
+    for (const skippedItem of sync.skipped) {
+      lines.push(`AVISO ${skippedItem.path}: ${skippedItem.errors.join("; ")}`);
     }
-    if (sincronizacion.avisoEmbeddings !== undefined) {
-      lines.push(`AVISO ${sincronizacion.avisoEmbeddings}`);
+    if (sync.embeddingsWarning !== undefined) {
+      lines.push(`AVISO ${sync.embeddingsWarning}`);
     }
   }
   return lines.join("\n");

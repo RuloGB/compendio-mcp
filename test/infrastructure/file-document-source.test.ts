@@ -54,10 +54,10 @@ describe("FileDocumentSource", () => {
     const result = await source.discover();
 
     expect(result.files.map((f) => f.path).sort()).toEqual(["a.md", "sub/b.md"]);
-    expect(result.erroresLectura).toEqual([]);
+    expect(result.readErrors).toEqual([]);
   });
 
-  it("collects an unreadable file into erroresLectura and keeps discovering the rest", async () => {
+  it("collects an unreadable file into readErrors and keeps discovering the rest", async () => {
     writeFileSync(join(dir, "good.md"), "contenido bueno");
     writeFileSync(join(dir, "bad.md"), "contenido malo");
     readFileMock.mockImplementation(async (path: unknown) => {
@@ -71,10 +71,10 @@ describe("FileDocumentSource", () => {
     const result = await source.discover();
 
     expect(result.files.map((f) => f.path)).toEqual(["good.md"]);
-    expect(result.erroresLectura).toEqual([{ path: "bad.md", error: "permiso denegado" }]);
+    expect(result.readErrors).toEqual([{ path: "bad.md", error: "permiso denegado" }]);
   });
 
-  it("reports an unreadable subdirectory in erroresLectura, without files beneath it, and does not throw", async () => {
+  it("reports an unreadable subdirectory in readErrors, without files beneath it, and does not throw", async () => {
     writeFileSync(join(dir, "raiz.md"), "contenido raiz");
     mkdirSync(join(dir, "guias"));
     writeFileSync(join(dir, "guias", "oculto.md"), "contenido oculto");
@@ -89,7 +89,7 @@ describe("FileDocumentSource", () => {
     const result = await source.discover();
 
     expect(result.files.map((f) => f.path)).toEqual(["raiz.md"]);
-    expect(result.erroresLectura).toEqual([{ path: "guias", error: "permiso denegado en el directorio" }]);
+    expect(result.readErrors).toEqual([{ path: "guias", error: "permiso denegado en el directorio" }]);
   });
 
   it("still throws when the docs root itself cannot be read", async () => {

@@ -13,26 +13,26 @@ import type { IndexedFileReport, SkippedFileReport } from "./index-documents.js"
 import { computeHash, describeError, transformFile, type PipelineOptions } from "./index-pipeline.js";
 
 export interface SyncReport {
-  modo: SearchMode;
-  indexados: IndexedFileReport[];
-  eliminados: string[];
-  omitidos: SkippedFileReport[];
+  mode: SearchMode;
+  indexed: IndexedFileReport[];
+  deleted: string[];
+  skipped: SkippedFileReport[];
   totalChunks: number;
-  duracionMs: number;
+  durationMs: number;
   /** Present when embeddings were requested but unavailable for at least one
    * document or reconciliation group during this pass. */
-  avisoEmbeddings?: string;
+  embeddingsWarning?: string;
 }
 
 /** Mutable accumulator threaded through one pass's three phases. */
 interface PassState {
-  indexados: IndexedFileReport[];
-  omitidos: SkippedFileReport[];
-  eliminados: string[];
+  indexed: IndexedFileReport[];
+  skipped: SkippedFileReport[];
+  deleted: string[];
   /** Paths whose hash matched the persisted value this pass — the set the
    * vector-coverage reconciliation phase is restricted to. */
   hashMatchPaths: Set<string>;
-  avisoEmbeddings?: string;
+  embeddingsWarning?: string;
 }
 
 /**
@@ -41,7 +41,7 @@ interface PassState {
  * changed, or deleted documents do work. Three augmentation rules, all owned
  * here (see design.md's "SyncIndex" decisions):
  *
- * 1. Read failures (`erroresLectura`) exclude both the reported `path` and
+ * 1. Read failures (`readErrors`) exclude both the reported `path` and
  *    every indexed `path` beneath it from the delete-candidate set.
  * 2. Under `estricto`, a resolver rejection on an already-indexed `path`
  *    deletes that stale row; on a brand-new `path` it is a plain skip.
@@ -65,30 +65,30 @@ export class SyncIndex {
 
   async execute(): Promise<SyncReport> {
     const start = Date.now();
-    const { files, erroresLectura } = await this.source.discover();
+    const { files, readErrors } = await this.source.discover();
     const existing = this.store.listDocuments();
 
     const state: PassState = {
-      indexados: [],
-      omitidos: erroresLectura.map((e) => ({ path: e.path, errores: [e.error] })),
-      eliminados: [],
+      indexed: [],
+      skipped: readErrors.map((e) => ({ path: e.path, errors: [e.error] })),
+      deleted: [],
       hashMatchPaths: new Set(),
     };
 
     await this.processNewAndChanged(files, existing, state);
-    this.deleteMissingDocuments(files, existing, erroresLectura, state);
+    this.deleteMissingDocuments(files, existing, readErrors, state);
     await this.reconcileVectors(state);
 
-    const totalChunks = state.indexados.reduce((sum, doc) => sum + doc.chunks, 0);
+    const totalChunks = state.indexed.reduce((sum, doc) => sum + doc.chunks, 0);
     const report: SyncReport = {
-      modo: state.avisoEmbeddings === undefined && this.embeddings !== null ? "hibrido" : "lexico",
-      indexados: state.indexados,
-      eliminados: state.eliminados,
-      omitidos: state.omitidos,
+      mode: state.embeddingsWarning === undefined && this.embeddings !== null ? "hybrid" : "lexical",
+      indexed: state.indexed,
+      deleted: state.deleted,
+      skipped: state.skipped,
       totalChunks,
-      duracionMs: Date.now() - start,
+      durationMs: Date.now() - start,
     };
-    if (state.avisoEmbeddings !== undefined) report.avisoEmbeddings = state.avisoEmbeddings;
+    if (state.embeddingsWarning !== undefined) report.embeddingsWarning = state.embeddingsWarning;
     return report;
   }
 
@@ -114,7 +114,7 @@ export class SyncIndex {
 
       const result = transformFile(this.parser, this.policy, this.options, file, hash);
       if (!result.ok) {
-        state.omitidos.push({ path: file.path, errores: result.errores });
+        state.skipped.push({ path: file.path, errors: result.errors });
         if (existingDoc !== undefined) {
           this.tryDelete(file.path, state, false);
         }
@@ -124,36 +124,36 @@ export class SyncIndex {
       const { meta, chunks } = result;
       let chunkEmbeddings: Float32Array[] | null = null;
       if (this.embeddings === null) {
-        state.avisoEmbeddings = "indexado sin embeddings (proveedor no disponible): busqueda en modo lexico";
+        state.embeddingsWarning = "indexado sin embeddings (proveedor no disponible): busqueda en modo lexico";
       } else {
         try {
           const texts = chunks.map((c) => `passage: ${c.heading}\n${c.content}`);
           chunkEmbeddings = await this.embeddings.embed(texts);
         } catch (error) {
-          state.avisoEmbeddings = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
+          state.embeddingsWarning = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
         }
       }
 
       try {
         this.store.upsertDocument(meta, chunks, chunkEmbeddings);
-        state.indexados.push({ path: file.path, title: meta.title, chunks: chunks.length });
+        state.indexed.push({ path: file.path, title: meta.title, chunks: chunks.length });
       } catch (error) {
-        state.omitidos.push({ path: file.path, errores: [describeError(error)] });
+        state.skipped.push({ path: file.path, errors: [describeError(error)] });
       }
     }
   }
 
   /** A path present in the index but absent from disk is deleted — unless
-   * protected by this pass's erroresLectura (rule 1: exact path or subtree
+   * protected by this pass's readErrors (rule 1: exact path or subtree
    * prefix). */
   private deleteMissingDocuments(
     files: DocumentFile[],
     existing: IndexedDocument[],
-    erroresLectura: ReadError[],
+    readErrors: ReadError[],
     state: PassState,
   ): void {
     const discoveredPaths = new Set(files.map((f) => f.path));
-    const protectedPaths = erroresLectura.map((e) => e.path);
+    const protectedPaths = readErrors.map((e) => e.path);
     for (const doc of existing) {
       if (discoveredPaths.has(doc.path)) continue;
       if (isProtected(doc.path, protectedPaths)) continue;
@@ -177,7 +177,7 @@ export class SyncIndex {
           chunksMissing.map((c) => `passage: ${c.heading}\n${c.content}`),
         );
       } catch (error) {
-        state.avisoEmbeddings = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
+        state.embeddingsWarning = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
         continue; // leave as-is (lexical-only), reconsidered on a future pass
       }
       try {
@@ -185,21 +185,21 @@ export class SyncIndex {
           chunksMissing.map((c, i) => ({ chunkId: c.chunkId, embedding: vectors[i]! })),
         );
       } catch (error) {
-        state.omitidos.push({ path, errores: [describeError(error)] });
+        state.skipped.push({ path, errors: [describeError(error)] });
       }
     }
   }
 
-  /** Deletes a document, reporting `path` in `eliminados` only for a
+  /** Deletes a document, reporting `path` in `deleted` only for a
    * disk-absence deletion (never for a resolver-rejection deletion). A
-   * store-level failure is a per-document skip, reported in `omitidos`
+   * store-level failure is a per-document skip, reported in `skipped`
    * instead of aborting the pass. */
-  private tryDelete(path: string, state: PassState, reportAsEliminado: boolean): void {
+  private tryDelete(path: string, state: PassState, reportAsDeleted: boolean): void {
     try {
       this.store.deleteDocument(path);
-      if (reportAsEliminado) state.eliminados.push(path);
+      if (reportAsDeleted) state.deleted.push(path);
     } catch (error) {
-      state.omitidos.push({ path, errores: [describeError(error)] });
+      state.skipped.push({ path, errors: [describeError(error)] });
     }
   }
 }

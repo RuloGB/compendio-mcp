@@ -30,17 +30,17 @@ class MemoryIndexWriter implements IndexFileWriter {
   content: string | null = null;
   async write(content: string): Promise<IndexWriteResult> {
     this.content = content;
-    return { path: "docs/INDEX.md", cambiado: true };
+    return { path: "docs/INDEX.md", changed: true };
   }
 }
 
 class StaticSource implements DocumentSource {
   constructor(
     private readonly files: DocumentFile[],
-    private readonly erroresLectura: ReadError[] = [],
+    private readonly readErrors: ReadError[] = [],
   ) {}
   async discover(): Promise<DiscoverResult> {
-    return { files: this.files, erroresLectura: this.erroresLectura };
+    return { files: this.files, readErrors: this.readErrors };
   }
 }
 
@@ -73,8 +73,8 @@ describe("GenerateIndexMd — libre mode over inline fixtures", () => {
     );
     const report = await useCase.execute();
 
-    expect(report.documentos).toBe(2);
-    expect(report.omitidos).toEqual([]);
+    expect(report.documents).toBe(2);
+    expect(report.skipped).toEqual([]);
     const lineas = writer.content!.split("\n").filter((l) => l.startsWith("- "));
     expect(lineas).toEqual(["- a.md — Resumen A.", "- b.md — Resumen B."]);
   });
@@ -85,8 +85,8 @@ describe("GenerateIndexMd — libre mode over inline fixtures", () => {
     );
     const report = await useCase.execute();
 
-    expect(report.documentos).toBe(1);
-    expect(report.omitidos).toEqual([]);
+    expect(report.documents).toBe(1);
+    expect(report.skipped).toEqual([]);
     expect(writer.content).not.toContain("] INDEX.md");
   });
 
@@ -94,7 +94,7 @@ describe("GenerateIndexMd — libre mode over inline fixtures", () => {
     const { useCase, writer } = buildUseCase(new StaticSource([]));
     const report = await useCase.execute();
 
-    expect(report.documentos).toBe(0);
+    expect(report.documents).toBe(0);
     expect(writer.content).toContain("# Índice de la documentación");
     expect(writer.content!.split("\n").some((l) => l.startsWith("- "))).toBe(false);
   });
@@ -126,7 +126,7 @@ describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
     );
     const report = await useCase.execute();
 
-    expect(report.documentos).toBe(3);
+    expect(report.documents).toBe(3);
     const paths = writer.content!
       .split("\n")
       .filter((l) => l.startsWith("- "))
@@ -147,9 +147,9 @@ describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
     );
     const report = await useCase.execute();
 
-    expect(report.documentos).toBe(1);
-    expect(report.omitidos).toHaveLength(1);
-    expect(report.omitidos[0]!.path).toBe("guias/type-invalido.md");
+    expect(report.documents).toBe(1);
+    expect(report.skipped).toHaveLength(1);
+    expect(report.skipped[0]!.path).toBe("guias/type-invalido.md");
     expect(writer.content).toContain("guias/transversal-valida.md");
   });
 });
@@ -164,10 +164,10 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
     );
     const report = await useCase.execute();
 
-    expect(report.documentos).toBe(1);
-    expect(report.omitidos).toHaveLength(1);
-    expect(report.omitidos[0]!.path).toBe("guias/frontmatter-roto.md");
-    expect(report.omitidos[0]!.errores[0]!.length).toBeGreaterThan(0);
+    expect(report.documents).toBe(1);
+    expect(report.skipped).toHaveLength(1);
+    expect(report.skipped[0]!.path).toBe("guias/frontmatter-roto.md");
+    expect(report.skipped[0]!.errors[0]!.length).toBeGreaterThan(0);
     expect(writer.content).toContain("guias/transversal-valida.md");
   });
 
@@ -181,19 +181,19 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
     );
     const report = await useCase.execute();
 
-    expect(report.omitidos).toHaveLength(1);
-    expect(report.omitidos[0]!.path).toBe("guias/frontmatter-roto.md");
+    expect(report.skipped).toHaveLength(1);
+    expect(report.skipped[0]!.path).toBe("guias/frontmatter-roto.md");
     expect(writer.content).toContain("guias/transversal-valida.md");
   });
 
-  it("folds an unreadable file (erroresLectura) into omitidos and continues", async () => {
+  it("folds an unreadable file (readErrors) into skipped and continues", async () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([VALID_DOC], [{ path: "guias/ilegible.md", error: "permiso denegado" }]),
     );
     const report = await useCase.execute();
 
-    expect(report.documentos).toBe(1);
-    expect(report.omitidos).toEqual([{ path: "guias/ilegible.md", errores: ["permiso denegado"] }]);
+    expect(report.documents).toBe(1);
+    expect(report.skipped).toEqual([{ path: "guias/ilegible.md", errors: ["permiso denegado"] }]);
     expect(writer.content).toContain("guias/transversal-valida.md");
   });
 });

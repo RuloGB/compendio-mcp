@@ -6,7 +6,7 @@ import type { DiscoverResult, DocumentFile, DocumentSource, ReadError } from "..
  * Discovers .md files under the docs directory (recursively). Entries in
  * `exclude` match either the relative POSIX path or the basename. Hidden
  * directories are skipped. A file that fails to read (I/O error) is
- * collected into `erroresLectura` instead of aborting the whole walk.
+ * collected into `readErrors` instead of aborting the whole walk.
  */
 export class FileDocumentSource implements DocumentSource {
   constructor(
@@ -16,17 +16,17 @@ export class FileDocumentSource implements DocumentSource {
 
   async discover(): Promise<DiscoverResult> {
     const files: DocumentFile[] = [];
-    const erroresLectura: ReadError[] = [];
-    await this.walk(this.docsDir, "", files, erroresLectura);
+    const readErrors: ReadError[] = [];
+    await this.walk(this.docsDir, "", files, readErrors);
     files.sort((a, b) => a.path.localeCompare(b.path));
-    return { files, erroresLectura };
+    return { files, readErrors };
   }
 
   private async walk(
     dir: string,
     prefix: string,
     out: DocumentFile[],
-    erroresLectura: ReadError[],
+    readErrors: ReadError[],
   ): Promise<void> {
     let entries;
     try {
@@ -38,14 +38,14 @@ export class FileDocumentSource implements DocumentSource {
             (error instanceof Error ? error.message : String(error)),
         );
       }
-      erroresLectura.push({ path: prefix, error: error instanceof Error ? error.message : String(error) });
+      readErrors.push({ path: prefix, error: error instanceof Error ? error.message : String(error) });
       return;
     }
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
       if (entry.isDirectory()) {
-        await this.walk(join(dir, entry.name), path, out, erroresLectura);
+        await this.walk(join(dir, entry.name), path, out, readErrors);
         continue;
       }
       if (!entry.name.toLowerCase().endsWith(".md")) continue;
@@ -53,7 +53,7 @@ export class FileDocumentSource implements DocumentSource {
       try {
         out.push({ path, content: await readFile(join(dir, entry.name), "utf8") });
       } catch (error) {
-        erroresLectura.push({ path, error: error instanceof Error ? error.message : String(error) });
+        readErrors.push({ path, error: error instanceof Error ? error.message : String(error) });
       }
     }
   }

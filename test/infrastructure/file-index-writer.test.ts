@@ -18,7 +18,7 @@ describe("FileIndexWriter", () => {
   it("creates the file on first write and reports it as changed", async () => {
     const writer = new FileIndexWriter(dir, "INDEX.md");
     const result = await writer.write("# Índice\n");
-    expect(result.cambiado).toBe(true);
+    expect(result.changed).toBe(true);
     expect(result.path).toBe(join(dir, "INDEX.md"));
     expect(await readFile(join(dir, "INDEX.md"), "utf8")).toBe("# Índice\n");
   });
@@ -26,13 +26,13 @@ describe("FileIndexWriter", () => {
   it("skips the write when the content is identical", async () => {
     const writer = new FileIndexWriter(dir, "INDEX.md");
     const result = await writer.write("# Índice\n");
-    expect(result.cambiado).toBe(false);
+    expect(result.changed).toBe(false);
   });
 
   it("rewrites when the content differs", async () => {
     const writer = new FileIndexWriter(dir, "INDEX.md");
     const result = await writer.write("# Índice v2\n");
-    expect(result.cambiado).toBe(true);
+    expect(result.changed).toBe(true);
     expect(await readFile(join(dir, "INDEX.md"), "utf8")).toBe("# Índice v2\n");
   });
 
@@ -43,7 +43,7 @@ describe("FileIndexWriter", () => {
     const writer = new FileIndexWriter(dir, "INDEX.md");
     const result = await writer.write(contentLf);
 
-    expect(result.cambiado).toBe(false);
+    expect(result.changed).toBe(false);
     expect(await readFile(join(dir, "INDEX.md"), "utf8")).toContain("\r\n");
   });
 });

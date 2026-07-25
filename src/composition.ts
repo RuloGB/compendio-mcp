@@ -26,7 +26,7 @@ export interface ContainerOptions {
   /** Overrides config.docsDir (CLI --dir). */
   docsDir?: string;
   /** Disables embeddings entirely (CLI --lexico). */
-  forzarLexico?: boolean;
+  forceLexical?: boolean;
 }
 
 /** Composition root: wires adapters into use cases. */
@@ -54,7 +54,7 @@ export function createContainer(options: ContainerOptions): Container {
   const store = new SqliteIndexStore(resolve(options.root, config.db));
 
   const embeddings: EmbeddingsProvider | null =
-    options.forzarLexico === true
+    options.forceLexical === true
       ? null
       : new LazyEmbeddings(() => TransformersEmbeddings.create(config.embeddings.model));
 

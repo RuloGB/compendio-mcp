@@ -132,7 +132,7 @@ describe("crearConvencionPolicy — estricto", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.errores.join(" ")).toContain("'type' invalido");
+    expect(result.errors.join(" ")).toContain("'type' invalido");
   });
 
   it("validates type and status independently when only one taxonomy is declared", () => {
@@ -166,7 +166,7 @@ describe("crearConvencionPolicy — estricto", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.errores.join(" ")).toContain("obligatorio 'tipo'");
+    expect(result.errors.join(" ")).toContain("obligatorio 'tipo'");
   });
 
   it("always validates module by presence only, regardless of type/status declarations", () => {
@@ -177,7 +177,7 @@ describe("crearConvencionPolicy — estricto", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.errores.join(" ")).toContain("obligatorio 'modulo'");
+    expect(result.errors.join(" ")).toContain("obligatorio 'modulo'");
   });
 
   it("skips a document with no H1 and does not fall back to filename humanization", () => {
@@ -189,7 +189,7 @@ describe("crearConvencionPolicy — estricto", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.errores.join(" ")).toContain("titulo H1");
+    expect(result.errors.join(" ")).toContain("titulo H1");
   });
 });
 

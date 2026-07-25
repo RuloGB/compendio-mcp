@@ -17,17 +17,17 @@ export interface IndexedFileReport {
 
 export interface SkippedFileReport {
   path: string;
-  errores: string[];
+  errors: string[];
 }
 
 export interface IndexReport {
-  modo: SearchMode;
-  indexados: IndexedFileReport[];
-  omitidos: SkippedFileReport[];
+  mode: SearchMode;
+  indexed: IndexedFileReport[];
+  skipped: SkippedFileReport[];
   totalChunks: number;
-  duracionMs: number;
+  durationMs: number;
   /** Present when embeddings were requested but unavailable (degraded mode). */
-  avisoEmbeddings?: string;
+  embeddingsWarning?: string;
 }
 
 export interface IndexDocumentsOptions {
@@ -42,7 +42,7 @@ const DEFAULT_BATCH_SIZE = 16;
 
 /**
  * Full reindex pipeline: discover -> parse & resolve -> chunk -> embed ->
- * persist. A file is skipped and reported in `omitidos` for any resilience
+ * persist. A file is skipped and reported in `skipped` for any resilience
  * reason (unreadable, unparseable, no indexable content) or, under the
  * injected `ConvencionPolicy`, for a metadata reason. If the embeddings
  * provider is missing or fails, indexing completes in lexical-only mode
@@ -60,12 +60,12 @@ export class IndexDocuments {
 
   async execute(): Promise<IndexReport> {
     const start = Date.now();
-    const { files, erroresLectura } = await this.source.discover();
+    const { files, readErrors } = await this.source.discover();
 
-    const indexados: IndexedFileReport[] = [];
-    const omitidos: SkippedFileReport[] = erroresLectura.map((e) => ({
+    const indexed: IndexedFileReport[] = [];
+    const skipped: SkippedFileReport[] = readErrors.map((e) => ({
       path: e.path,
-      errores: [e.error],
+      errors: [e.error],
     }));
     const pending: { chunkId: number; text: string }[] = [];
 
@@ -76,7 +76,7 @@ export class IndexDocuments {
       const result = transformFile(this.parser, this.policy, this.options, file, hash);
 
       if (!result.ok) {
-        omitidos.push({ path: file.path, errores: result.errores });
+        skipped.push({ path: file.path, errors: result.errors });
         continue;
       }
 
@@ -88,19 +88,19 @@ export class IndexDocuments {
           text: `${chunk.heading}\n${chunk.content}`,
         });
       });
-      indexados.push({ path: file.path, title: meta.title, chunks: chunks.length });
+      indexed.push({ path: file.path, title: meta.title, chunks: chunks.length });
     }
 
-    const aviso = await this.embedPending(pending);
+    const warning = await this.embedPending(pending);
 
     const report: IndexReport = {
-      modo: aviso === null && this.embeddings !== null ? "hibrido" : "lexico",
-      indexados,
-      omitidos,
+      mode: warning === null && this.embeddings !== null ? "hybrid" : "lexical",
+      indexed,
+      skipped,
       totalChunks: pending.length,
-      duracionMs: Date.now() - start,
+      durationMs: Date.now() - start,
     };
-    if (aviso !== null) report.avisoEmbeddings = aviso;
+    if (warning !== null) report.embeddingsWarning = warning;
     return report;
   }
 

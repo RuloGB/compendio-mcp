@@ -13,7 +13,7 @@ export interface SearchQuery {
   /** Include documents whose status is in the config deny-list (excluded by default). */
   includeExcluded?: boolean;
   /** Skip the vector leg even when embeddings are available. */
-  forzarLexico?: boolean;
+  forceLexical?: boolean;
 }
 
 export interface SearchDefaults {
@@ -30,8 +30,8 @@ const MIN_CANDIDATES = 50;
 /**
  * Hybrid search: the query runs against FTS5 (BM25) and sqlite-vec, both
  * rankings are combined with Reciprocal Rank Fusion, and results are capped
- * at 2 chunks per document. Falls back to lexical-only mode ("modo":
- * "lexico") when embeddings or the vector index are unavailable.
+ * at 2 chunks per document. Falls back to lexical-only mode ("mode":
+ * "lexical") when embeddings or the vector index are unavailable.
  */
 export class SearchDocuments {
   constructor(
@@ -60,7 +60,7 @@ export class SearchDocuments {
     ).slice(0, k);
 
     const documents = this.store.getDocumentsByIds(chunks.map((c) => c.documentId));
-    const resultados: SearchResultItem[] = [];
+    const results: SearchResultItem[] = [];
     for (const entry of top) {
       const chunk = chunkById.get(entry.id);
       if (chunk === undefined) continue;
@@ -74,10 +74,10 @@ export class SearchDocuments {
         score: Number(entry.score.toFixed(4)),
       };
       if (doc.status !== undefined) item.status = doc.status;
-      resultados.push(item);
+      results.push(item);
     }
 
-    return { modo: vectorIds === null ? "lexico" : "hibrido", resultados };
+    return { mode: vectorIds === null ? "lexical" : "hybrid", results };
   }
 
   private buildFilters(query: SearchQuery): SearchFilters {
@@ -100,7 +100,7 @@ export class SearchDocuments {
     filters: SearchFilters,
     limit: number,
   ): Promise<number[] | null> {
-    if (query.forzarLexico === true) return null;
+    if (query.forceLexical === true) return null;
     if (this.embeddings === null || !this.store.hasVectors()) return null;
     try {
       // "query: " prefix is required by the E5 embedding family.

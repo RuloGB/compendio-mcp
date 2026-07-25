@@ -23,12 +23,12 @@ export interface ReadError {
 /** Result of a discovery pass: successfully read files plus per-file read failures. */
 export interface DiscoverResult {
   files: DocumentFile[];
-  erroresLectura: ReadError[];
+  readErrors: ReadError[];
 }
 
 /**
  * Discovers the markdown files to index (filesystem adapter). A single
- * unreadable file is collected into `erroresLectura` rather than aborting
+ * unreadable file is collected into `readErrors` rather than aborting
  * the whole walk.
  */
 export interface DocumentSource {
@@ -80,7 +80,7 @@ export interface IndexWriteResult {
   /** Path of the index file, as resolved by the adapter. */
   path: string;
   /** False when the file already had exactly the generated content. */
-  cambiado: boolean;
+  changed: boolean;
 }
 
 /** Writes the generated INDEX.md into the docs directory (filesystem adapter). */

@@ -1,45 +1,45 @@
 export interface EvalCase {
-  pregunta: string;
-  esperado: string;
+  question: string;
+  expected: string;
 }
 
 export interface EvalCaseOutcome extends EvalCase {
   /** 1-based position of the expected document among the ranked unique
    * documents returned for the question; null if it did not appear. */
-  posicion: number | null;
+  rank: number | null;
 }
 
 export interface EvalSummary {
-  casos: number;
+  cases: number;
   /** Fraction of questions whose expected document appeared in the top k. */
   recallAtK: number;
   /** Mean Reciprocal Rank over all questions (0 when never found). */
   mrr: number;
-  fallos: EvalCaseOutcome[];
+  failures: EvalCaseOutcome[];
 }
 
 export function summarizeEval(outcomes: EvalCaseOutcome[], k: number): EvalSummary {
-  const casos = outcomes.length;
-  if (casos === 0) {
-    return { casos: 0, recallAtK: 0, mrr: 0, fallos: [] };
+  const cases = outcomes.length;
+  if (cases === 0) {
+    return { cases: 0, recallAtK: 0, mrr: 0, failures: [] };
   }
   let hits = 0;
   let reciprocalSum = 0;
-  const fallos: EvalCaseOutcome[] = [];
+  const failures: EvalCaseOutcome[] = [];
   for (const outcome of outcomes) {
-    if (outcome.posicion !== null && outcome.posicion <= k) {
+    if (outcome.rank !== null && outcome.rank <= k) {
       hits += 1;
     } else {
-      fallos.push(outcome);
+      failures.push(outcome);
     }
-    if (outcome.posicion !== null) {
-      reciprocalSum += 1 / outcome.posicion;
+    if (outcome.rank !== null) {
+      reciprocalSum += 1 / outcome.rank;
     }
   }
   return {
-    casos,
-    recallAtK: hits / casos,
-    mrr: reciprocalSum / casos,
-    fallos,
+    cases,
+    recallAtK: hits / cases,
+    mrr: reciprocalSum / cases,
+    failures,
   };
 }

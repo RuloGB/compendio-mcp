@@ -11,7 +11,7 @@ export interface FrontmatterInput {
 
 export type FrontmatterResult =
   | { ok: true; meta: DocumentMeta }
-  | { ok: false; errores: string[] };
+  | { ok: false; errors: string[] };
 
 export function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;

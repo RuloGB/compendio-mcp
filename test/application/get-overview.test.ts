@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { formatOverview, GetOverview, toSincronizacionInfo } from "../../src/application/get-overview";
+import { formatOverview, GetOverview, toSyncInfo } from "../../src/application/get-overview";
 import type { SyncReport } from "../../src/application/sync-index";
 import type { DocumentMeta } from "../../src/domain/model";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
 function fakeReport(overrides: Partial<SyncReport> = {}): SyncReport {
   return {
-    modo: "hibrido",
-    indexados: [],
-    eliminados: [],
-    omitidos: [],
+    mode: "hybrid",
+    indexed: [],
+    deleted: [],
+    skipped: [],
     totalChunks: 0,
-    duracionMs: 1,
+    durationMs: 1,
     ...overrides,
   };
 }
@@ -55,7 +55,7 @@ describe("GetOverview — partial type coverage", () => {
 
     const overview = new GetOverview(store).execute();
     expect(overview.byType).toEqual({ guia: 1 });
-    expect(overview.totalDocumentos).toBe(2);
+    expect(overview.totalDocuments).toBe(2);
 
     const salida = formatOverview(overview);
     expect(salida).toContain("Por tipo: guia (1)");
@@ -72,7 +72,7 @@ describe("GetOverview — per-document line ordering and segment omission", () =
     seed(store, { path: "m.md", type: "adr" }); // type only
 
     const overview = new GetOverview(store).execute();
-    expect(overview.documentos.map((d) => d.path)).toEqual(["a.md", "m.md", "z.md"]);
+    expect(overview.documents.map((d) => d.path)).toEqual(["a.md", "m.md", "z.md"]);
 
     const salida = formatOverview(overview);
     const lineas = salida.split("\n").filter((l) => l.startsWith("- "));
@@ -99,7 +99,7 @@ describe("GetOverview summary fallback", () => {
     store.saveDocument(meta, [{ heading: "Sección", content: "## Sección\n\nTexto.", position: 0 }]);
 
     const overview = new GetOverview(store).execute();
-    expect(overview.documentos[0]!.summary).toBe("Guía sin resumen");
+    expect(overview.documents[0]!.summary).toBe("Guía sin resumen");
     expect(formatOverview(overview)).toContain(
       "- [guia] guias/transversal-sin-resumen.md — Guía sin resumen (vigente)",
     );
@@ -108,31 +108,31 @@ describe("GetOverview summary fallback", () => {
   });
 });
 
-describe("toSincronizacionInfo — content-based omission", () => {
+describe("toSyncInfo — content-based omission", () => {
   it("is null when there is no report yet (lastReport is null)", () => {
-    expect(toSincronizacionInfo(null)).toBeNull();
+    expect(toSyncInfo(null)).toBeNull();
   });
 
-  it("is null when the most recent pass had nothing to report (empty omitidos, no avisoEmbeddings)", () => {
-    expect(toSincronizacionInfo(fakeReport())).toBeNull();
+  it("is null when the most recent pass had nothing to report (empty skipped, no embeddingsWarning)", () => {
+    expect(toSyncInfo(fakeReport())).toBeNull();
   });
 
-  it("surfaces omitidos when the most recent pass skipped a document", () => {
-    const report = fakeReport({ omitidos: [{ path: "a.md", errores: ["motivo"] }] });
-    expect(toSincronizacionInfo(report)).toEqual({ omitidos: [{ path: "a.md", errores: ["motivo"] }] });
+  it("surfaces skipped items when the most recent pass skipped a document", () => {
+    const report = fakeReport({ skipped: [{ path: "a.md", errors: ["motivo"] }] });
+    expect(toSyncInfo(report)).toEqual({ skipped: [{ path: "a.md", errors: ["motivo"] }] });
   });
 
-  it("surfaces avisoEmbeddings when the most recent pass degraded to lexical-only", () => {
-    const report = fakeReport({ avisoEmbeddings: "embeddings no disponibles: busqueda en modo lexico" });
-    expect(toSincronizacionInfo(report)).toEqual({
-      omitidos: [],
-      avisoEmbeddings: "embeddings no disponibles: busqueda en modo lexico",
+  it("surfaces embeddingsWarning when the most recent pass degraded to lexical-only", () => {
+    const report = fakeReport({ embeddingsWarning: "embeddings no disponibles: busqueda en modo lexico" });
+    expect(toSyncInfo(report)).toEqual({
+      skipped: [],
+      embeddingsWarning: "embeddings no disponibles: busqueda en modo lexico",
     });
   });
 });
 
-describe("formatOverview — sincronizacion block", () => {
-  it("omits the block entirely when sincronizacion is null or undefined", () => {
+describe("formatOverview — sync block", () => {
+  it("omits the block entirely when sync is null or undefined", () => {
     const store = new SqliteIndexStore(":memory:");
     seed(store, { path: "a.md" });
     const overview = new GetOverview(store).execute();
@@ -143,14 +143,14 @@ describe("formatOverview — sincronizacion block", () => {
     store.close();
   });
 
-  it("renders omitidos and avisoEmbeddings when sincronizacion has content", () => {
+  it("renders skipped items and embeddingsWarning when sync has content", () => {
     const store = new SqliteIndexStore(":memory:");
     seed(store, { path: "a.md" });
     const overview = new GetOverview(store).execute();
 
     const salida = formatOverview(overview, {
-      omitidos: [{ path: "roto.md", errores: ["permiso denegado"] }],
-      avisoEmbeddings: "embeddings no disponibles: busqueda en modo lexico",
+      skipped: [{ path: "roto.md", errors: ["permiso denegado"] }],
+      embeddingsWarning: "embeddings no disponibles: busqueda en modo lexico",
     });
 
     expect(salida).toContain("Sincronizacion");

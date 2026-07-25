@@ -15,20 +15,20 @@ export class FileIndexWriter implements IndexFileWriter {
 
   async write(content: string): Promise<IndexWriteResult> {
     const path = join(this.docsDir, this.fileName);
-    let existente: string | null = null;
+    let existing: string | null = null;
     try {
-      existente = await readFile(path, "utf8");
+      existing = await readFile(path, "utf8");
     } catch {
       // First generation: the file does not exist yet.
     }
     // git may materialize the file with CRLF (core.autocrlf on Windows); the
     // same content modulo EOL means up to date — rewriting would only churn
     // mtimes and report a phantom change.
-    if (existente !== null && normalizeEol(existente) === content) {
-      return { path, cambiado: false };
+    if (existing !== null && normalizeEol(existing) === content) {
+      return { path, changed: false };
     }
     await writeFile(path, content, "utf8");
-    return { path, cambiado: true };
+    return { path, changed: true };
   }
 }
 

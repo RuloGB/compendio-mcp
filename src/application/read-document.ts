@@ -8,11 +8,11 @@ export interface ReadRequest {
 }
 
 export type ReadResult =
-  | { type: "documento"; meta: DocumentMeta; content: string }
-  | { type: "seccion"; meta: DocumentMeta; section: string; content: string }
-  | { type: "ruta-no-encontrada"; path: string; sugerencias: string[] }
+  | { type: "document"; meta: DocumentMeta; content: string }
+  | { type: "section"; meta: DocumentMeta; section: string; content: string }
+  | { type: "path-not-found"; path: string; suggestions: string[] }
   | {
-      type: "seccion-no-encontrada";
+      type: "section-not-found";
       meta: DocumentMeta;
       section: string;
       availableSections: string[];
@@ -33,9 +33,9 @@ export class ReadDocument {
     if (doc === null) {
       const paths = this.store.listDocuments().map((d) => d.path);
       return {
-        type: "ruta-no-encontrada",
+        type: "path-not-found",
         path: request.path,
-        sugerencias: closestMatches(request.path, paths, SUGGESTION_LIMIT),
+        suggestions: closestMatches(request.path, paths, SUGGESTION_LIMIT),
       };
     }
 
@@ -45,7 +45,7 @@ export class ReadDocument {
       // Intro chunks exclude the H1 line; restore it unless the body already
       // starts with one (documents indexed without chunking keep theirs).
       const content = body.startsWith("# ") ? body : `# ${doc.title}\n\n${body}`;
-      return { type: "documento", meta: doc, content };
+      return { type: "document", meta: doc, content };
     }
 
     // A section may live merged inside a bigger chunk (small sections are
@@ -58,20 +58,20 @@ export class ReadDocument {
         headingsIn(c.content).some((h) => normalize(h).includes(wanted)),
     );
     if (matching.length === 0) {
-      const disponibles = new Set<string>();
+      const available = new Set<string>();
       for (const chunk of chunks) {
-        disponibles.add(chunk.heading);
-        for (const heading of headingsIn(chunk.content)) disponibles.add(heading);
+        available.add(chunk.heading);
+        for (const heading of headingsIn(chunk.content)) available.add(heading);
       }
       return {
-        type: "seccion-no-encontrada",
+        type: "section-not-found",
         meta: doc,
         section: request.section,
-        availableSections: [...disponibles],
+        availableSections: [...available],
       };
     }
     return {
-      type: "seccion",
+      type: "section",
       meta: doc,
       section: request.section,
       content: matching.map((c) => c.content).join("\n\n"),

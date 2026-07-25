@@ -103,8 +103,8 @@ describe("condenseSummary", () => {
   });
 
   it("truncates one character over the limit", () => {
-    const resultado = condenseSummary("a".repeat(MAX_SUMMARY_CHARS + 1));
-    expect(resultado).toHaveLength(MAX_SUMMARY_CHARS);
-    expect(resultado.endsWith("…")).toBe(true);
+    const result = condenseSummary("a".repeat(MAX_SUMMARY_CHARS + 1));
+    expect(result).toHaveLength(MAX_SUMMARY_CHARS);
+    expect(result.endsWith("…")).toBe(true);
   });
 });
