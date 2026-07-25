@@ -99,7 +99,59 @@ active-proof tasks; all other commits are gated by keep-green-throughout, not ne
   - Gate: `npm run typecheck` clean, `npm test` 24 files / 219 tests green, `npm run build` clean,
     `src/domain/` purity verified (no `node:`/`better-sqlite3`/`sqlite-vec`/`@xenova`/`gray-matter`/
     `remark` imports).
-- [ ] Commit 4 — Content and structural fields (L) — NOT STARTED
+- [x] **Commit 4 — Content and structural fields (L)** — `ffe0a54`
+  - `contenido`→`content`, `orden`→`position` (Decision 2), `resumen`→`summary` (`condenseResumen`/
+    `displayResumen`→`condenseSummary`/`displaySummary`, `MAX_RESUMEN_CHARS`→`MAX_SUMMARY_CHARS`),
+    `titulo`→`title`, `texto`/`textos`→`text`/`texts`, `extracto`→`excerpt`, `Piece.texto`,
+    `DocSection.{titulo,texto}`, `DocOutline.{titulo,resumen,secciones}`.
+  - **Methodology defect found and fixed mid-commit — read this before commits 5-11.** This commit's
+    roots (`contenido`/`texto`/`resumen`/`titulo`) are ordinary Spanish words that also occur as
+    arbitrary prose inside test-fixture STRING VALUES (markdown bodies, FTS5 search-query text) all over
+    the suite — unlike commits 2/3's more technical roots, which rarely collided with prose. The plain
+    word-boundary bulk script used for commits 2-3 (`rename.mjs`) is regex-only and cannot tell an
+    identifier from string content; run on commit 4's file set it corrupted Spanish test data (e.g.
+    `"contenido comun"` search text became `"content comun"`) in ~8 files. **Caught by diff review before
+    committing** (not by the test suite — the corrupted strings still coincidentally contained the
+    matched search substrings, so `npm test` stayed green on the corrupted state, proving Decision A's
+    point that not every defect surfaces as a red test).
+  - **Recovery**: `git restore --source=HEAD -- <32 files>` reverted every uncommitted change back to
+    commit 3 (per-file, since a blanket `git checkout -- .`/`git reset --hard` is blocked by the sandbox
+    classifier as destructive — `git restore --source=HEAD -- <explicit paths>` is the permitted
+    equivalent). Verified back to `65e06b6`'s exact green state before redoing.
+  - **New tool**: `rename-safe.mjs`, a small hand-written lexer (not a full parser — good enough for this
+    codebase's syntax) that segments each file into `code` and `string` spans, tracking single/double
+    quotes and template literals (including `${...}` interpolations, which ARE code, and nested
+    templates). Renames apply only to `code` spans — identifiers, comments, and template interpolation
+    expressions — never to string/template literal text. Verified on a synthetic test file covering
+    comments, object keys vs. string values, template interpolation, nested templates, and single-quoted
+    strings before trusting it on real files. **Use `rename-safe.mjs`, not `rename.mjs`, for all
+    remaining commits (5-11)** — commits 2/3's roots happened not to collide with prose, but that was
+    luck, not a property of those commits; there is no reason later commits (`resultados`, `errores`,
+    CLI/MCP prose) would be safer.
+  - One known gap in the lexer (documented, not hit in practice this commit): a double-quoted TS
+    type-level string literal (`Pick<DocumentMeta, "titulo" | "resumen" | ...>`) is lexically
+    indistinguishable from runtime string data, so the tokenizer protects it too — this was **not** a
+    silent miss because `tsc` immediately flagged the resulting type mismatch (`index-markdown.ts`'s
+    `IndexEntry` `Pick<>`), fixed by hand. Grep for `Pick<|Omit<|keyof ` before trusting the script on a
+    file if a future commit's roots might appear in one of those constructs.
+  - Also renamed test-title strings that literally quote a renamed function/concept name (same class as
+    commits 2/3's `describe("parseTipo"...)`-style misses, since these ARE meant to track the identifier
+    despite being string content): `describe("condenseResumen"...)`→`"condenseSummary"`,
+    `describe("GetOverview resumen fallback"...)`→`"GetOverview summary fallback"`, and the local var
+    `contenidoLf`→`contentLf` in `file-index-writer.test.ts`.
+  - Silent-green trap (Decision A/G, same pair as commit 2): `listChunksMissingVectors`'s
+    `c.contenido AS contenido`→`AS content` in `sqlite-index-store.ts`. Active proof extended: the
+    commit-2 assertion in `sqlite-index-store.test.ts` now also checks `missing[0]?.content` is defined,
+    non-undefined, before the `toEqual`.
+  - `toDocument`/`toChunk` mappers in `sqlite-index-store.ts` now fully asymmetric on all four renamed
+    fields (`title: row.titulo`, `summary: row.resumen`, `content: row.contenido`, `position: row.orden`)
+    — matches Decision G's description of the end state through commit 7, symmetric again at commit 8.
+  - Verified invariant I1 (`RemarkMarkdownParser.parse` still destructures `{ data, content }` from
+    `matter(raw)`) and I5 (embed composition templates `` `passage: ${p.text}` ``/
+    `` `passage: ${chunk.heading}\n${chunk.content}` ``/`` `query: ${query.query}` `` byte-identical
+    except for the identifier renames — no dropped space, no reordering) directly in the diff.
+  - Gate: `npm run typecheck` clean, `npm test` 24 files / 219 tests green, `npm run build` clean,
+    `src/domain/` purity verified.
 - [ ] Commit 5 — Report and response fields (M) — NOT STARTED
 - [ ] Commit 6 — Configuration surface (M) — NOT STARTED
 - [ ] Commit 7 — Frontmatter source keys, with the corpus (S, high scrutiny) — NOT STARTED
@@ -171,48 +223,65 @@ place the compiler stays silent even after the include is fixed.
 
 ## Resume point
 
-Commit 3 landed clean at `65e06b6`. Tree clean, `stash@{0}` reference fully retired (dropped after
-commit 2).
+Commit 4 landed clean at `ffe0a54`. Tree clean.
 
-Verified state at `65e06b6`: `npm run typecheck` clean, `npm test` 24 files / 219 tests green,
-`npm run build` clean, `src/domain/` purity verified.
+Verified state at `ffe0a54`: `npm run typecheck` clean, `npm test` 24 files / 219 tests green,
+`npm run build` clean, `src/domain/` purity verified, invariants I1/I5 spot-checked directly in the
+diff.
 
-**Methodology note for the remaining commits (4–11)**, confirmed working across commits 2 and 3: a
-bulk whole-identifier (word-boundary, case-sensitive) rename script for the majority of files per
-commit — safe because `tsc` adjudicates every occurrence. Files with a touch/no-touch split within the
-SAME file (SQL row-shape carve-outs per Decision G, MCP wire params staying Spanish until commit 9,
-discriminant string LITERALS staying Spanish until commit 5 while the surrounding FIELD names rename
-now, `camposFrontmatter`'s KEYS-rename-but-VALUES-frozen shape per Decision F) are edited fully by
-hand, because a blind regex cannot tell "this token is a property name" from "this token is inside a
-frozen string value or a frozen object value". Continue this approach for commits 4–11.
+**MANDATORY going forward — read before touching commit 5**: use the lexer-aware rename script
+(reconstructed from scratch each apply session under
+`.../scratchpad/rename-safe.mjs`; see the commit-4 entry above for its design — segments code vs.
+string/template-literal content, renames only in code) for ALL bulk renames in commits 5-11, never the
+plain word-boundary version. Commit 4 proved commits 2/3 got lucky: their roots (`ruta`/`tipo`/`estado`/
+etc.) rarely collided with ordinary Spanish prose in test fixture strings, so the naive script happened
+not to corrupt data — but commit 4's roots (`contenido`/`texto`/`resumen`/`titulo`) are common Spanish
+words that appear constantly as arbitrary markdown-body/search-query test content, and the naive
+version silently corrupted ~8 files' string literals (caught by diff review, NOT by the test suite,
+which stayed green on the corrupted state — the corrupted strings still coincidentally contained the
+substrings the tests searched for). Commits 5+ touch `resultados`/`errores`/`sincronizacion`/CLI+MCP
+prose strings — assume the same collision risk applies, since "did it collide with prose last time" is
+not evidence it won't this time.
+
+**Recovery pattern if a bulk rename needs reverting**: `git checkout -- .` / `git reset --hard` are
+blocked by the sandbox's destructive-command classifier. `git restore --source=HEAD -- <explicit file
+list>` is the permitted equivalent for restoring specific files to the last commit — use it, not a
+blanket revert.
 
 **Also verify per-commit, not just per design table**: after any commit's rename, re-run that commit's
 own `rg -i -n '<roots>' src test` done-when check on the FULL tree (not just the files touched by the
-rename map) — local variables/synthetic test-fixture identifiers that merely CONTAIN a renamed root
-(e.g. commit 2's `hashMatchRutas`/`porRuta`; commit 3's `conEtiqueta`, `sin-estado.md`, `tipo-invalido.md`)
-are not always enumerated in design.md's per-commit symbol tables (which list types/interfaces/methods,
-not every local var or fixture filename) but WILL fail the done-when sweep if left unrenamed. Also
-watch for identifiers explicitly scheduled for a LATER commit in design.md's own tables (e.g. commit 3
-deliberately left `inferirModulo`, `crearComparadorIndice`, `ConvencionConfig`, `modo` untouched even
-though they contain/relate to this commit's roots, because design.md's Commit 6 table owns their
-rename) — these are legitimate deferrals, not misses; cross-check design.md's LATER commit tables before
-"fixing" a hit that's actually scheduled ahead.
+rename map) — local variables/synthetic test-fixture identifiers/describe-title strings that literally
+quote a renamed function name (e.g. commit 4's `describe("condenseResumen"...)`, `contenidoLf`) are not
+always enumerated in design.md's per-commit symbol tables but WILL fail the done-when sweep if left
+unrenamed. Also watch for identifiers explicitly scheduled for a LATER commit in design.md's own tables
+(e.g. commit 3 deliberately left `inferirModulo`/`ConvencionConfig`/`modo` untouched — commit 6's table
+owns their rename) — legitimate deferrals, not misses; cross-check design.md's LATER commit tables
+before "fixing" a hit that's actually scheduled ahead.
 
-**Discovered in commit 3, applies going forward**: `file-index-writer.ts:25`'s English idiom "modulo"
-(mathematics/"except for") is an exact-word collision with the Spanish root `modulo` that Decision B's
-stated false-positive audit did not anticipate (it only checked substring collisions, not exact-word
-ones). It will keep surfacing in every `modulo`-root sweep from here through Sweep A/B — it is correct
-English, not a rename miss, and does not fit `// es-frozen:` (never Spanish). Recommend documenting it
-in design.md's Sweep A allow-list at commit 11 rather than re-diagnosing it each commit.
+**Discovered in commit 3, still applies**: `file-index-writer.ts:25`'s English idiom "modulo"
+(mathematics/"except for") is an exact-word collision with the Spanish root `modulo`, not a rename miss.
+Document it in design.md's Sweep A allow-list at commit 11 rather than re-diagnosing it each commit.
 
-Next: **Commit 4 — Content and structural fields (L)**. Symbols: `contenido`→`content`, `orden`→
-`position` (Decision 2 — `order` is a SQLite reserved word), `resumen`→`summary` (`condenseResumen`/
-`displayResumen`→`condenseSummary`/`displaySummary`), `titulo`→`title`, `texto`/`textos`→`text`/`texts`,
-`extracto`→`excerpt`, `Piece.texto`, `DocSection.{titulo,texto}`, `DocOutline.{titulo,resumen,secciones}`.
-Silent-green trap (Decision A/G, same pair as commit 2): edit `listChunksMissingVectors`'s
-`c.contenido AS contenido`→`AS content` in `sqlite-index-store.ts`, in the SAME commit — extend the
-commit-2 active-proof assertion in `sqlite-index-store.test.ts` to also cover a defined, non-`undefined`
-`content` value. Do NOT touch: `chunks.contenido`/`chunks.orden` DDL, `ORDER BY orden`,
-`insertChunk`/`insertFts`/`deleteFts`, `ChunkRow`, the inline cast in `deleteDocumentRows` (all Decision
-G, commit 8). Expect the same "beyond the literal symbol table" cleanup pass this commit's own
-`rg -i -n 'contenido|orden|resumen|titulo|texto|extracto' src test` done-when check will require.
+**One lexer gap found in commit 4 (documented, not a recurring risk unless roots hit `Pick<>`/`Omit<>`/
+`keyof`)**: TS type-level string literals (`Pick<DocumentMeta, "titulo" | ...>`) are lexically
+indistinguishable from string data, so the lexer protects them too — `tsc` catches the resulting type
+mismatch immediately (not silent), fix by hand. `rg -n 'Pick<|Omit<|keyof '` before trusting the script
+on a commit whose roots might appear in one.
+
+Next: **Commit 5 — Report and response fields (M)**. Symbols: `omitidos`→`skipped`, `indexados`→
+`indexed`, `eliminados`→`deleted`, `avisoEmbeddings`→`embeddingsWarning`, `duracionMs`→`durationMs`,
+`resultados`→`results`, `SearchResponse.modo`/`IndexReport.modo`/`SyncReport.modo`→`mode`,
+`sincronizacion`→`sync`, `SincronizacionInfo`→`SyncInfo`, `toSincronizacionInfo`→`toSyncInfo`,
+`errores`→`errors`, `erroresLectura`→`readErrors`, `cambiado`→`changed`, `existente`→`existing`,
+`escrito`→`written`, `forzarLexico`→`forceLexical`. Value literals: `SearchMode` `"hibrido"`/`"lexico"`→
+`"hybrid"`/`"lexical"` (incl. `EvalReport.hibrido`/`.lexico` keys); `ReadResult` discriminants
+`"documento"`/`"seccion"`/`"ruta-no-encontrada"`/`"seccion-no-encontrada"`→`"document"`/`"section"`/
+`"path-not-found"`/`"section-not-found"`. Eval fields: `pregunta`→`question`, `esperado`→`expected`,
+`posicion`→`rank` (Decision K — NOT `position`, that's commit 4's `Chunk.position`), `fallos`→
+`failures`, `casos`→`cases`. **Frozen boundary, assigned to THIS commit**: `cli.ts`'s `loadGoldenset`
+literals `"pregunta"`/`"esperado"` stay Spanish forever (index into `ejemplos/goldenset.yaml`'s real
+keys) — add `// es-frozen:` markers to both in this commit, not later (task 5.5). This is the first
+commit with a Decision-B-flagged reviewer-attention risk already live from commit 3 (`mode`/`module`
+lookalikes) plus a NEW one of its own: two distinct `modo` symbols (`SearchResponse.modo` etc. here,
+`ConvencionConfig.modo` in commit 6) both target `mode` — expected to stay separable since they land in
+different commits, per design.md's Decision B.

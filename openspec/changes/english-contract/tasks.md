@@ -68,12 +68,12 @@ No renames in this commit. Runs against the still-Spanish tree.
 
 `refactor(domain): rename content and structural fields to English`
 
-- [ ] 4.1 Rename: `contenido`→`content`, `orden`→`position` (Decision 2 in `proposal.md` — `order` is a SQLite reserved word), `resumen`→`summary` (`condenseResumen`/`displayResumen`→`condenseSummary`/`displaySummary`), `titulo`→`title`, `texto`/`textos`→`text`/`texts`, `extracto`→`excerpt`, `Piece.texto`, `DocSection.{titulo,texto}`, `DocOutline.{titulo,resumen,secciones}`.
-- [ ] 4.2 **Silent-green trap (Decision A/G), same pair as commit 2**: edit `listChunksMissingVectors`'s `c.contenido AS contenido`→`AS content` in the same commit.
-- [ ] 4.3 **Active proof of 4.2**: confirm `sqlite-index-store.test.ts`'s `listChunksMissingVectors` assertions from 2.3 now also cover a defined, non-`undefined` `content` value.
-- [ ] 4.4 Do NOT touch: `chunks.contenido`/`chunks.orden` DDL, `ORDER BY orden`, `insertChunk`/`insertFts`/`deleteFts`, `ChunkRow`, the inline cast in `deleteDocumentRows`.
-- [ ] 4.5 Gate: `npm run typecheck` then `npm test`.
-- [ ] 4.6 Done when: `rg -i -n 'contenido|orden|resumen|titulo|texto|extracto' src test` returns only the SQL layer and Sweep A's allow-list.
+- [x] 4.1 Rename: `contenido`→`content`, `orden`→`position` (Decision 2 in `proposal.md` — `order` is a SQLite reserved word), `resumen`→`summary` (`condenseResumen`/`displayResumen`→`condenseSummary`/`displaySummary`), `titulo`→`title`, `texto`/`textos`→`text`/`texts`, `extracto`→`excerpt`, `Piece.texto`, `DocSection.{titulo,texto}`, `DocOutline.{titulo,resumen,secciones}`. Rebuilt the rename tool as a lexer that skips string/template-literal content (see apply-progress.md) after the naive word-boundary version corrupted test-fixture prose; recovered via `git restore --source=HEAD`.
+- [x] 4.2 **Silent-green trap (Decision A/G), same pair as commit 2**: edit `listChunksMissingVectors`'s `c.contenido AS contenido`→`AS content` in the same commit.
+- [x] 4.3 **Active proof of 4.2**: confirm `sqlite-index-store.test.ts`'s `listChunksMissingVectors` assertions from 2.3 now also cover a defined, non-`undefined` `content` value.
+- [x] 4.4 Do NOT touch: `chunks.contenido`/`chunks.orden` DDL, `ORDER BY orden`, `insertChunk`/`insertFts`/`deleteFts`, `ChunkRow`, the inline cast in `deleteDocumentRows`.
+- [x] 4.5 Gate: `npm run typecheck` then `npm test`.
+- [x] 4.6 Done when: `rg -i -n 'contenido|orden|resumen|titulo|texto|extracto' src test` returns only the SQL layer and Sweep A's allow-list.
 
 ## Commit 5 — Report and response fields (M)
 
