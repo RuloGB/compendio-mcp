@@ -53,9 +53,29 @@ active-proof tasks; all other commits are gated by keep-green-throughout, not ne
   Commit 8 DDL: `chunks_fts USING fts5(content, heading, content=chunks, content_rowid=id,
   tokenize='unicode61 remove_diacritics 2')` — no `body` fallback anywhere in this change.
 
-## Defect in the design's own gating — fix before resuming
+## Defect in the design's own gating — FIXED in `7b0a34f`
 
-**`npm run typecheck` does not cover `test/`.** Verified in `tsconfig.json`:
+**Resolved. Do not redo this work.** `npm run typecheck` now runs `tsc --noEmit && tsc -p
+tsconfig.test.json` and covers `src/` and `test/`. A separate `tsconfig.test.json` was added rather
+than widening the base config, so `npm run build` still emits only `src` to `dist`. It uses bundler
+module resolution to match vitest's actual resolution of the extensionless relative imports the test
+tree already uses — under the inherited `nodenext` setting those produced 68 `TS2835` plus 50
+cascading implicit-any errors, none of them real defects. The single genuine violation that remained
+(a `noUncheckedIndexedAccess` breach in `test/helpers/fake-embeddings.ts`) was fixed with the non-null
+assertion idiom already used a few lines below it.
+
+Measured proof the gate now works: with the half-applied commit 2 in the tree, the old typecheck
+reported **0 errors** while 89 tests failed; the new one reports **194 errors** pointing at each stale
+fixture field.
+
+Verified state at `7b0a34f`: `npm run typecheck` clean, `npm test` 24 files / 219 tests green,
+`npm run build` clean with no test output in `dist/`.
+
+The original diagnosis is kept below for the record.
+
+---
+
+**`npm run typecheck` did not cover `test/`.** Verified in `tsconfig.json`:
 
 ```json
 "rootDir": "src",
@@ -89,11 +109,23 @@ place the compiler stays silent even after the include is fixed.
 
 ## Resume point
 
-0. **Fix the gating defect above first.** Resuming without it repeats the same blind spot ten more times.
-1. **Finish commit 2**: update every `DocumentMeta`/`Chunk` fixture and assertion under `test/` to the
-   renamed fields, and delete the `& { ruta?: string }` widening rather than translating it. Gate on
-   `npm test` green plus commit 2's "Done when" search.
-2. Then continue as originally recorded:
+The gating defect is fixed. The tree is clean at `7b0a34f` and fully green — start commit 2 from
+there, from scratch.
+
+The earlier half-applied commit-2 attempt was **not** kept in the working tree. It is preserved in
+`git stash` as `stash@{0}` ("wip-commit2-partial") purely as a reference; it was ~234 lines of
+mechanical renaming that is cheaper to redo cleanly than to reason about half-applied. Do not
+`git stash pop` it — redo commit 2 from the clean tree. Drop the stash once commit 2 lands.
+
+When redoing commit 2, note two things that attempt got wrong:
+
+- The `test/` fixtures were never updated alongside the domain types. With typecheck now covering
+  `test/`, this surfaces immediately instead of as an opaque SQL NOT NULL failure.
+- `test/infrastructure/sqlite-index-store.test.ts:5` declares
+  `function meta(overrides: Partial<DocumentMeta> & { ruta?: string } = {}): DocumentMeta`. That
+  `& { ruta?: string }` widening is pre-existing. **Delete it, do not translate it** — it is a type
+  escape hatch that lets a retired key through silently. Audit `test/` for other widenings of the
+  same shape.
 
 Next: Commit 2 — path-identifying fields (`ruta`→`path`, `seccion`→`section`, `secciones`→`sections`,
 `seccionesDisponibles`→`availableSections`, `encabezado`→`heading`, `getDocumentByRuta`→
