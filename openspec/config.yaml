@@ -7,10 +7,13 @@ context: |
   remark+gray-matter, fs). Seams in src/domain/ports.ts.
   Testing: Vitest, pool "forks" (native addon — do not change). No lint/
   coverage scripts configured. Full details: CLAUDE.md, openspec/testing-capabilities.md.
-  Language contract: prose in English; MCP tool contract
-  (ruta/tipo/modulo/etiquetas/seccion, omitidos/indexados/avisoEmbeddings),
-  CLI options, SQLite columns, ejemplos/ corpus stay Spanish (deliberate,
-  not to "fix").
+  Language contract (revised 2026-07-25, supersedes the previous EN/ES split):
+  the project is moving to English everywhere — identifiers, MCP tool contract,
+  response fields, CLI options, SQLite columns, config keys and frontmatter
+  keys. The single deliberate exception is the ejemplos/ corpus and
+  goldenset.yaml, which stay Spanish: they are the retrieval regression suite
+  and the evidence that an English codebase indexes Spanish documentation.
+  Do not translate them.
 
 strict_tdd: true
 
@@ -27,19 +30,17 @@ testing:
 rules:
   proposal:
     - Include a rollback plan for risky changes.
-    - "Upcoming pivot: removing the fixed documentation convention (required
-      frontmatter tipo/modulo/estado, closed TIPOS/ESTADOS lists) in favor of
-      zero-config indexing (inference-based, no frontmatter required) plus an
-      optional per-project convention in compendio.config.json. No backward
-      compatibility obligation with the old convention (explicit user
-      decision, 2026-07-22) — state this plainly, do not invent a compat
-      shim unless asked."
+    - "The project is in beta with no installed users. Breaking the public
+      contract (MCP params, config keys, frontmatter keys, SQLite schema) is
+      an accepted cost, not a risk to mitigate (explicit user decision,
+      2026-07-24 and reaffirmed 2026-07-25). Do not design migrations,
+      schema markers or compatibility shims unless asked."
   specs:
     - Use Given/When/Then for scenarios.
     - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
-    - Keep MCP tool params/response fields in Spanish (ruta, tipo, modulo,
-      etiquetas, seccion, omitidos, indexados, avisoEmbeddings) unless the
-      change explicitly redefines the contract.
+    - MCP tool params and response fields are English (path, title, summary,
+      type, module, status, tags, section, excerpt, skipped, indexed,
+      embeddingsWarning). The former Spanish contract is retired.
   design:
     - Include sequence/flow notes for non-trivial flows (e.g. inference-based
       classification, config-driven convention resolution).
@@ -60,6 +61,7 @@ rules:
     coverage_threshold: 0
   archive:
     - Warn before merging destructive deltas.
-    - For the zero-config pivot, confirm openspec/specs/ reflects removal of
-      the closed TIPOS/ESTADOS convention and addition of inference-based
-      + optional-config classification before archiving.
+    - Confirm openspec/specs/ carries no residual Spanish contract vocabulary
+      (ruta, tipo, modulo, estado, etiquetas, seccion, omitidos, indexados,
+      avisoEmbeddings, convencion, estadosExcluidos, camposFrontmatter)
+      before archiving, except where it quotes the ejemplos/ corpus.
