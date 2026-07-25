@@ -9,11 +9,11 @@ export interface ChunkingOptions {
 
 interface Piece {
   path: string[];
-  texto: string;
+  text: string;
 }
 
 function sectionFullText(section: DocSection): string {
-  const parts = [section.texto, ...section.children.map((c) => sectionFullText(c))];
+  const parts = [section.text, ...section.children.map((c) => sectionFullText(c))];
   return parts.filter((p) => p.trim().length > 0).join("\n\n");
 }
 
@@ -29,27 +29,27 @@ export function chunkOutline(outline: DocOutline, opts: ChunkingOptions): Chunk[
   const pieces: Piece[] = [];
 
   if (outline.intro.trim().length > 0) {
-    pieces.push({ path: [outline.titulo], texto: outline.intro.trim() });
+    pieces.push({ path: [outline.title], text: outline.intro.trim() });
   }
 
   for (const section of outline.sections) {
     const full = sectionFullText(section);
     if (estimateTokens(full) <= opts.maxTokens || section.children.length === 0) {
-      pieces.push({ path: [section.titulo], texto: full });
+      pieces.push({ path: [section.title], text: full });
       continue;
     }
-    if (section.texto.trim().length > 0) {
-      pieces.push({ path: [section.titulo], texto: section.texto.trim() });
+    if (section.text.trim().length > 0) {
+      pieces.push({ path: [section.title], text: section.text.trim() });
     }
     for (const child of section.children) {
-      pieces.push({ path: [section.titulo, child.titulo], texto: sectionFullText(child) });
+      pieces.push({ path: [section.title, child.title], text: sectionFullText(child) });
     }
   }
 
-  return mergeTinyPieces(pieces, opts).map((piece, orden) => ({
+  return mergeTinyPieces(pieces, opts).map((piece, position) => ({
     heading: piece.path.join(" > "),
-    contenido: piece.texto,
-    orden,
+    content: piece.text,
+    position,
   }));
 }
 
@@ -63,13 +63,13 @@ function mergeTinyPieces(pieces: Piece[], opts: ChunkingOptions): Piece[] {
   const merged: Piece[] = [];
   for (const piece of pieces) {
     const previous = merged[merged.length - 1];
-    const tokens = estimateTokens(piece.texto);
+    const tokens = estimateTokens(piece.text);
     if (
       previous !== undefined &&
       tokens < opts.minTokens &&
-      estimateTokens(previous.texto) + tokens <= opts.maxTokens
+      estimateTokens(previous.text) + tokens <= opts.maxTokens
     ) {
-      previous.texto = `${previous.texto}\n\n${piece.texto}`;
+      previous.text = `${previous.text}\n\n${piece.text}`;
     } else {
       merged.push({ ...piece });
     }

@@ -27,9 +27,9 @@ function cfgEstricto(overrides: Partial<ConvencionConfig> = {}): ConvencionConfi
 }
 
 class MemoryIndexWriter implements IndexFileWriter {
-  contenido: string | null = null;
-  async write(contenido: string): Promise<IndexWriteResult> {
-    this.contenido = contenido;
+  content: string | null = null;
+  async write(content: string): Promise<IndexWriteResult> {
+    this.content = content;
     return { path: "docs/INDEX.md", cambiado: true };
   }
 }
@@ -46,7 +46,7 @@ class StaticSource implements DocumentSource {
 
 const VALID_DOC: DocumentFile = {
   path: "guias/transversal-valida.md",
-  contenido:
+  content:
     "---\ntipo: guia\nmodulo: transversal\nestado: vigente\n---\n\n# Guía válida\n\nResumen de la guía.\n",
 };
 
@@ -67,27 +67,27 @@ describe("GenerateIndexMd — libre mode over inline fixtures", () => {
   it("lists a frontmatter-less document, ordered alphabetically by path", async () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
-        { path: "b.md", contenido: "# Documento B\n\nResumen B.\n" },
-        { path: "a.md", contenido: "# Documento A\n\nResumen A.\n" },
+        { path: "b.md", content: "# Documento B\n\nResumen B.\n" },
+        { path: "a.md", content: "# Documento A\n\nResumen A.\n" },
       ]),
     );
     const report = await useCase.execute();
 
     expect(report.documentos).toBe(2);
     expect(report.omitidos).toEqual([]);
-    const lineas = writer.contenido!.split("\n").filter((l) => l.startsWith("- "));
+    const lineas = writer.content!.split("\n").filter((l) => l.startsWith("- "));
     expect(lineas).toEqual(["- a.md — Resumen A.", "- b.md — Resumen B."]);
   });
 
   it("never lists INDEX.md itself, even when the source yields it", async () => {
     const { useCase, writer } = buildUseCase(
-      new StaticSource([{ path: "INDEX.md", contenido: "# Índice viejo\n" }, VALID_DOC]),
+      new StaticSource([{ path: "INDEX.md", content: "# Índice viejo\n" }, VALID_DOC]),
     );
     const report = await useCase.execute();
 
     expect(report.documentos).toBe(1);
     expect(report.omitidos).toEqual([]);
-    expect(writer.contenido).not.toContain("] INDEX.md");
+    expect(writer.content).not.toContain("] INDEX.md");
   });
 
   it("renders only the header for an empty corpus", async () => {
@@ -95,8 +95,8 @@ describe("GenerateIndexMd — libre mode over inline fixtures", () => {
     const report = await useCase.execute();
 
     expect(report.documentos).toBe(0);
-    expect(writer.contenido).toContain("# Índice de la documentación");
-    expect(writer.contenido!.split("\n").some((l) => l.startsWith("- "))).toBe(false);
+    expect(writer.content).toContain("# Índice de la documentación");
+    expect(writer.content!.split("\n").some((l) => l.startsWith("- "))).toBe(false);
   });
 
   it("falls back to the title for a document with no paragraph at all", async () => {
@@ -104,13 +104,13 @@ describe("GenerateIndexMd — libre mode over inline fixtures", () => {
       new StaticSource([
         {
           path: "guias/transversal-sin-resumen.md",
-          contenido: "# Solo título\n\n## Pasos\n\n- paso uno\n- paso dos\n",
+          content: "# Solo título\n\n## Pasos\n\n- paso uno\n- paso dos\n",
         },
       ]),
     );
     await useCase.execute();
 
-    expect(writer.contenido).toContain("— Solo título");
+    expect(writer.content).toContain("— Solo título");
   });
 });
 
@@ -118,16 +118,16 @@ describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
   it("orders entries by declared types, tie-broken alphabetically by path", async () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
-        { path: "z.md", contenido: "---\ntipo: adr\nmodulo: m\nestado: vigente\n---\n\n# Z\n\nr\n" },
-        { path: "b.md", contenido: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# B\n\nr\n" },
-        { path: "a.md", contenido: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# A\n\nr\n" },
+        { path: "z.md", content: "---\ntipo: adr\nmodulo: m\nestado: vigente\n---\n\n# Z\n\nr\n" },
+        { path: "b.md", content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# B\n\nr\n" },
+        { path: "a.md", content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# A\n\nr\n" },
       ]),
       cfgEstricto({ types: ["guia", "adr"] }),
     );
     const report = await useCase.execute();
 
     expect(report.documentos).toBe(3);
-    const paths = writer.contenido!
+    const paths = writer.content!
       .split("\n")
       .filter((l) => l.startsWith("- "))
       .map((l) => l.split(" — ")[0]!.split("] ")[1]!);
@@ -140,7 +140,7 @@ describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
         VALID_DOC,
         {
           path: "guias/type-invalido.md",
-          contenido: "---\ntipo: no-declarado\nmodulo: m\nestado: vigente\n---\n\n# X\n\nr\n",
+          content: "---\ntipo: no-declarado\nmodulo: m\nestado: vigente\n---\n\n# X\n\nr\n",
         },
       ]),
       cfgEstricto({ types: ["guia"] }),
@@ -150,7 +150,7 @@ describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
     expect(report.documentos).toBe(1);
     expect(report.omitidos).toHaveLength(1);
     expect(report.omitidos[0]!.path).toBe("guias/type-invalido.md");
-    expect(writer.contenido).toContain("guias/transversal-valida.md");
+    expect(writer.content).toContain("guias/transversal-valida.md");
   });
 });
 
@@ -159,7 +159,7 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
         VALID_DOC,
-        { path: "guias/frontmatter-roto.md", contenido: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
+        { path: "guias/frontmatter-roto.md", content: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
       ]),
     );
     const report = await useCase.execute();
@@ -168,14 +168,14 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
     expect(report.omitidos).toHaveLength(1);
     expect(report.omitidos[0]!.path).toBe("guias/frontmatter-roto.md");
     expect(report.omitidos[0]!.errores[0]!.length).toBeGreaterThan(0);
-    expect(writer.contenido).toContain("guias/transversal-valida.md");
+    expect(writer.content).toContain("guias/transversal-valida.md");
   });
 
   it("skips and reports a document with malformed frontmatter under estricto too", async () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
         VALID_DOC,
-        { path: "guias/frontmatter-roto.md", contenido: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
+        { path: "guias/frontmatter-roto.md", content: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
       ]),
       cfgEstricto({ types: ["guia"] }),
     );
@@ -183,7 +183,7 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
 
     expect(report.omitidos).toHaveLength(1);
     expect(report.omitidos[0]!.path).toBe("guias/frontmatter-roto.md");
-    expect(writer.contenido).toContain("guias/transversal-valida.md");
+    expect(writer.content).toContain("guias/transversal-valida.md");
   });
 
   it("folds an unreadable file (erroresLectura) into omitidos and continues", async () => {
@@ -194,6 +194,6 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
 
     expect(report.documentos).toBe(1);
     expect(report.omitidos).toEqual([{ path: "guias/ilegible.md", errores: ["permiso denegado"] }]);
-    expect(writer.contenido).toContain("guias/transversal-valida.md");
+    expect(writer.content).toContain("guias/transversal-valida.md");
   });
 });

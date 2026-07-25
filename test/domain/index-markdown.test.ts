@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  condenseResumen,
+  condenseSummary,
   formatDocLine,
-  MAX_RESUMEN_CHARS,
+  MAX_SUMMARY_CHARS,
   renderIndexMd,
   type IndexEntry,
 } from "../../src/domain/index-markdown";
@@ -10,8 +10,8 @@ import {
 function entry(overrides: Partial<IndexEntry>): IndexEntry {
   return {
     path: "auth/doc.md",
-    titulo: "Documento",
-    resumen: "Resumen breve",
+    title: "Documento",
+    summary: "Resumen breve",
     type: "guia",
     status: "vigente",
     ...overrides,
@@ -38,16 +38,16 @@ describe("renderIndexMd", () => {
   });
 
   it("collapses whitespace and truncates long summaries", () => {
-    const salida = renderIndexMd([entry({ resumen: `linea\nrota   ${"x".repeat(200)}` })]);
+    const salida = renderIndexMd([entry({ summary: `linea\nrota   ${"x".repeat(200)}` })]);
     const linea = salida.split("\n").find((l) => l.startsWith("- "))!;
-    const resumen = linea.split(" — ")[1]!.replace(/ \(vigente\)$/, "");
-    expect(resumen).toContain("linea rota");
-    expect(resumen).toHaveLength(MAX_RESUMEN_CHARS);
-    expect(resumen.endsWith("…")).toBe(true);
+    const summary = linea.split(" — ")[1]!.replace(/ \(vigente\)$/, "");
+    expect(summary).toContain("linea rota");
+    expect(summary).toHaveLength(MAX_SUMMARY_CHARS);
+    expect(summary.endsWith("…")).toBe(true);
   });
 
   it("falls back to the title when the summary is empty", () => {
-    const salida = renderIndexMd([entry({ resumen: "  ", titulo: "Guía de despliegue" })]);
+    const salida = renderIndexMd([entry({ summary: "  ", title: "Guía de despliegue" })]);
     expect(salida).toContain("- [guia] auth/doc.md — Guía de despliegue (vigente)");
   });
 
@@ -61,7 +61,7 @@ describe("renderIndexMd", () => {
 
 describe("formatDocLine — omits absent type/status segments", () => {
   it("omits both segments when type and status are absent", () => {
-    const linea = formatDocLine({ type: undefined, path: "a.md", resumen: "r", status: undefined });
+    const linea = formatDocLine({ type: undefined, path: "a.md", summary: "r", status: undefined });
     expect(linea).toBe("- a.md — r");
     expect(linea).not.toContain("[");
     expect(linea).not.toContain("(");
@@ -69,42 +69,42 @@ describe("formatDocLine — omits absent type/status segments", () => {
   });
 
   it("includes type and omits status when only type is present", () => {
-    const linea = formatDocLine({ type: "guia", path: "a.md", resumen: "r", status: undefined });
+    const linea = formatDocLine({ type: "guia", path: "a.md", summary: "r", status: undefined });
     expect(linea).toBe("- [guia] a.md — r");
     expect(linea).not.toContain("(");
   });
 
   it("includes status and omits type when only status is present", () => {
-    const linea = formatDocLine({ type: undefined, path: "a.md", resumen: "r", status: "vigente" });
+    const linea = formatDocLine({ type: undefined, path: "a.md", summary: "r", status: "vigente" });
     expect(linea).toBe("- a.md — r (vigente)");
     expect(linea).not.toContain("[");
   });
 
   it("includes both segments when both are present", () => {
-    const linea = formatDocLine({ type: "guia", path: "a.md", resumen: "r", status: "vigente" });
+    const linea = formatDocLine({ type: "guia", path: "a.md", summary: "r", status: "vigente" });
     expect(linea).toBe("- [guia] a.md — r (vigente)");
   });
 });
 
-describe("condenseResumen", () => {
+describe("condenseSummary", () => {
   it("keeps short texts intact after collapsing whitespace", () => {
-    expect(condenseResumen("  hola \n mundo  ")).toBe("hola mundo");
+    expect(condenseSummary("  hola \n mundo  ")).toBe("hola mundo");
   });
 
   it("truncates with an ellipsis at the limit", () => {
-    const largo = condenseResumen("a".repeat(500));
-    expect(largo).toHaveLength(MAX_RESUMEN_CHARS);
+    const largo = condenseSummary("a".repeat(500));
+    expect(largo).toHaveLength(MAX_SUMMARY_CHARS);
     expect(largo.endsWith("…")).toBe(true);
   });
 
   it("keeps a summary exactly at the limit intact", () => {
-    const exacto = "a".repeat(MAX_RESUMEN_CHARS);
-    expect(condenseResumen(exacto)).toBe(exacto);
+    const exacto = "a".repeat(MAX_SUMMARY_CHARS);
+    expect(condenseSummary(exacto)).toBe(exacto);
   });
 
   it("truncates one character over the limit", () => {
-    const resultado = condenseResumen("a".repeat(MAX_RESUMEN_CHARS + 1));
-    expect(resultado).toHaveLength(MAX_RESUMEN_CHARS);
+    const resultado = condenseSummary("a".repeat(MAX_SUMMARY_CHARS + 1));
+    expect(resultado).toHaveLength(MAX_SUMMARY_CHARS);
     expect(resultado.endsWith("…")).toBe(true);
   });
 });

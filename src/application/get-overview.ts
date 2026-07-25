@@ -1,4 +1,4 @@
-import { displayResumen, formatDocLine } from "../domain/index-markdown.js";
+import { displaySummary, formatDocLine } from "../domain/index-markdown.js";
 import type { IndexStore } from "../domain/ports.js";
 import type { SkippedFileReport } from "./index-documents.js";
 import type { SyncReport } from "./sync-index.js";
@@ -6,7 +6,7 @@ import type { SyncReport } from "./sync-index.js";
 export interface OverviewLine {
   type?: string;
   path: string;
-  resumen: string;
+  summary: string;
   status?: string;
 }
 
@@ -39,7 +39,7 @@ export class GetOverview {
       byType,
       byModule,
       documentos: documents.map((doc) => {
-        const line: OverviewLine = { path: doc.path, resumen: displayResumen(doc) };
+        const line: OverviewLine = { path: doc.path, summary: displaySummary(doc) };
         if (doc.type !== undefined) line.type = doc.type;
         if (doc.status !== undefined) line.status = doc.status;
         return line;
@@ -83,7 +83,7 @@ export function formatOverview(
   if (byModuleLine !== null) lines.push(`Por modulo: ${byModuleLine}`);
   lines.push("");
   for (const doc of overview.documentos) {
-    lines.push(formatDocLine({ type: doc.type, path: doc.path, resumen: doc.resumen, status: doc.status }));
+    lines.push(formatDocLine({ type: doc.type, path: doc.path, summary: doc.summary, status: doc.status }));
   }
   if (sincronizacion !== null && sincronizacion !== undefined) {
     lines.push("");

@@ -5,8 +5,8 @@ import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-s
 function meta(overrides: Partial<DocumentMeta> = {}): DocumentMeta {
   return {
     path: "funcional/doc.md",
-    titulo: "Documento",
-    resumen: "Resumen.",
+    title: "Documento",
+    summary: "Resumen.",
     type: "funcional",
     module: "leadsviewer",
     status: "vigente",
@@ -29,7 +29,7 @@ describe("SqliteIndexStore", () => {
 
   it("matches Spanish text ignoring diacritics (validacion == validación)", () => {
     store.saveDocument(meta({}), [
-      { heading: "Reglas", contenido: "La validación del teléfono es estricta.", orden: 0 },
+      { heading: "Reglas", content: "La validación del teléfono es estricta.", position: 0 },
     ]);
     const ids = store.searchLexical("validacion telefono", {}, 10);
     expect(ids).toHaveLength(1);
@@ -37,13 +37,13 @@ describe("SqliteIndexStore", () => {
 
   it("applies type, module and tags filters", () => {
     store.saveDocument(meta({ path: "a.md", tags: ["lead"] }), [
-      { heading: "A", contenido: "contenido comun", orden: 0 },
+      { heading: "A", content: "contenido comun", position: 0 },
     ]);
     store.saveDocument(meta({ path: "b.md", status: "borrador" }), [
-      { heading: "B", contenido: "contenido comun", orden: 0 },
+      { heading: "B", content: "contenido comun", position: 0 },
     ]);
     store.saveDocument(meta({ path: "c.md", type: "adr" }), [
-      { heading: "C", contenido: "contenido comun", orden: 0 },
+      { heading: "C", content: "contenido comun", position: 0 },
     ]);
 
     expect(store.searchLexical("comun", {}, 10)).toHaveLength(3);
@@ -52,17 +52,17 @@ describe("SqliteIndexStore", () => {
   });
 
   it("never breaks on FTS5 metacharacters in the query", () => {
-    store.saveDocument(meta({}), [{ heading: "A", contenido: "texto normal", orden: 0 }]);
+    store.saveDocument(meta({}), [{ heading: "A", content: "texto normal", position: 0 }]);
     expect(() => store.searchLexical('"(texto AND OR NEAR)*', {}, 10)).not.toThrow();
     expect(store.searchLexical("¿?¡!", {}, 10)).toEqual([]);
   });
 
   it("stores and searches vectors, nearest first, honoring filters", () => {
     const a = store.saveDocument(meta({ path: "a.md" }), [
-      { heading: "A", contenido: "aaa", orden: 0 },
+      { heading: "A", content: "aaa", position: 0 },
     ]);
     const b = store.saveDocument(meta({ path: "b.md", status: "borrador" }), [
-      { heading: "B", contenido: "bbb", orden: 0 },
+      { heading: "B", content: "bbb", position: 0 },
     ]);
     expect(store.hasVectors()).toBe(false);
     store.saveEmbeddings([
@@ -83,7 +83,7 @@ describe("SqliteIndexStore", () => {
 
   it("reset drops documents, chunks and vectors", () => {
     const saved = store.saveDocument(meta({}), [
-      { heading: "A", contenido: "contenido", orden: 0 },
+      { heading: "A", content: "contenido", position: 0 },
     ]);
     store.saveEmbeddings([{ chunkId: saved.chunkIds[0]!, embedding: new Float32Array([1, 0]) }]);
     store.reset();
@@ -94,8 +94,8 @@ describe("SqliteIndexStore", () => {
 
   it("getChunksByIds preserves the requested order", () => {
     const saved = store.saveDocument(meta({}), [
-      { heading: "A", contenido: "uno", orden: 0 },
-      { heading: "B", contenido: "dos", orden: 1 },
+      { heading: "A", content: "uno", position: 0 },
+      { heading: "B", content: "dos", position: 1 },
     ]);
     const reversed = [...saved.chunkIds].reverse();
     const chunks = store.getChunksByIds(reversed);
@@ -105,7 +105,7 @@ describe("SqliteIndexStore", () => {
   it("round-trips document metadata including tags and owner", () => {
     store.saveDocument(
       meta({ tags: ["lead", "rgpd"], owner: "BA", updated: "2026-07-19" }),
-      [{ heading: "A", contenido: "x", orden: 0 }],
+      [{ heading: "A", content: "x", position: 0 }],
     );
     const doc = store.getDocumentByPath("funcional/doc.md");
     expect(doc).not.toBeNull();
@@ -116,8 +116,8 @@ describe("SqliteIndexStore", () => {
 
   it("round-trips absent type/module/status as NULL -> undefined (Optional Persisted Metadata)", () => {
     store.saveDocument(
-      { path: "sin-metadata.md", titulo: "Sin metadata", resumen: "r", tags: [], hash: "h" },
-      [{ heading: "A", contenido: "x", orden: 0 }],
+      { path: "sin-metadata.md", title: "Sin metadata", summary: "r", tags: [], hash: "h" },
+      [{ heading: "A", content: "x", position: 0 }],
     );
     const doc = store.getDocumentByPath("sin-metadata.md");
     expect(doc).not.toBeNull();
@@ -128,14 +128,14 @@ describe("SqliteIndexStore", () => {
 
   it("listDocuments orders alphabetically by path regardless of NULL/non-NULL type", () => {
     store.saveDocument(meta({ path: "z.md", type: "adr" }), [
-      { heading: "A", contenido: "x", orden: 0 },
+      { heading: "A", content: "x", position: 0 },
     ]);
     store.saveDocument(
-      { path: "a.md", titulo: "A", resumen: "r", tags: [], hash: "h" }, // no type (NULL)
-      [{ heading: "A", contenido: "x", orden: 0 }],
+      { path: "a.md", title: "A", summary: "r", tags: [], hash: "h" }, // no type (NULL)
+      [{ heading: "A", content: "x", position: 0 }],
     );
     store.saveDocument(meta({ path: "m.md", type: "guia" }), [
-      { heading: "A", contenido: "x", orden: 0 },
+      { heading: "A", content: "x", position: 0 },
     ]);
 
     expect(store.listDocuments().map((d) => d.path)).toEqual(["a.md", "m.md", "z.md"]);
@@ -143,14 +143,14 @@ describe("SqliteIndexStore", () => {
 
   it("excludedStatuses deny-list: NULL status is never excluded, declared exclusion filters correctly", () => {
     store.saveDocument(meta({ path: "borrador.md", status: "borrador" }), [
-      { heading: "A", contenido: "unico1", orden: 0 },
+      { heading: "A", content: "unico1", position: 0 },
     ]);
     store.saveDocument(meta({ path: "vigente.md", status: "vigente" }), [
-      { heading: "A", contenido: "unico1", orden: 0 },
+      { heading: "A", content: "unico1", position: 0 },
     ]);
     store.saveDocument(
-      { path: "sin-status.md", titulo: "T", resumen: "r", tags: [], hash: "h" }, // no status
-      [{ heading: "A", contenido: "unico1", orden: 0 }],
+      { path: "sin-status.md", title: "T", summary: "r", tags: [], hash: "h" }, // no status
+      [{ heading: "A", content: "unico1", position: 0 }],
     );
 
     const sinDenyList = store.searchLexical("unico1", {}, 10);
@@ -174,7 +174,7 @@ describe("SqliteIndexStore — deleteDocument", () => {
 
   it("leaves no chunks/chunks_fts/chunks_vec orphans and no stale lexical hits", () => {
     const saved = store.saveDocument(meta({ path: "borrar.md" }), [
-      { heading: "A", contenido: "contenido unico borrado", orden: 0 },
+      { heading: "A", content: "contenido unico borrado", position: 0 },
     ]);
     store.saveEmbeddings([{ chunkId: saved.chunkIds[0]!, embedding: new Float32Array([1, 0, 0]) }]);
     expect(store.hasVectors()).toBe(true);
@@ -190,7 +190,7 @@ describe("SqliteIndexStore — deleteDocument", () => {
 
   it("is a no-op when the path does not exist", () => {
     store.saveDocument(meta({ path: "otro.md" }), [
-      { heading: "A", contenido: "algo", orden: 0 },
+      { heading: "A", content: "algo", position: 0 },
     ]);
     expect(() => store.deleteDocument("no-existe.md")).not.toThrow();
     expect(store.getDocumentByPath("otro.md")).not.toBeNull();
@@ -211,7 +211,7 @@ describe("SqliteIndexStore — upsertDocument", () => {
   it("re-indexing a changed document replaces content with no duplicates", () => {
     store.upsertDocument(
       meta({ path: "cambia.md", hash: "h1" }),
-      [{ heading: "A", contenido: "contenido viejo", orden: 0 }],
+      [{ heading: "A", content: "contenido viejo", position: 0 }],
       null,
     );
     const first = store.getDocumentByPath("cambia.md");
@@ -220,7 +220,7 @@ describe("SqliteIndexStore — upsertDocument", () => {
 
     store.upsertDocument(
       meta({ path: "cambia.md", hash: "h2" }),
-      [{ heading: "B", contenido: "contenido nuevo", orden: 0 }],
+      [{ heading: "B", content: "contenido nuevo", position: 0 }],
       null,
     );
 
@@ -237,7 +237,7 @@ describe("SqliteIndexStore — upsertDocument", () => {
     // deleteDocument's tableExists double guard).
     const result = store.upsertDocument(
       meta({ path: "nuevo.md" }),
-      [{ heading: "A", contenido: "primero", orden: 0 }],
+      [{ heading: "A", content: "primero", position: 0 }],
       [new Float32Array([1, 0, 0])],
     );
     expect(store.hasVectors()).toBe(true);
@@ -259,15 +259,15 @@ describe("SqliteIndexStore — listChunksMissingVectors", () => {
 
   it("returns [] when chunks_vec was never created", () => {
     store.saveDocument(meta({ path: "a.md" }), [
-      { heading: "A", contenido: "x", orden: 0 },
+      { heading: "A", content: "x", position: 0 },
     ]);
     expect(store.listChunksMissingVectors()).toEqual([]);
   });
 
-  it("returns only the chunks with no chunks_vec row for a partially vectorized document, with defined path/heading values", () => {
+  it("returns only the chunks with no chunks_vec row for a partially vectorized document, with defined path/heading/content values", () => {
     const saved = store.saveDocument(meta({ path: "parcial.md" }), [
-      { heading: "Uno", contenido: "primero", orden: 0 },
-      { heading: "Dos", contenido: "segundo", orden: 1 },
+      { heading: "Uno", content: "primero", position: 0 },
+      { heading: "Dos", content: "segundo", position: 1 },
     ]);
     store.saveEmbeddings([{ chunkId: saved.chunkIds[0]!, embedding: new Float32Array([1, 0]) }]);
 
@@ -275,19 +275,21 @@ describe("SqliteIndexStore — listChunksMissingVectors", () => {
 
     expect(missing).toHaveLength(1);
     // Active proof of the listChunksMissingVectors SQL-alias silent trap
-    // (Decision A/G): path/heading must be defined, non-undefined values —
-    // a stale SQL alias (not renamed alongside the port field) would
+    // (Decision A/G): path/heading/content must be defined, non-undefined
+    // values — a stale SQL alias (not renamed alongside the port field) would
     // silently yield undefined here while this assertion still passed on
     // `toEqual` alone.
     expect(missing[0]?.path).toBe("parcial.md");
     expect(missing[0]?.heading).toBe("Dos");
+    expect(missing[0]?.content).toBe("segundo");
     expect(missing[0]?.path).not.toBeUndefined();
     expect(missing[0]?.heading).not.toBeUndefined();
+    expect(missing[0]?.content).not.toBeUndefined();
     expect(missing[0]).toEqual({
       chunkId: saved.chunkIds[1],
       path: "parcial.md",
       heading: "Dos",
-      contenido: "segundo",
+      content: "segundo",
     });
   });
 });
@@ -305,7 +307,7 @@ describe("SqliteIndexStore — replaceEmbeddings", () => {
 
   it("re-covers an already-vectorized chunk without a PRIMARY KEY violation or duplicate row", () => {
     const saved = store.saveDocument(meta({ path: "re-embed.md" }), [
-      { heading: "A", contenido: "algo", orden: 0 },
+      { heading: "A", content: "algo", position: 0 },
     ]);
     store.saveEmbeddings([{ chunkId: saved.chunkIds[0]!, embedding: new Float32Array([1, 0]) }]);
 
@@ -346,8 +348,8 @@ describe("SqliteIndexStore — reset() schema guarantee (Pre-existing NOT NULL s
     // Pre-reset: inserting a document with no type would violate NOT NULL.
     expect(() =>
       store.saveDocument(
-        { path: "sin-type.md", titulo: "T", resumen: "r", tags: [], hash: "h" },
-        [{ heading: "A", contenido: "x", orden: 0 }],
+        { path: "sin-type.md", title: "T", summary: "r", tags: [], hash: "h" },
+        [{ heading: "A", content: "x", position: 0 }],
       ),
     ).toThrow();
 
@@ -356,8 +358,8 @@ describe("SqliteIndexStore — reset() schema guarantee (Pre-existing NOT NULL s
     // Post-reset: the schema is nullable, no manual .compendio/ deletion needed.
     expect(() =>
       store.saveDocument(
-        { path: "sin-type.md", titulo: "T", resumen: "r", tags: [], hash: "h" },
-        [{ heading: "A", contenido: "x", orden: 0 }],
+        { path: "sin-type.md", title: "T", summary: "r", tags: [], hash: "h" },
+        [{ heading: "A", content: "x", position: 0 }],
       ),
     ).not.toThrow();
     const doc = store.getDocumentByPath("sin-type.md");

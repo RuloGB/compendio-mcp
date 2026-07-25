@@ -8,9 +8,9 @@ export interface DocumentMeta {
   /** Path relative to the docs directory, POSIX separators. */
   path: string;
   /** H1 title. */
-  titulo: string;
+  title: string;
   /** First paragraph after the H1. */
-  resumen: string;
+  summary: string;
   /** Open string, project-defined; absent when not declared/inferred. */
   type?: string;
   /** Open string, project-defined; absent for root-level files with no mapping/inference. */
@@ -29,9 +29,9 @@ export interface Chunk {
   /** Heading path, e.g. "Reglas de negocio > Reglas de duplicidad". */
   heading: string;
   /** Raw markdown of the section, including its heading line. */
-  contenido: string;
+  content: string;
   /** Position of the chunk within the document. */
-  orden: number;
+  position: number;
 }
 
 export interface IndexedDocument extends DocumentMeta {
@@ -56,9 +56,9 @@ export interface SearchFilters {
 
 export interface SearchResultItem {
   path: string;
-  titulo: string;
+  title: string;
   section: string;
-  extracto: string;
+  excerpt: string;
   /** Absent when the document has no status (never rendered as "" or a placeholder). */
   status?: string;
   score: number;

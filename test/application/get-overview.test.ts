@@ -19,15 +19,15 @@ function fakeReport(overrides: Partial<SyncReport> = {}): SyncReport {
 function seed(store: SqliteIndexStore, overrides: Partial<DocumentMeta> & { path: string }): void {
   const meta: DocumentMeta = {
     path: overrides.path,
-    titulo: overrides.titulo ?? overrides.path,
-    resumen: overrides.resumen ?? "contenido",
+    title: overrides.title ?? overrides.path,
+    summary: overrides.summary ?? "contenido",
     tags: overrides.tags ?? [],
     hash: overrides.hash ?? overrides.path,
     ...(overrides.type !== undefined ? { type: overrides.type } : {}),
     ...(overrides.module !== undefined ? { module: overrides.module } : {}),
     ...(overrides.status !== undefined ? { status: overrides.status } : {}),
   };
-  store.saveDocument(meta, [{ heading: "H", contenido: "contenido", orden: 0 }]);
+  store.saveDocument(meta, [{ heading: "H", content: "contenido", position: 0 }]);
 }
 
 describe("GetOverview — empty taxonomy omission", () => {
@@ -83,23 +83,23 @@ describe("GetOverview — per-document line ordering and segment omission", () =
   });
 });
 
-describe("GetOverview resumen fallback", () => {
+describe("GetOverview summary fallback", () => {
   it("shows the title when the document has no intro paragraph", () => {
     const store = new SqliteIndexStore(":memory:");
     const meta: DocumentMeta = {
       path: "guias/transversal-sin-resumen.md",
-      titulo: "Guía sin resumen",
-      resumen: "",
+      title: "Guía sin resumen",
+      summary: "",
       type: "guia",
       module: "transversal",
       status: "vigente",
       tags: [],
       hash: "abc",
     };
-    store.saveDocument(meta, [{ heading: "Sección", contenido: "## Sección\n\nTexto.", orden: 0 }]);
+    store.saveDocument(meta, [{ heading: "Sección", content: "## Sección\n\nTexto.", position: 0 }]);
 
     const overview = new GetOverview(store).execute();
-    expect(overview.documentos[0]!.resumen).toBe("Guía sin resumen");
+    expect(overview.documentos[0]!.summary).toBe("Guía sin resumen");
     expect(formatOverview(overview)).toContain(
       "- [guia] guias/transversal-sin-resumen.md — Guía sin resumen (vigente)",
     );

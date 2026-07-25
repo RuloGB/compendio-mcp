@@ -68,9 +68,9 @@ export class SearchDocuments {
       if (doc === undefined) continue;
       const item: SearchResultItem = {
         path: doc.path,
-        titulo: doc.titulo,
+        title: doc.title,
         section: chunk.heading,
-        extracto: buildExcerpt(chunk.contenido),
+        excerpt: buildExcerpt(chunk.content),
         score: Number(entry.score.toFixed(4)),
       };
       if (doc.status !== undefined) item.status = doc.status;

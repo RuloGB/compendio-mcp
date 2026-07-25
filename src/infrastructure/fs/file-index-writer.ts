@@ -13,7 +13,7 @@ export class FileIndexWriter implements IndexFileWriter {
     private readonly fileName: string,
   ) {}
 
-  async write(contenido: string): Promise<IndexWriteResult> {
+  async write(content: string): Promise<IndexWriteResult> {
     const path = join(this.docsDir, this.fileName);
     let existente: string | null = null;
     try {
@@ -24,10 +24,10 @@ export class FileIndexWriter implements IndexFileWriter {
     // git may materialize the file with CRLF (core.autocrlf on Windows); the
     // same content modulo EOL means up to date — rewriting would only churn
     // mtimes and report a phantom change.
-    if (existente !== null && normalizeEol(existente) === contenido) {
+    if (existente !== null && normalizeEol(existente) === content) {
       return { path, cambiado: false };
     }
-    await writeFile(path, contenido, "utf8");
+    await writeFile(path, content, "utf8");
     return { path, cambiado: true };
   }
 }

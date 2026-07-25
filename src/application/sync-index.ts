@@ -104,7 +104,7 @@ export class SyncIndex {
     const existingByPath = new Map(existing.map((doc) => [doc.path, doc]));
 
     for (const file of files) {
-      const hash = computeHash(file.contenido);
+      const hash = computeHash(file.content);
       const existingDoc = existingByPath.get(file.path);
 
       if (existingDoc !== undefined && existingDoc.hash === hash) {
@@ -127,7 +127,7 @@ export class SyncIndex {
         state.avisoEmbeddings = "indexado sin embeddings (proveedor no disponible): busqueda en modo lexico";
       } else {
         try {
-          const texts = chunks.map((c) => `passage: ${c.heading}\n${c.contenido}`);
+          const texts = chunks.map((c) => `passage: ${c.heading}\n${c.content}`);
           chunkEmbeddings = await this.embeddings.embed(texts);
         } catch (error) {
           state.avisoEmbeddings = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
@@ -136,7 +136,7 @@ export class SyncIndex {
 
       try {
         this.store.upsertDocument(meta, chunks, chunkEmbeddings);
-        state.indexados.push({ path: file.path, titulo: meta.titulo, chunks: chunks.length });
+        state.indexados.push({ path: file.path, title: meta.title, chunks: chunks.length });
       } catch (error) {
         state.omitidos.push({ path: file.path, errores: [describeError(error)] });
       }
@@ -174,7 +174,7 @@ export class SyncIndex {
       let vectors: Float32Array[];
       try {
         vectors = await this.embeddings.embed(
-          chunksMissing.map((c) => `passage: ${c.heading}\n${c.contenido}`),
+          chunksMissing.map((c) => `passage: ${c.heading}\n${c.content}`),
         );
       } catch (error) {
         state.avisoEmbeddings = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;

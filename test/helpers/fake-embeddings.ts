@@ -20,8 +20,8 @@ const CONCEPT_STEMS: string[][] = [
 ];
 
 export class FakeEmbeddings implements EmbeddingsProvider {
-  async embed(textos: string[]): Promise<Float32Array[]> {
-    return textos.map((texto) => vectorize(texto));
+  async embed(texts: string[]): Promise<Float32Array[]> {
+    return texts.map((text) => vectorize(text));
   }
 }
 
@@ -31,8 +31,8 @@ export class BrokenEmbeddings implements EmbeddingsProvider {
   }
 }
 
-function vectorize(texto: string): Float32Array {
-  const normalized = normalize(texto);
+function vectorize(text: string): Float32Array {
+  const normalized = normalize(text);
   const vector = new Float32Array(CONCEPT_STEMS.length + 1);
   CONCEPT_STEMS.forEach((stems, i) => {
     for (const stem of stems) {

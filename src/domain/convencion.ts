@@ -51,7 +51,7 @@ export function humanizarNombreArchivo(path: string): string {
 }
 
 /**
- * `libre` (default): infers `titulo`/`modulo`, never invents `tipo`/`estado`,
+ * `libre` (default): infers `title`/`modulo`, never invents `tipo`/`estado`,
  * never hard-fails for metadata reasons.
  */
 function crearPoliticaLibre(cfg: ConvencionConfig): ConvencionPolicy {
@@ -63,8 +63,8 @@ function crearPoliticaLibre(cfg: ConvencionConfig): ConvencionPolicy {
         return { ok: false, errores: [tagsResult.error] };
       }
 
-      const titulo = isNonEmptyString(input.titulo)
-        ? input.titulo.trim()
+      const title = isNonEmptyString(input.title)
+        ? input.title.trim()
         : humanizarNombreArchivo(input.path);
       const type = leerCampo(data, cfg.camposFrontmatter.type);
       const status = leerCampo(data, cfg.camposFrontmatter.status);
@@ -72,8 +72,8 @@ function crearPoliticaLibre(cfg: ConvencionConfig): ConvencionPolicy {
 
       const meta: DocumentMeta = {
         path: input.path,
-        titulo,
-        resumen: input.resumen.trim(),
+        title,
+        summary: input.summary.trim(),
         tags: tagsResult.tags,
         hash: input.hash,
       };
@@ -115,7 +115,7 @@ function crearPoliticaEstricta(cfg: ConvencionConfig): ConvencionPolicy {
         errores.push(`'status' invalido: "${status}" (permitidos: ${cfg.statuses.join(", ")})`);
       }
 
-      if (!isNonEmptyString(input.titulo)) {
+      if (!isNonEmptyString(input.title)) {
         errores.push("el documento no tiene titulo H1");
       }
 
@@ -128,8 +128,8 @@ function crearPoliticaEstricta(cfg: ConvencionConfig): ConvencionPolicy {
 
       const meta: DocumentMeta = {
         path: input.path,
-        titulo: input.titulo.trim(),
-        resumen: input.resumen.trim(),
+        title: input.title.trim(),
+        summary: input.summary.trim(),
         tags: tagsResult.tags,
         hash: input.hash,
       };

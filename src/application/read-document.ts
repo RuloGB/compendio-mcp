@@ -8,8 +8,8 @@ export interface ReadRequest {
 }
 
 export type ReadResult =
-  | { type: "documento"; meta: DocumentMeta; contenido: string }
-  | { type: "seccion"; meta: DocumentMeta; section: string; contenido: string }
+  | { type: "documento"; meta: DocumentMeta; content: string }
+  | { type: "seccion"; meta: DocumentMeta; section: string; content: string }
   | { type: "ruta-no-encontrada"; path: string; sugerencias: string[] }
   | {
       type: "seccion-no-encontrada";
@@ -41,11 +41,11 @@ export class ReadDocument {
 
     const chunks = this.store.getChunksByDocument(doc.id);
     if (request.section === undefined || request.section.trim().length === 0) {
-      const body = chunks.map((c) => c.contenido).join("\n\n");
+      const body = chunks.map((c) => c.content).join("\n\n");
       // Intro chunks exclude the H1 line; restore it unless the body already
       // starts with one (documents indexed without chunking keep theirs).
-      const contenido = body.startsWith("# ") ? body : `# ${doc.titulo}\n\n${body}`;
-      return { type: "documento", meta: doc, contenido };
+      const content = body.startsWith("# ") ? body : `# ${doc.title}\n\n${body}`;
+      return { type: "documento", meta: doc, content };
     }
 
     // A section may live merged inside a bigger chunk (small sections are
@@ -55,13 +55,13 @@ export class ReadDocument {
     const matching = chunks.filter(
       (c) =>
         normalize(c.heading).includes(wanted) ||
-        headingsIn(c.contenido).some((h) => normalize(h).includes(wanted)),
+        headingsIn(c.content).some((h) => normalize(h).includes(wanted)),
     );
     if (matching.length === 0) {
       const disponibles = new Set<string>();
       for (const chunk of chunks) {
         disponibles.add(chunk.heading);
-        for (const heading of headingsIn(chunk.contenido)) disponibles.add(heading);
+        for (const heading of headingsIn(chunk.content)) disponibles.add(heading);
       }
       return {
         type: "seccion-no-encontrada",
@@ -74,7 +74,7 @@ export class ReadDocument {
       type: "seccion",
       meta: doc,
       section: request.section,
-      contenido: matching.map((c) => c.contenido).join("\n\n"),
+      content: matching.map((c) => c.content).join("\n\n"),
     };
   }
 }

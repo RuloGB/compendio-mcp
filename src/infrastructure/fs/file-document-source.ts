@@ -51,7 +51,7 @@ export class FileDocumentSource implements DocumentSource {
       if (!entry.name.toLowerCase().endsWith(".md")) continue;
       if (this.isExcluded(path, entry.name)) continue;
       try {
-        out.push({ path, contenido: await readFile(join(dir, entry.name), "utf8") });
+        out.push({ path, content: await readFile(join(dir, entry.name), "utf8") });
       } catch (error) {
         erroresLectura.push({ path, error: error instanceof Error ? error.message : String(error) });
       }

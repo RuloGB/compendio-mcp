@@ -113,8 +113,8 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     expect(primero.path).toBe("informes/plan-pruebas.md");
     expect(primero.section.length).toBeGreaterThan(0);
     expect(primero.status).toBe("borrador");
-    expect(primero.extracto.length).toBeLessThanOrEqual(300);
-    expect(primero.extracto).not.toContain("###");
+    expect(primero.excerpt.length).toBeLessThanOrEqual(300);
+    expect(primero.excerpt).not.toContain("###");
   });
 
   it("omits status from results when the document declares none (zero-config default)", async () => {
@@ -124,8 +124,8 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     expect(primero.path.length).toBeGreaterThan(0);
     expect(primero.section.length).toBeGreaterThan(0);
     expect(primero.status).toBeUndefined();
-    expect(primero.extracto.length).toBeLessThanOrEqual(300);
-    expect(primero.extracto).not.toContain("###");
+    expect(primero.excerpt.length).toBeLessThanOrEqual(300);
+    expect(primero.excerpt).not.toContain("###");
   });
 });
 
@@ -238,7 +238,7 @@ function buildIndexer(
 describe("IndexDocuments — libre mode never skips for metadata reasons", () => {
   it("indexes a document with no frontmatter at all, with type/module/status absent", async () => {
     const { indexer, store } = buildIndexer(
-      new StaticSource([{ path: "sin-frontmatter.md", contenido: "# Sin frontmatter\n\nTexto suelto.\n" }]),
+      new StaticSource([{ path: "sin-frontmatter.md", content: "# Sin frontmatter\n\nTexto suelto.\n" }]),
     );
     const report = await indexer.execute();
     expect(report.omitidos).toEqual([]);
@@ -258,7 +258,7 @@ describe("IndexDocuments — estricto mode validates declared taxonomies", () =>
       new StaticSource([
         {
           path: "auth/login.md",
-          contenido: "---\ntipo: guia\nmodulo: auth\nestado: vigente\n---\n\n# Login\n\nResumen.\n",
+          content: "---\ntipo: guia\nmodulo: auth\nestado: vigente\n---\n\n# Login\n\nResumen.\n",
         },
       ]),
       cfgEstricto({ types: ["guia"], statuses: ["vigente"] }),
@@ -274,7 +274,7 @@ describe("IndexDocuments — estricto mode validates declared taxonomies", () =>
       new StaticSource([
         {
           path: "auth/login.md",
-          contenido: "---\ntipo: no-declarado\nmodulo: auth\nestado: vigente\n---\n\n# Login\n\nResumen.\n",
+          content: "---\ntipo: no-declarado\nmodulo: auth\nestado: vigente\n---\n\n# Login\n\nResumen.\n",
         },
       ]),
       cfgEstricto({ types: ["guia"] }),
@@ -291,7 +291,7 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
   it("folds an unreadable file into omitidos and continues indexing the rest, under libre", async () => {
     const { indexer, store } = buildIndexer(
       new StaticSource(
-        [{ path: "ok.md", contenido: "# OK\n\nTexto.\n" }],
+        [{ path: "ok.md", content: "# OK\n\nTexto.\n" }],
         [{ path: "roto.md", error: "permiso denegado" }],
       ),
     );
@@ -307,7 +307,7 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
         [
           {
             path: "ok.md",
-            contenido: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# OK\n\nTexto.\n",
+            content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# OK\n\nTexto.\n",
           },
         ],
         [{ path: "roto.md", error: "permiso denegado" }],
@@ -323,8 +323,8 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
   it("skips a document with malformed YAML frontmatter and continues, under libre", async () => {
     const { indexer, store } = buildIndexer(
       new StaticSource([
-        { path: "ok.md", contenido: "# OK\n\nTexto.\n" },
-        { path: "malformado.md", contenido: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
+        { path: "ok.md", content: "# OK\n\nTexto.\n" },
+        { path: "malformado.md", content: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
       ]),
     );
     const report = await indexer.execute();
@@ -339,9 +339,9 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
       new StaticSource([
         {
           path: "ok.md",
-          contenido: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# OK\n\nTexto.\n",
+          content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# OK\n\nTexto.\n",
         },
-        { path: "malformado.md", contenido: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
+        { path: "malformado.md", content: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
       ]),
       cfgEstricto(),
     );
@@ -354,7 +354,7 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
 
   it("skips a document with no indexable content", async () => {
     const { indexer, store } = buildIndexer(
-      new StaticSource([{ path: "vacio.md", contenido: "# Solo título\n\n" }]),
+      new StaticSource([{ path: "vacio.md", content: "# Solo título\n\n" }]),
     );
     const report = await indexer.execute();
     expect(report.indexados).toEqual([]);
@@ -369,25 +369,25 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
 
 function seedDoc(
   store: SqliteIndexStore,
-  overrides: { path: string; type?: string; status?: string; contenido: string },
+  overrides: { path: string; type?: string; status?: string; content: string },
 ): void {
   const meta = {
     path: overrides.path,
-    titulo: overrides.path,
-    resumen: "r",
+    title: overrides.path,
+    summary: "r",
     tags: [],
     hash: overrides.path,
     ...(overrides.type !== undefined ? { type: overrides.type } : {}),
     ...(overrides.status !== undefined ? { status: overrides.status } : {}),
   };
-  store.saveDocument(meta, [{ heading: "H", contenido: overrides.contenido, orden: 0 }]);
+  store.saveDocument(meta, [{ heading: "H", content: overrides.content, position: 0 }]);
 }
 
 describe("SearchDocuments — open type filtering", () => {
   it("filters by a project-specific type value not in any hardcoded list", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", type: "runbook", contenido: "contenido unico alfa" });
-    seedDoc(store, { path: "b.md", type: "otro", contenido: "contenido unico alfa" });
+    seedDoc(store, { path: "a.md", type: "runbook", content: "contenido unico alfa" });
+    seedDoc(store, { path: "b.md", type: "otro", content: "contenido unico alfa" });
     const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
 
     const response = await search.execute({ query: "contenido unico alfa", type: "runbook" });
@@ -397,8 +397,8 @@ describe("SearchDocuments — open type filtering", () => {
 
   it("treats an empty or whitespace-only type as absent (no filtering applied)", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", type: "runbook", contenido: "contenido unico beta" });
-    seedDoc(store, { path: "b.md", type: "otro", contenido: "contenido unico beta" });
+    seedDoc(store, { path: "a.md", type: "runbook", content: "contenido unico beta" });
+    seedDoc(store, { path: "b.md", type: "otro", content: "contenido unico beta" });
     const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
 
     const response = await search.execute({ query: "contenido unico beta", type: "   " });
@@ -410,7 +410,7 @@ describe("SearchDocuments — open type filtering", () => {
 describe("SearchDocuments — config-driven excludedStatuses deny-list", () => {
   it("excludes nothing when excludedStatuses is not declared", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", status: "borrador", contenido: "contenido unico gamma" });
+    seedDoc(store, { path: "a.md", status: "borrador", content: "contenido unico gamma" });
     const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
 
     const response = await search.execute({ query: "contenido unico gamma" });
@@ -420,7 +420,7 @@ describe("SearchDocuments — config-driven excludedStatuses deny-list", () => {
 
   it("excludes declared statuses by default, includes them with includeExcluded", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", status: "borrador", contenido: "contenido unico delta" });
+    seedDoc(store, { path: "a.md", status: "borrador", content: "contenido unico delta" });
     const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: ["borrador"] });
 
     const excluded = await search.execute({ query: "contenido unico delta" });
@@ -433,7 +433,7 @@ describe("SearchDocuments — config-driven excludedStatuses deny-list", () => {
 
   it("is a true no-op when excludedStatuses is not declared, regardless of includeExcluded", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", status: "borrador", contenido: "contenido unico epsilon" });
+    seedDoc(store, { path: "a.md", status: "borrador", content: "contenido unico epsilon" });
     const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
 
     const sinFlag = await search.execute({ query: "contenido unico epsilon" });
@@ -444,7 +444,7 @@ describe("SearchDocuments — config-driven excludedStatuses deny-list", () => {
 
   it("a document with no status remains eligible under a declared deny-list", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", contenido: "contenido unico zeta" }); // no status at all
+    seedDoc(store, { path: "a.md", content: "contenido unico zeta" }); // no status at all
     const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: ["borrador"] });
 
     const response = await search.execute({ query: "contenido unico zeta" });
@@ -454,7 +454,7 @@ describe("SearchDocuments — config-driven excludedStatuses deny-list", () => {
 
   it("omits status from the result item when the document has none", async () => {
     const store = new SqliteIndexStore(":memory:");
-    seedDoc(store, { path: "a.md", contenido: "contenido unico eta" }); // no status
+    seedDoc(store, { path: "a.md", content: "contenido unico eta" }); // no status
     const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
 
     const response = await search.execute({ query: "contenido unico eta" });
@@ -471,7 +471,7 @@ describe("SyncIndex — end-to-end incremental sync over a temp docs directory",
   it("reflects an added, edited, and deleted file across successive sync passes", async () => {
     const dir = mkdtempSync(join(tmpdir(), "compendio-sync-e2e-"));
     // Deliberately disjoint vocabulary across original/edited/added content —
-    // a shared word (even "contenido") would make the lexical assertions
+    // a shared word (even "content") would make the lexical assertions
     // below pass for the wrong reason.
     writeFileSync(join(dir, "a.md"), "# A\n\nTextoalfaoriginalunicoirrepetible.\n");
 

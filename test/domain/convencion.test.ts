@@ -30,8 +30,8 @@ function cfgEstricto(overrides: Partial<ConvencionConfig> = {}): ConvencionConfi
 
 const BASE_INPUT = {
   path: "auth/login.md",
-  titulo: "Iniciar sesion",
-  resumen: "Como iniciar sesion.",
+  title: "Iniciar sesion",
+  summary: "Como iniciar sesion.",
   hash: "abc123",
 };
 
@@ -61,15 +61,15 @@ describe("crearConvencionPolicy — libre", () => {
     const result = policy.resolver({ ...BASE_INPUT, data: {} });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.meta.titulo).toBe("Iniciar sesion");
+    expect(result.meta.title).toBe("Iniciar sesion");
   });
 
   it("falls back to the humanized filename when there is no H1", () => {
     const policy = crearConvencionPolicy(cfgLibre());
-    const result = policy.resolver({ ...BASE_INPUT, titulo: "", data: {} });
+    const result = policy.resolver({ ...BASE_INPUT, title: "", data: {} });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.meta.titulo).toBe("Login");
+    expect(result.meta.title).toBe("Login");
   });
 
   it("infers module from the first path segment under docsDir", () => {
@@ -184,7 +184,7 @@ describe("crearConvencionPolicy — estricto", () => {
     const policy = crearConvencionPolicy(cfgEstricto({ types: ["guia"], statuses: ["vigente"] }));
     const result = policy.resolver({
       ...BASE_INPUT,
-      titulo: "",
+      title: "",
       data: { tipo: "guia", modulo: "auth", estado: "vigente" },
     });
     expect(result.ok).toBe(false);
@@ -234,7 +234,7 @@ describe("crearConvencionPolicy — camposFrontmatter", () => {
 
 describe("crearComparadorIndice", () => {
   function entry(path: string, type: string): IndexEntry {
-    return { path, titulo: "t", resumen: "r", type: type as never, status: "vigente" as never };
+    return { path, title: "t", summary: "r", type: type as never, status: "vigente" as never };
   }
 
   it("defaults to alphabetical order by path", () => {

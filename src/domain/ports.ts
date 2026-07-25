@@ -11,7 +11,7 @@ import type { DocOutline } from "./outline.js";
 export interface DocumentFile {
   /** Path relative to the docs directory, POSIX separators. */
   path: string;
-  contenido: string;
+  content: string;
 }
 
 /** A per-file read failure discovered while walking the docs directory. */
@@ -54,7 +54,7 @@ export interface MarkdownParser {
  * are the caller's responsibility.
  */
 export interface EmbeddingsProvider {
-  embed(textos: string[]): Promise<Float32Array[]>;
+  embed(texts: string[]): Promise<Float32Array[]>;
 }
 
 export interface SavedDocument {
@@ -72,7 +72,7 @@ export interface ChunkMissingVector {
   chunkId: number;
   path: string;
   heading: string;
-  contenido: string;
+  content: string;
 }
 
 /** Result of writing the generated index file. */
@@ -85,7 +85,7 @@ export interface IndexWriteResult {
 
 /** Writes the generated INDEX.md into the docs directory (filesystem adapter). */
 export interface IndexFileWriter {
-  write(contenido: string): Promise<IndexWriteResult>;
+  write(content: string): Promise<IndexWriteResult>;
 }
 
 /** Persistence port: SQLite (FTS5 + sqlite-vec) in production. */

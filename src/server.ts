@@ -44,7 +44,7 @@ export function createMcpServer(container: Container): McpServer {
       title: "Mapa de la documentacion",
       description:
         "Devuelve el mapa del corpus documental: recuento por tipo y modulo, y una linea por " +
-        "documento ([tipo] path — resumen (estado)). Es el primer paso recomendado antes de buscar.",
+        "documento ([tipo] path — summary (estado)). Es el primer paso recomendado antes de buscar.",
       inputSchema: {},
     },
     async () => {
@@ -62,7 +62,7 @@ export function createMcpServer(container: Container): McpServer {
       description:
         "Busqueda hibrida (lexica BM25 + semantica) en lenguaje natural sobre la documentacion " +
         "del proyecto, con filtros por metadatos. Devuelve fragmentos compactos (path, section, " +
-        "extracto); usa read_doc para leer una section completa. Si el proyecto declara " +
+        "excerpt); usa read_doc para leer una section completa. Si el proyecto declara " +
         "convencion.estadosExcluidos, los documentos en esos estados quedan fuera salvo " +
         "incluir_no_vigentes; si no lo declara, no se excluye ningun documento por su estado.",
       inputSchema: {
@@ -125,9 +125,9 @@ function formatReadResult(
 ): string {
   switch (result.type) {
     case "documento":
-      return `${formatFrontmatter(result.meta)}\n\n${result.contenido}`;
+      return `${formatFrontmatter(result.meta)}\n\n${result.content}`;
     case "seccion":
-      return `${formatFrontmatter(result.meta)}\n\n${result.contenido}`;
+      return `${formatFrontmatter(result.meta)}\n\n${result.content}`;
     case "ruta-no-encontrada":
       return [
         `No existe ningun documento indexado con la path "${result.path}".`,

@@ -163,8 +163,8 @@ export class SqliteIndexStore implements IndexStore {
     const documentId = Number(
       insertDocument.run({
         ruta: meta.path,
-        titulo: meta.titulo,
-        resumen: meta.resumen,
+        titulo: meta.title,
+        resumen: meta.summary,
         tipo: meta.type ?? null,
         modulo: meta.module ?? null,
         estado: meta.status ?? null,
@@ -176,10 +176,10 @@ export class SqliteIndexStore implements IndexStore {
     );
     const chunkIds = chunks.map((chunk, index) => {
       const chunkId = Number(
-        insertChunk.run(documentId, chunk.heading, chunk.contenido, chunk.orden)
+        insertChunk.run(documentId, chunk.heading, chunk.content, chunk.position)
           .lastInsertRowid,
       );
-      insertFts.run(chunkId, chunk.contenido, chunk.heading);
+      insertFts.run(chunkId, chunk.content, chunk.heading);
       if (insertVec !== null && embeddings !== null) {
         insertVec.run(BigInt(chunkId), toBlob(embeddings[index]!));
       }
@@ -264,7 +264,7 @@ export class SqliteIndexStore implements IndexStore {
     if (!this.vectorsEnabled || !this.tableExists("chunks_vec")) return [];
     return this.db
       .prepare(
-        `SELECT c.id AS chunkId, d.ruta AS path, c.encabezado AS heading, c.contenido AS contenido
+        `SELECT c.id AS chunkId, d.ruta AS path, c.encabezado AS heading, c.contenido AS content
          FROM chunks c
          JOIN documents d ON d.id = c.document_id
          WHERE c.id NOT IN (SELECT chunk_id FROM chunks_vec)
@@ -474,8 +474,8 @@ function toDocument(row: DocumentRow): IndexedDocument {
   const doc: IndexedDocument = {
     id: row.id,
     path: row.ruta,
-    titulo: row.titulo,
-    resumen: row.resumen,
+    title: row.titulo,
+    summary: row.resumen,
     tags: row.etiquetas === null ? [] : (JSON.parse(row.etiquetas) as string[]),
     hash: row.hash,
   };
@@ -492,7 +492,7 @@ function toChunk(row: ChunkRow): IndexedChunk {
     id: row.id,
     documentId: row.document_id,
     heading: row.encabezado,
-    contenido: row.contenido,
-    orden: row.orden,
+    content: row.contenido,
+    position: row.orden,
   };
 }

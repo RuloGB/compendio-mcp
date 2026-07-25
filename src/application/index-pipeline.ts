@@ -26,8 +26,8 @@ export type PipelineResult = PipelineSuccess | PipelineFailure;
 
 /** SHA-256 of raw file content — the sole change fingerprint shared by the
  * full-rebuild (`IndexDocuments`) and incremental-sync (`SyncIndex`) paths. */
-export function computeHash(contenido: string): string {
-  return createHash("sha256").update(contenido, "utf8").digest("hex");
+export function computeHash(content: string): string {
+  return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
 export function describeError(error: unknown): string {
@@ -51,7 +51,7 @@ export function transformFile(
 ): PipelineResult {
   let parsed;
   try {
-    parsed = parser.parse(file.contenido);
+    parsed = parser.parse(file.content);
   } catch (error) {
     return { ok: false, errores: [describeError(error)] };
   }
@@ -59,8 +59,8 @@ export function transformFile(
   const resolution = policy.resolver({
     data: parsed.data,
     path: file.path,
-    titulo: parsed.outline.titulo,
-    resumen: parsed.outline.resumen,
+    title: parsed.outline.title,
+    summary: parsed.outline.summary,
     hash,
   });
 
@@ -69,7 +69,7 @@ export function transformFile(
   }
 
   const chunks = isSinChunking(file.path, options.sinChunking)
-    ? wholeDocumentChunk(resolution.meta.titulo, parsed.body)
+    ? wholeDocumentChunk(resolution.meta.title, parsed.body)
     : chunkOutline(parsed.outline, options.chunking);
 
   if (chunks.length === 0) {
@@ -84,8 +84,8 @@ function isSinChunking(path: string, sinChunking: string[]): boolean {
   return sinChunking.some((entry) => entry === path || entry === basename);
 }
 
-function wholeDocumentChunk(titulo: string, body: string): Chunk[] {
-  const contenido = body.trim();
-  if (contenido.length === 0) return [];
-  return [{ heading: titulo, contenido, orden: 0 }];
+function wholeDocumentChunk(title: string, body: string): Chunk[] {
+  const content = body.trim();
+  if (content.length === 0) return [];
+  return [{ heading: title, content, position: 0 }];
 }

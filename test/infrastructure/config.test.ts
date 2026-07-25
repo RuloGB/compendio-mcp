@@ -108,8 +108,8 @@ describe("loadConfig", () => {
 
     const store = new SqliteIndexStore(":memory:");
     store.saveDocument(
-      { path: "a.md", titulo: "A", resumen: "r", status: "borrador", tags: [], hash: "h" },
-      [{ heading: "A", contenido: "contenido de prueba unico irrepetible", orden: 0 }],
+      { path: "a.md", title: "A", summary: "r", status: "borrador", tags: [], hash: "h" },
+      [{ heading: "A", content: "contenido de prueba unico irrepetible", position: 0 }],
     );
     // Mirrors composition.ts's wiring: SearchDefaults comes from
     // config.convencion.excludedStatuses (default []), never config.search.

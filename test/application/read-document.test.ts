@@ -20,8 +20,8 @@ describe("ReadDocument over the ejemplos corpus", () => {
     const result = harness.read.execute({ path: "leadsviewer/validacion-formulario.md" });
     expect(result.type).toBe("documento");
     if (result.type !== "documento") return;
-    expect(result.contenido.startsWith("# Validación del formulario de alta de leads")).toBe(true);
-    expect(result.contenido).toContain("## Reglas de negocio");
+    expect(result.content.startsWith("# Validación del formulario de alta de leads")).toBe(true);
+    expect(result.content).toContain("## Reglas de negocio");
     // Zero-config document (no frontmatter): module comes from folder inference.
     expect(result.meta.module).toBe("leadsviewer");
   });
@@ -30,7 +30,7 @@ describe("ReadDocument over the ejemplos corpus", () => {
     const result = harness.read.execute({ path: "glosario.md" });
     expect(result.type).toBe("documento");
     if (result.type !== "documento") return;
-    expect(result.contenido.match(/^# Glosario/gm)).toHaveLength(1);
+    expect(result.content.match(/^# Glosario/gm)).toHaveLength(1);
   });
 
   it("finds a section by partial, accent-insensitive heading", () => {
@@ -40,7 +40,7 @@ describe("ReadDocument over the ejemplos corpus", () => {
     });
     expect(result.type).toBe("seccion");
     if (result.type !== "seccion") return;
-    expect(result.contenido).toContain("Un lead se considera duplicado");
+    expect(result.content).toContain("Un lead se considera duplicado");
   });
 
   it("suggests the 3 closest paths when the path does not exist", () => {
@@ -64,7 +64,7 @@ describe("ReadDocument over the ejemplos corpus", () => {
 
 describe("formatFrontmatter — conditional rendering of absent fields", () => {
   function baseMeta(overrides: Partial<DocumentMeta> = {}): DocumentMeta {
-    return { path: "a.md", titulo: "A", resumen: "r", tags: [], hash: "h", ...overrides };
+    return { path: "a.md", title: "A", summary: "r", tags: [], hash: "h", ...overrides };
   }
 
   it("renders all three lines when tipo/modulo/estado are present", () => {

@@ -43,7 +43,7 @@ export class GenerateIndexMd {
 
       let parsed;
       try {
-        parsed = this.parser.parse(file.contenido);
+        parsed = this.parser.parse(file.content);
       } catch (error) {
         omitidos.push({ path: file.path, errores: [describeError(error)] });
         continue;
@@ -52,9 +52,9 @@ export class GenerateIndexMd {
       const resolution = this.policy.resolver({
         data: parsed.data,
         path: file.path,
-        titulo: parsed.outline.titulo,
-        resumen: parsed.outline.resumen,
-        hash: createHash("sha256").update(file.contenido, "utf8").digest("hex"),
+        title: parsed.outline.title,
+        summary: parsed.outline.summary,
+        hash: createHash("sha256").update(file.content, "utf8").digest("hex"),
       });
       if (!resolution.ok) {
         omitidos.push({ path: file.path, errores: resolution.errores });

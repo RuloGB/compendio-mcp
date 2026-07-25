@@ -4,8 +4,8 @@ export interface FrontmatterInput {
   /** Parsed YAML frontmatter, as returned by the markdown parser. */
   data: Record<string, unknown>;
   path: string;
-  titulo: string;
-  resumen: string;
+  title: string;
+  summary: string;
   hash: string;
 }
 

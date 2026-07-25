@@ -7,7 +7,7 @@ import type { MarkdownParser, ParsedMarkdown } from "../../domain/ports.js";
 
 interface HeadingEvent {
   depth: number;
-  titulo: string;
+  title: string;
   /** Offset of the heading line within the body. */
   start: number;
   /** Offset right after the heading line. */
@@ -27,8 +27,8 @@ export class RemarkMarkdownParser implements MarkdownParser {
     const tree = this.processor.parse(content) as Root;
 
     const headings: HeadingEvent[] = [];
-    let titulo = "";
-    let resumen = "";
+    let title = "";
+    let summary = "";
     let h1End = 0;
     let seenH1 = false;
 
@@ -37,30 +37,30 @@ export class RemarkMarkdownParser implements MarkdownParser {
         const heading = node as Heading;
         const event: HeadingEvent = {
           depth: heading.depth,
-          titulo: textOf(heading),
+          title: textOf(heading),
           start: heading.position?.start.offset ?? 0,
           end: heading.position?.end.offset ?? 0,
         };
         if (heading.depth === 1 && !seenH1) {
           seenH1 = true;
-          titulo = event.titulo;
+          title = event.title;
           h1End = event.end;
         } else if (heading.depth >= 2 && heading.depth <= 3) {
           headings.push(event);
         }
-      } else if (node.type === "paragraph" && seenH1 && resumen === "") {
-        resumen = textOf(node as Paragraph);
+      } else if (node.type === "paragraph" && seenH1 && summary === "") {
+        summary = textOf(node as Paragraph);
       }
     }
 
-    const outline = buildOutline(content, { titulo, resumen, h1End, headings });
+    const outline = buildOutline(content, { title, summary, h1End, headings });
     return { data: data as Record<string, unknown>, outline, body: content };
   }
 }
 
 function buildOutline(
   body: string,
-  parsed: { titulo: string; resumen: string; h1End: number; headings: HeadingEvent[] },
+  parsed: { title: string; summary: string; h1End: number; headings: HeadingEvent[] },
 ): DocOutline {
   const { headings } = parsed;
   const firstH2 = headings.find((h) => h.depth === 2);
@@ -83,20 +83,20 @@ function buildOutline(
       if (ownEnd === sectionEnd) ownEnd = sub.start;
       const subEnd = nextBoundary(headings, j + 1, sectionEnd);
       children.push({
-        titulo: sub.titulo,
-        texto: body.slice(sub.start, subEnd).trim(),
+        title: sub.title,
+        text: body.slice(sub.start, subEnd).trim(),
         children: [],
       });
     }
 
     sections.push({
-      titulo: heading.titulo,
-      texto: body.slice(heading.start, ownEnd).trim(),
+      title: heading.title,
+      text: body.slice(heading.start, ownEnd).trim(),
       children,
     });
   }
 
-  return { titulo: parsed.titulo, resumen: parsed.resumen, intro, sections };
+  return { title: parsed.title, summary: parsed.summary, intro, sections };
 }
 
 /** Offset where the next heading of the given depth starts, from `from`. */

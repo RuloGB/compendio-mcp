@@ -11,7 +11,7 @@ import { computeHash, describeError, transformFile } from "./index-pipeline.js";
 
 export interface IndexedFileReport {
   path: string;
-  titulo: string;
+  title: string;
   chunks: number;
 }
 
@@ -67,12 +67,12 @@ export class IndexDocuments {
       path: e.path,
       errores: [e.error],
     }));
-    const pending: { chunkId: number; texto: string }[] = [];
+    const pending: { chunkId: number; text: string }[] = [];
 
     this.store.reset();
 
     for (const file of files) {
-      const hash = computeHash(file.contenido);
+      const hash = computeHash(file.content);
       const result = transformFile(this.parser, this.policy, this.options, file, hash);
 
       if (!result.ok) {
@@ -85,10 +85,10 @@ export class IndexDocuments {
       chunks.forEach((chunk, i) => {
         pending.push({
           chunkId: saved.chunkIds[i]!,
-          texto: `${chunk.heading}\n${chunk.contenido}`,
+          text: `${chunk.heading}\n${chunk.content}`,
         });
       });
-      indexados.push({ path: file.path, titulo: meta.titulo, chunks: chunks.length });
+      indexados.push({ path: file.path, title: meta.title, chunks: chunks.length });
     }
 
     const aviso = await this.embedPending(pending);
@@ -105,7 +105,7 @@ export class IndexDocuments {
   }
 
   /** Returns a warning message when embeddings could not be generated. */
-  private async embedPending(pending: { chunkId: number; texto: string }[]): Promise<string | null> {
+  private async embedPending(pending: { chunkId: number; text: string }[]): Promise<string | null> {
     if (this.embeddings === null) {
       return "indexado sin embeddings (proveedor no disponible): busqueda en modo lexico";
     }
@@ -114,7 +114,7 @@ export class IndexDocuments {
       for (let i = 0; i < pending.length; i += batchSize) {
         const batch = pending.slice(i, i + batchSize);
         // "passage: " prefix is required by the E5 embedding family.
-        const vectors = await this.embeddings.embed(batch.map((p) => `passage: ${p.texto}`));
+        const vectors = await this.embeddings.embed(batch.map((p) => `passage: ${p.text}`));
         this.store.saveEmbeddings(
           batch.map((p, j) => ({ chunkId: p.chunkId, embedding: vectors[j]! })),
         );
