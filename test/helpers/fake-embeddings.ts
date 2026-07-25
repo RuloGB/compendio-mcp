@@ -36,7 +36,7 @@ function vectorize(texto: string): Float32Array {
   const vector = new Float32Array(CONCEPT_STEMS.length + 1);
   CONCEPT_STEMS.forEach((stems, i) => {
     for (const stem of stems) {
-      if (normalized.includes(stem)) vector[i] += 1;
+      if (normalized.includes(stem)) vector[i]! += 1;
     }
   });
   // Small constant dimension so no vector is ever zero.
