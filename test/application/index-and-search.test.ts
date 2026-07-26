@@ -201,14 +201,14 @@ describe("strict synthetic fixture — declared taxonomy, type filtering, deny-l
 const LOOSE: ConventionConfig = {
   mode: "loose",
   excludedStatuses: [],
-  frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
+  frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
 function cfgStrict(overrides: Partial<ConventionConfig> = {}): ConventionConfig {
   return {
     mode: "strict",
     excludedStatuses: [],
-    frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
+    frontmatterFields: { type: "type", module: "module", status: "status" },
     ...overrides,
   };
 }
@@ -258,7 +258,7 @@ describe("IndexDocuments — strict mode validates declared taxonomies", () => {
       new StaticSource([
         {
           path: "auth/login.md",
-          content: "---\ntipo: guia\nmodulo: auth\nestado: vigente\n---\n\n# Login\n\nResumen.\n",
+          content: "---\ntype: guia\nmodule: auth\nstatus: vigente\n---\n\n# Login\n\nResumen.\n",
         },
       ]),
       cfgStrict({ types: ["guia"], statuses: ["vigente"] }),
@@ -274,7 +274,7 @@ describe("IndexDocuments — strict mode validates declared taxonomies", () => {
       new StaticSource([
         {
           path: "auth/login.md",
-          content: "---\ntipo: no-declarado\nmodulo: auth\nestado: vigente\n---\n\n# Login\n\nResumen.\n",
+          content: "---\ntype: no-declarado\nmodule: auth\nstatus: vigente\n---\n\n# Login\n\nResumen.\n",
         },
       ]),
       cfgStrict({ types: ["guia"] }),
@@ -307,7 +307,7 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
         [
           {
             path: "ok.md",
-            content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# OK\n\nTexto.\n",
+            content: "---\ntype: guia\nmodule: m\nstatus: vigente\n---\n\n# OK\n\nTexto.\n",
           },
         ],
         [{ path: "roto.md", error: "permiso denegado" }],
@@ -324,7 +324,7 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
     const { indexer, store } = buildIndexer(
       new StaticSource([
         { path: "ok.md", content: "# OK\n\nTexto.\n" },
-        { path: "malformado.md", content: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
+        { path: "malformado.md", content: "---\ntype: [sin-cerrar\n---\n\n# X\n" },
       ]),
     );
     const report = await indexer.execute();
@@ -339,9 +339,9 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
       new StaticSource([
         {
           path: "ok.md",
-          content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# OK\n\nTexto.\n",
+          content: "---\ntype: guia\nmodule: m\nstatus: vigente\n---\n\n# OK\n\nTexto.\n",
         },
-        { path: "malformado.md", content: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
+        { path: "malformado.md", content: "---\ntype: [sin-cerrar\n---\n\n# X\n" },
       ]),
       cfgStrict(),
     );

@@ -14,14 +14,14 @@ import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-m
 const LOOSE: ConventionConfig = {
   mode: "loose",
   excludedStatuses: [],
-  frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
+  frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
 function cfgStrict(overrides: Partial<ConventionConfig> = {}): ConventionConfig {
   return {
     mode: "strict",
     excludedStatuses: [],
-    frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
+    frontmatterFields: { type: "type", module: "module", status: "status" },
     ...overrides,
   };
 }
@@ -47,7 +47,7 @@ class StaticSource implements DocumentSource {
 const VALID_DOC: DocumentFile = {
   path: "guias/transversal-valida.md",
   content:
-    "---\ntipo: guia\nmodulo: transversal\nestado: vigente\n---\n\n# Guía válida\n\nResumen de la guía.\n",
+    "---\ntype: guia\nmodule: transversal\nstatus: vigente\n---\n\n# Guía válida\n\nResumen de la guía.\n",
 };
 
 function buildUseCase(
@@ -118,9 +118,9 @@ describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
   it("orders entries by declared types, tie-broken alphabetically by path", async () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
-        { path: "z.md", content: "---\ntipo: adr\nmodulo: m\nestado: vigente\n---\n\n# Z\n\nr\n" },
-        { path: "b.md", content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# B\n\nr\n" },
-        { path: "a.md", content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# A\n\nr\n" },
+        { path: "z.md", content: "---\ntype: adr\nmodule: m\nstatus: vigente\n---\n\n# Z\n\nr\n" },
+        { path: "b.md", content: "---\ntype: guia\nmodule: m\nstatus: vigente\n---\n\n# B\n\nr\n" },
+        { path: "a.md", content: "---\ntype: guia\nmodule: m\nstatus: vigente\n---\n\n# A\n\nr\n" },
       ]),
       cfgStrict({ types: ["guia", "adr"] }),
     );
@@ -140,7 +140,7 @@ describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
         VALID_DOC,
         {
           path: "guias/type-invalido.md",
-          content: "---\ntipo: no-declarado\nmodulo: m\nestado: vigente\n---\n\n# X\n\nr\n",
+          content: "---\ntype: no-declarado\nmodule: m\nstatus: vigente\n---\n\n# X\n\nr\n",
         },
       ]),
       cfgStrict({ types: ["guia"] }),
@@ -159,7 +159,7 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
         VALID_DOC,
-        { path: "guias/frontmatter-roto.md", content: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
+        { path: "guias/frontmatter-roto.md", content: "---\ntype: [sin-cerrar\n---\n\n# X\n" },
       ]),
     );
     const report = await useCase.execute();
@@ -175,7 +175,7 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
         VALID_DOC,
-        { path: "guias/frontmatter-roto.md", content: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
+        { path: "guias/frontmatter-roto.md", content: "---\ntype: [sin-cerrar\n---\n\n# X\n" },
       ]),
       cfgStrict({ types: ["guia"] }),
     );

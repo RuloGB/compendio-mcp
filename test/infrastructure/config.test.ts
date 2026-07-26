@@ -26,7 +26,7 @@ describe("loadConfig", () => {
     expect(config.convention).toEqual({
       mode: "loose",
       excludedStatuses: [],
-      frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
+      frontmatterFields: { type: "type", module: "module", status: "status" },
     });
   });
 
@@ -55,26 +55,28 @@ describe("loadConfig", () => {
     expect(config.convention.mode).toBe("strict");
     expect(config.convention.excludedStatuses).toEqual([]);
     expect(config.convention.frontmatterFields).toEqual({
-      type: "tipo",
-      module: "modulo",
-      status: "estado",
+      type: "type",
+      module: "module",
+      status: "status",
     });
     expect(config.convention.types).toBeUndefined();
     await rm(projectDir, { recursive: true, force: true });
   });
 
   it("merges a partial frontmatterFields object per key, not wholesale", async () => {
-    const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-campos-"));
+    // Declares a Spanish source key for one field only: this is the documented
+    // path for a non-English corpus, and it must not wipe the sibling defaults.
+    const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-fields-"));
     await writeFile(
       join(projectDir, "compendio.config.json"),
-      JSON.stringify({ convention: { frontmatterFields: { type: "type" } } }),
+      JSON.stringify({ convention: { frontmatterFields: { type: "tipo" } } }),
       "utf8",
     );
     const config = loadConfig(projectDir);
     expect(config.convention.frontmatterFields).toEqual({
-      type: "type",
-      module: "modulo",
-      status: "estado",
+      type: "tipo",
+      module: "module",
+      status: "status",
     });
     await rm(projectDir, { recursive: true, force: true });
   });
@@ -114,7 +116,7 @@ describe("loadConfig", () => {
     expect(DEFAULT_CONFIG.convention).toEqual({
       mode: "loose",
       excludedStatuses: [],
-      frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
+      frontmatterFields: { type: "type", module: "module", status: "status" },
     });
   });
 

@@ -24,7 +24,7 @@ export const EXAMPLES_DOCS = fileURLToPath(new URL("../../ejemplos/docs", import
 export const EXAMPLES_CONVENTION: ConventionConfig = {
   mode: "loose",
   excludedStatuses: [],
-  frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
+  frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
 /**
@@ -41,7 +41,7 @@ export const STRICT_FIXTURE_CONVENTION: ConventionConfig = {
   types: ["funcional", "adr", "api", "qa", "guia"],
   statuses: ["borrador", "vigente", "obsoleto"],
   excludedStatuses: ["borrador", "obsoleto"],
-  frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
+  frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
 export interface TestHarness {

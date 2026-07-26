@@ -1,7 +1,7 @@
 ---
-tipo: guia
-modulo: demo
-estado: vigente
+type: guia
+module: demo
+status: vigente
 ---
 
 # Guía sintética: onboarding de un nuevo servicio

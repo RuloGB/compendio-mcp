@@ -1,5 +1,5 @@
 ---
-estado: borrador
+status: borrador
 ---
 
 # Plan de pruebas: panel de métricas

@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 
 const SAMPLE = `---
-tipo: funcional
-modulo: leadsviewer
-estado: vigente
-etiquetas: [lead, validacion]
+type: funcional
+module: leadsviewer
+status: vigente
+tags: [lead, validacion]
 ---
 
 # Validación del formulario
@@ -46,8 +46,8 @@ describe("RemarkMarkdownParser", () => {
 
   it("extracts frontmatter, H1 title and summary paragraph", () => {
     const parsed = parser.parse(SAMPLE);
-    expect(parsed.data["tipo"]).toBe("funcional");
-    expect(parsed.data["etiquetas"]).toEqual(["lead", "validacion"]);
+    expect(parsed.data["type"]).toBe("funcional");
+    expect(parsed.data["tags"]).toEqual(["lead", "validacion"]);
     expect(parsed.outline.title).toBe("Validación del formulario");
     expect(parsed.outline.summary).toBe("Resumen del documento en un párrafo que se sostiene solo.");
   });

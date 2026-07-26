@@ -8,7 +8,7 @@ import {
 } from "../../src/domain/convention";
 import type { IndexEntry } from "../../src/domain/index-markdown";
 
-const IDENTIDAD = { type: "tipo", module: "modulo", status: "estado" };
+const IDENTIDAD = { type: "type", module: "module", status: "status" };
 
 function cfgLoose(overrides: Partial<ConventionConfig> = {}): ConventionConfig {
   return {
@@ -90,7 +90,7 @@ describe("createConventionPolicy — loose", () => {
 
   it("prefers frontmatter over folder inference for module", () => {
     const policy = createConventionPolicy(cfgLoose());
-    const result = policy.resolver({ ...BASE_INPUT, data: { modulo: "identity" } });
+    const result = policy.resolver({ ...BASE_INPUT, data: { module: "identity" } });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.meta.module).toBe("identity");
@@ -107,7 +107,7 @@ describe("createConventionPolicy — loose", () => {
 
   it("treats empty-string module as absent and falls through to folder inference", () => {
     const policy = createConventionPolicy(cfgLoose());
-    const result = policy.resolver({ ...BASE_INPUT, data: { modulo: "" } });
+    const result = policy.resolver({ ...BASE_INPUT, data: { module: "" } });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.meta.module).toBe("auth");
@@ -115,7 +115,7 @@ describe("createConventionPolicy — loose", () => {
 
   it("treats empty-string type and null status as absent, not as literal values", () => {
     const policy = createConventionPolicy(cfgLoose());
-    const result = policy.resolver({ ...BASE_INPUT, data: { tipo: "", estado: null } });
+    const result = policy.resolver({ ...BASE_INPUT, data: { type: "", status: null } });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.meta.type).toBeUndefined();
@@ -128,7 +128,7 @@ describe("createConventionPolicy — strict", () => {
     const policy = createConventionPolicy(cfgStrict({ types: ["guia"] }));
     const result = policy.resolver({
       ...BASE_INPUT,
-      data: { tipo: "adr", modulo: "auth", estado: "vigente" },
+      data: { type: "adr", module: "auth", status: "vigente" },
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -139,7 +139,7 @@ describe("createConventionPolicy — strict", () => {
     const policy = createConventionPolicy(cfgStrict({ types: ["guia"] }));
     const result = policy.resolver({
       ...BASE_INPUT,
-      data: { tipo: "guia", modulo: "auth", estado: "anything-non-empty" },
+      data: { type: "guia", module: "auth", status: "anything-non-empty" },
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -151,7 +151,7 @@ describe("createConventionPolicy — strict", () => {
     const policy = createConventionPolicy(cfgStrict());
     const result = policy.resolver({
       ...BASE_INPUT,
-      data: { tipo: "anything", modulo: "auth", estado: "vigente" },
+      data: { type: "anything", module: "auth", status: "vigente" },
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -162,22 +162,22 @@ describe("createConventionPolicy — strict", () => {
     const policy = createConventionPolicy(cfgStrict());
     const result = policy.resolver({
       ...BASE_INPUT,
-      data: { tipo: "", modulo: "auth", estado: "vigente" },
+      data: { type: "", module: "auth", status: "vigente" },
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.errors.join(" ")).toContain("obligatorio 'tipo'");
+    expect(result.errors.join(" ")).toContain("obligatorio 'type'");
   });
 
   it("always validates module by presence only, regardless of type/status declarations", () => {
     const policy = createConventionPolicy(cfgStrict({ types: ["guia"], statuses: ["vigente"] }));
     const result = policy.resolver({
       ...BASE_INPUT,
-      data: { tipo: "guia", estado: "vigente" },
+      data: { type: "guia", status: "vigente" },
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.errors.join(" ")).toContain("obligatorio 'modulo'");
+    expect(result.errors.join(" ")).toContain("obligatorio 'module'");
   });
 
   it("skips a document with no H1 and does not fall back to filename humanization", () => {
@@ -185,7 +185,7 @@ describe("createConventionPolicy — strict", () => {
     const result = policy.resolver({
       ...BASE_INPUT,
       title: "",
-      data: { tipo: "guia", modulo: "auth", estado: "vigente" },
+      data: { type: "guia", module: "auth", status: "vigente" },
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;

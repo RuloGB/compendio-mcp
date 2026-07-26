@@ -1,7 +1,7 @@
 ---
-tipo: adr
-modulo: demo
-estado: vigente
+type: adr
+module: demo
+status: vigente
 ---
 
 # ADR sintético: caché con Redis

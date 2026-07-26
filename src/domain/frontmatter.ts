@@ -23,16 +23,16 @@ export interface TagsResult {
 }
 
 /**
- * Normalizes the `etiquetas` frontmatter field: lowercased, trimmed, empty
+ * Normalizes the `tags` frontmatter field: lowercased, trimmed, empty
  * entries dropped. Reports an error when present but not a list of strings.
  */
 export function resolveTags(data: Record<string, unknown>): TagsResult {
-  const raw = data["etiquetas"];
+  const raw = data["tags"];
   if (raw === undefined || raw === null) return { tags: [] };
   if (Array.isArray(raw) && raw.every((e) => typeof e === "string")) {
     return { tags: raw.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0) };
   }
-  return { tags: [], error: "'etiquetas' debe ser una lista de cadenas" };
+  return { tags: [], error: "'tags' must be a list of strings" };
 }
 
 /**
@@ -41,9 +41,9 @@ export function resolveTags(data: Record<string, unknown>): TagsResult {
  * so the normalization (date -> `YYYY-MM-DD`, trimming) stays in one place.
  */
 export function applyOptionalFields(meta: DocumentMeta, data: Record<string, unknown>): void {
-  const owner = data["propietario"];
+  const owner = data["owner"];
   if (isNonEmptyString(owner)) meta.owner = owner.trim();
-  const updated = data["actualizado"];
+  const updated = data["updated"];
   if (isNonEmptyString(updated)) {
     meta.updated = updated.trim();
   } else if (updated instanceof Date) {

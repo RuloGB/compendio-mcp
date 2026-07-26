@@ -25,13 +25,13 @@ describe("isNonEmptyString", () => {
 
 describe("resolveTags", () => {
   it("normalizes a list of strings: trimmed and lowercased", () => {
-    const result = resolveTags({ etiquetas: ["Lead", " validacion  "] });
+    const result = resolveTags({ tags: ["Lead", " validacion  "] });
     expect(result.tags).toEqual(["lead", "validacion"]);
     expect(result.error).toBeUndefined();
   });
 
   it("drops empty entries after trimming", () => {
-    const result = resolveTags({ etiquetas: ["lead", "   "] });
+    const result = resolveTags({ tags: ["lead", "   "] });
     expect(result.tags).toEqual(["lead"]);
   });
 
@@ -39,10 +39,10 @@ describe("resolveTags", () => {
     expect(resolveTags({})).toEqual({ tags: [] });
   });
 
-  it("reports an error when etiquetas is not a list of strings", () => {
-    const result = resolveTags({ etiquetas: "lead" });
+  it("reports an error when tags is not a list of strings", () => {
+    const result = resolveTags({ tags: "lead" });
     expect(result.tags).toEqual([]);
-    expect(result.error).toContain("lista de cadenas");
+    expect(result.error).toContain("must be a list of strings");
   });
 });
 
@@ -53,19 +53,19 @@ describe("applyOptionalFields", () => {
 
   it("attaches a trimmed propietario when present", () => {
     const meta = baseMeta();
-    applyOptionalFields(meta, { propietario: " BA " });
+    applyOptionalFields(meta, { owner: " BA " });
     expect(meta.owner).toBe("BA");
   });
 
   it("normalizes a YAML date (gray-matter parses dates into Date objects)", () => {
     const meta = baseMeta();
-    applyOptionalFields(meta, { actualizado: new Date("2026-07-19T00:00:00Z") });
+    applyOptionalFields(meta, { updated: new Date("2026-07-19T00:00:00Z") });
     expect(meta.updated).toBe("2026-07-19");
   });
 
   it("keeps a string actualizado trimmed as-is", () => {
     const meta = baseMeta();
-    applyOptionalFields(meta, { actualizado: " 2026-07-19 " });
+    applyOptionalFields(meta, { updated: " 2026-07-19 " });
     expect(meta.updated).toBe("2026-07-19");
   });
 

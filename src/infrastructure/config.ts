@@ -56,7 +56,7 @@ export const DEFAULT_CONFIG: CompendioConfig = {
   convention: {
     mode: "loose",
     excludedStatuses: [],
-    frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
+    frontmatterFields: { type: "type", module: "module", status: "status" },
   },
 };
 

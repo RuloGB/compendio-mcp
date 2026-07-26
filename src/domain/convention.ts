@@ -20,7 +20,7 @@ export interface ConventionConfig {
   statuses?: string[];
   /** Deny-list applied by search; default []. */
   excludedStatuses: string[];
-  /** Frontmatter source key per field; default identity ({ type: "tipo", ... }). */
+  /** Frontmatter source key per field; default identity ({ type: "type", ... }). */
   frontmatterFields: { type: string; module: string; status: string };
 }
 

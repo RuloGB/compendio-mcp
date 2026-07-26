@@ -20,7 +20,7 @@ import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-s
 const LOOSE: ConventionConfig = {
   mode: "loose",
   excludedStatuses: [],
-  frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
+  frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
 const STRICT: ConventionConfig = {
@@ -28,7 +28,7 @@ const STRICT: ConventionConfig = {
   types: ["guia"],
   statuses: ["vigente"],
   excludedStatuses: [],
-  frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
+  frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
 const OPTIONS = { chunking: { minTokens: 10, maxTokens: 800 }, noChunking: [] };
@@ -297,13 +297,13 @@ describe("SyncIndex — resolver rejection on a changed known document deletes t
   it("deletes the stale row when a known path's changed content fails policy.resolver() under strict", async () => {
     const { store, source, sync, close } = buildHarness(new FakeEmbeddings(), STRICT);
     source.files = [
-      { path: "a.md", content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# A\n\nTexto.\n" },
+      { path: "a.md", content: "---\ntype: guia\nmodule: m\nstatus: vigente\n---\n\n# A\n\nTexto.\n" },
     ];
     await sync.execute();
     expect(store.getDocumentByPath("a.md")).not.toBeNull();
 
     source.files = [
-      { path: "a.md", content: "---\ntipo: invalido\n---\n\n# A cambiado\n\nOtro texto.\n" },
+      { path: "a.md", content: "---\ntype: invalido\n---\n\n# A cambiado\n\nOtro texto.\n" },
     ];
     const second = await sync.execute();
 
@@ -315,7 +315,7 @@ describe("SyncIndex — resolver rejection on a changed known document deletes t
 
   it("is a plain skip, with nothing to delete, when a NEW path fails policy.resolver() under strict", async () => {
     const { store, source, sync, close } = buildHarness(new FakeEmbeddings(), STRICT);
-    source.files = [{ path: "b.md", content: "---\ntipo: invalido\n---\n\n# B\n\nTexto.\n" }];
+    source.files = [{ path: "b.md", content: "---\ntype: invalido\n---\n\n# B\n\nTexto.\n" }];
 
     const report = await sync.execute();
 
