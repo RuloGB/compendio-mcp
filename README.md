@@ -22,7 +22,7 @@
   <a href="#cli">CLI</a> &bull;
   <a href="#how-it-works">How it works</a> &bull;
   <a href="#incremental-reindex">Incremental reindex</a> &bull;
-  <a href="#spanish-first-by-design">Spanish-first</a> &bull;
+  <a href="#multilingual">Multilingual</a> &bull;
   <a href="docs/documentation-convention.md">Full docs</a>
 </p>
 
@@ -42,7 +42,7 @@ Compendio indexes your markdown documentation and gives any AI agent three tools
 - ✂️ **Token-frugal by design** — orient for ~10 tokens per document, search for a handful of fragments, read a single section. Never the whole corpus.
 - 🔒 **100% local** — one SQLite file, embeddings on CPU, zero network calls at query time. No API keys, no Docker, no services, nothing leaves your machine.
 - ♻️ **Stays current** — a running server picks up your documentation edits on its own. No watcher process, no manual rebuild loop.
-- 🗣️ **Spanish-first** — the tool contract, the accent handling and the reference corpus are built for Spanish documentation. See [Spanish-first, by design](#spanish-first-by-design).
+- 🗣️ **Multilingual** — index documentation in any language. The embeddings model is multilingual and search is diacritic-insensitive. See [Multilingual](#multilingual).
 - 🧩 **Zero configuration** — works on *any* folder of `.md` files. No required frontmatter, no config file. An optional [documentation convention](#documentation-convention-optional) is there if your team already has a taxonomy to enforce.
 
 ## Requirements
@@ -225,15 +225,16 @@ A running server reindexes at startup and then, at most once per throttle window
 
 `compendio index` remains the authoritative full rebuild. Reach for it after a large restructuring, or if you ever suspect the index has drifted.
 
-## Spanish-first, by design
+## Multilingual
 
-Compendio is built for **Spanish-language documentation**, and that shows up in the product, not just the examples:
+Write your documentation in whatever language your team works in. Compendio doesn't care:
 
-- **The contract is English, the corpus doesn't have to be.** Tool parameters (`path`, `type`, `module`, `tags`, `section`), response fields and tool descriptions are English, so any agent reads them without friction. That is independent of what language your documents are written in: frontmatter keys are stripped before indexing, and the FTS5 tokenizer carries no language-specific stemmer. If your team writes Spanish frontmatter keys, `convention.frontmatterFields` maps them back.
-- **Accents are handled properly.** Search is diacritic-insensitive, so *validación* and *validacion* match. In a Spanish corpus this is not a nicety — accent-sensitive search silently loses results.
-- **The reference corpus and evaluation set are Spanish.** The quality numbers below reflect real Spanish retrieval, not translated English.
+- **The contract is English, the corpus doesn't have to be.** Tool parameters (`path`, `type`, `module`, `tags`, `section`), response fields and tool descriptions are English, so any agent reads them without friction. That is independent of what language your documents are written in: frontmatter keys are stripped before indexing, and the FTS5 tokenizer carries no language-specific stemmer.
+- **Non-English frontmatter keys map back.** If your documents use `estado:` instead of `status:`, `convention.frontmatterFields` translates them.
+- **Accents are handled properly.** Search is diacritic-insensitive, so *validación* and *validacion* match. Accent-sensitive search silently loses results.
+- **The embeddings model is multilingual** (`Xenova/multilingual-e5-small`), so single-language and mixed-language corpora index and retrieve alike.
 
-The embeddings model is multilingual, so English or mixed-language documents index and retrieve fine. Spanish is the language the product was designed and tuned around, not a restriction on what you can index.
+The reference corpus and evaluation set shipped in `ejemplos/` are Spanish — deliberately, as proof that an English codebase and tool contract retrieve non-English documentation without loss.
 
 ## How much does semantics add over grep?
 
