@@ -15,6 +15,7 @@ import { ReadDocument } from "../../src/application/read-document";
 import { SearchDocuments } from "../../src/application/search-documents";
 import { SyncIndex } from "../../src/application/sync-index";
 import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
+import { LEAD_EXCERPT_CHARS, SUPPORTING_EXCERPT_CHARS } from "../../src/domain/excerpt";
 import type { DiscoverResult, DocumentFile, DocumentSource } from "../../src/domain/ports";
 import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
@@ -113,7 +114,8 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     expect(primero.path).toBe("informes/plan-pruebas.md");
     expect(primero.section.length).toBeGreaterThan(0);
     expect(primero.status).toBe("borrador");
-    expect(primero.excerpt.length).toBeLessThanOrEqual(300);
+    // +1 for the ellipsis buildExcerpt appends when it cuts.
+    expect(primero.excerpt.length).toBeLessThanOrEqual(LEAD_EXCERPT_CHARS + 1);
     expect(primero.excerpt).not.toContain("###");
   });
 
@@ -124,8 +126,59 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     expect(primero.path.length).toBeGreaterThan(0);
     expect(primero.section.length).toBeGreaterThan(0);
     expect(primero.status).toBeUndefined();
-    expect(primero.excerpt.length).toBeLessThanOrEqual(300);
+    expect(primero.excerpt.length).toBeLessThanOrEqual(LEAD_EXCERPT_CHARS + 1);
     expect(primero.excerpt).not.toContain("###");
+  });
+
+  it("drops a filter no document could satisfy and says so, rather than returning zero", async () => {
+    // `ejemplos/` declares only `status` in its frontmatter — no `type` on any
+    // document — the same shape as a project whose non-English keys were never
+    // mapped. An agent inferring `type` from directory names must still get an
+    // answer, because a zero here is measurably read as "search harder".
+    const respuesta = await harness.search.execute({
+      query: "email duplicado",
+      type: "uc",
+    });
+    expect(respuesta.results.length).toBeGreaterThan(0);
+    expect(respuesta.filterWarning).toBeDefined();
+    expect(respuesta.filterWarning).toContain("type");
+    // Dropping a filter must never be silent, and must name the real fix.
+    expect(respuesta.filterWarning).toContain("convention.frontmatterFields");
+  });
+
+  it("keeps a filter on a declared field and reports the values that exist", async () => {
+    // `status` IS declared in ejemplos/, so an unknown value is an answerable
+    // request: the filter stays and the caller gets the real values to correct
+    // itself with. Only structurally impossible filters get dropped.
+    const respuesta = await harness.search.execute({
+      query: "email duplicado",
+      tags: ["etiqueta-que-no-existe"],
+    });
+    expect(respuesta.filterWarning).toBeUndefined();
+    if (respuesta.results.length === 0) {
+      expect(respuesta.noMatchReason).toBeDefined();
+    }
+  });
+
+  it("omits noMatchReason when the query simply matches nothing", async () => {
+    const respuesta = await harness.search.execute({ query: "zzz" });
+    if (respuesta.results.length === 0) {
+      expect(respuesta.noMatchReason).toBeUndefined();
+    }
+  });
+
+  it("spends the excerpt budget on the lead result and keeps the rest as signposts", async () => {
+    const respuesta = await harness.search.execute({ query: "email duplicado", k: 5 });
+    expect(respuesta.results.length).toBeGreaterThan(1);
+    const [lead, ...supporting] = respuesta.results;
+    expect(lead!.excerpt.length).toBeLessThanOrEqual(LEAD_EXCERPT_CHARS + 1);
+    for (const result of supporting) {
+      expect(result.excerpt.length).toBeLessThanOrEqual(SUPPORTING_EXCERPT_CHARS + 1);
+    }
+    // The lead must actually be allowed to carry more, otherwise the gradient
+    // exists in the constants but never reaches the wire.
+    const longest = Math.max(...supporting.map((r) => r.excerpt.length));
+    expect(lead!.excerpt.length).toBeGreaterThan(longest);
   });
 });
 
