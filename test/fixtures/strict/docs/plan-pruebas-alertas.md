@@ -1,7 +1,7 @@
 ---
-tipo: qa
-modulo: demo
-estado: borrador
+type: qa
+module: demo
+status: draft
 ---
 
 # Plan de pruebas sintético: alertas de inventario

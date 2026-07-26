@@ -7,10 +7,10 @@ import { ReadDocument } from "./application/read-document.js";
 import { SearchDocuments } from "./application/search-documents.js";
 import { SyncIndex } from "./application/sync-index.js";
 import { SyncScheduler } from "./application/sync-scheduler.js";
-import { crearComparadorIndice, crearConvencionPolicy } from "./domain/convencion.js";
+import { createIndexComparator, createConventionPolicy } from "./domain/convention.js";
 import { INDEX_FILE } from "./domain/index-markdown.js";
 import type { EmbeddingsProvider } from "./domain/ports.js";
-import { loadConfig, SIN_CHUNKING, type CompendioConfig } from "./infrastructure/config.js";
+import { loadConfig, NO_CHUNKING, type CompendioConfig } from "./infrastructure/config.js";
 import {
   LazyEmbeddings,
   TransformersEmbeddings,
@@ -25,8 +25,8 @@ export interface ContainerOptions {
   root: string;
   /** Overrides config.docsDir (CLI --dir). */
   docsDir?: string;
-  /** Disables embeddings entirely (CLI --lexico). */
-  forzarLexico?: boolean;
+  /** Disables embeddings entirely (CLI --lexical). */
+  forceLexical?: boolean;
 }
 
 /** Composition root: wires adapters into use cases. */
@@ -54,32 +54,32 @@ export function createContainer(options: ContainerOptions): Container {
   const store = new SqliteIndexStore(resolve(options.root, config.db));
 
   const embeddings: EmbeddingsProvider | null =
-    options.forzarLexico === true
+    options.forceLexical === true
       ? null
       : new LazyEmbeddings(() => TransformersEmbeddings.create(config.embeddings.model));
 
   const source = new FileDocumentSource(docsDir, config.exclude);
   const parser = new RemarkMarkdownParser();
-  const policy = crearConvencionPolicy(config.convencion);
-  const comparador = crearComparadorIndice(config.convencion);
+  const policy = createConventionPolicy(config.convention);
+  const comparator = createIndexComparator(config.convention);
   const indexDocuments = new IndexDocuments(source, parser, store, embeddings, policy, {
     chunking: config.chunk,
-    sinChunking: SIN_CHUNKING,
+    noChunking: NO_CHUNKING,
   });
   const generateIndexMd = new GenerateIndexMd(
     source,
     parser,
     new FileIndexWriter(docsDir, INDEX_FILE),
     policy,
-    comparador,
+    comparator,
   );
   const searchDocuments = new SearchDocuments(store, embeddings, {
     k: config.search.k,
-    estadosExcluidos: config.convencion.estadosExcluidos,
+    excludedStatuses: config.convention.excludedStatuses,
   });
   const syncIndex = new SyncIndex(source, parser, store, embeddings, policy, {
     chunking: config.chunk,
-    sinChunking: SIN_CHUNKING,
+    noChunking: NO_CHUNKING,
   });
   const syncScheduler = new SyncScheduler(syncIndex, config.sync.throttleMs);
 

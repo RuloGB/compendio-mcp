@@ -1,4 +1,4 @@
-import type { ConvencionPolicy } from "../domain/convencion.js";
+import type { ConventionPolicy } from "../domain/convention.js";
 import type { IndexedDocument, SearchMode } from "../domain/model.js";
 import type {
   ChunkMissingVector,
@@ -13,38 +13,38 @@ import type { IndexedFileReport, SkippedFileReport } from "./index-documents.js"
 import { computeHash, describeError, transformFile, type PipelineOptions } from "./index-pipeline.js";
 
 export interface SyncReport {
-  modo: SearchMode;
-  indexados: IndexedFileReport[];
-  eliminados: string[];
-  omitidos: SkippedFileReport[];
+  mode: SearchMode;
+  indexed: IndexedFileReport[];
+  deleted: string[];
+  skipped: SkippedFileReport[];
   totalChunks: number;
-  duracionMs: number;
+  durationMs: number;
   /** Present when embeddings were requested but unavailable for at least one
    * document or reconciliation group during this pass. */
-  avisoEmbeddings?: string;
+  embeddingsWarning?: string;
 }
 
 /** Mutable accumulator threaded through one pass's three phases. */
 interface PassState {
-  indexados: IndexedFileReport[];
-  omitidos: SkippedFileReport[];
-  eliminados: string[];
-  /** Rutas whose hash matched the persisted value this pass — the set the
+  indexed: IndexedFileReport[];
+  skipped: SkippedFileReport[];
+  deleted: string[];
+  /** Paths whose hash matched the persisted value this pass — the set the
    * vector-coverage reconciliation phase is restricted to. */
-  hashMatchRutas: Set<string>;
-  avisoEmbeddings?: string;
+  hashMatchPaths: Set<string>;
+  embeddingsWarning?: string;
 }
 
 /**
  * Incremental sync pass: diffs the discovered corpus against the persisted
- * index by `ruta`+`hash` (`IndexStore.listDocuments()`), so only new,
+ * index by `path`+`hash` (`IndexStore.listDocuments()`), so only new,
  * changed, or deleted documents do work. Three augmentation rules, all owned
  * here (see design.md's "SyncIndex" decisions):
  *
- * 1. Read failures (`erroresLectura`) exclude both the reported `ruta` and
- *    every indexed `ruta` beneath it from the delete-candidate set.
- * 2. Under `estricto`, a resolver rejection on an already-indexed `ruta`
- *    deletes that stale row; on a brand-new `ruta` it is a plain skip.
+ * 1. Read failures (`readErrors`) exclude both the reported `path` and
+ *    every indexed `path` beneath it from the delete-candidate set.
+ * 2. Under `strict`, a resolver rejection on an already-indexed `path`
+ *    deletes that stale row; on a brand-new `path` it is a plain skip.
  * 3. Vector-coverage reconciliation is chunk-granular
  *    (`listChunksMissingVectors()`), restricted to this pass's hash-match
  *    set, and written with the idempotent `replaceEmbeddings`.
@@ -59,64 +59,64 @@ export class SyncIndex {
     private readonly parser: MarkdownParser,
     private readonly store: IndexStore,
     private readonly embeddings: EmbeddingsProvider | null,
-    private readonly policy: ConvencionPolicy,
+    private readonly policy: ConventionPolicy,
     private readonly options: PipelineOptions,
   ) {}
 
   async execute(): Promise<SyncReport> {
     const start = Date.now();
-    const { files, erroresLectura } = await this.source.discover();
+    const { files, readErrors } = await this.source.discover();
     const existing = this.store.listDocuments();
 
     const state: PassState = {
-      indexados: [],
-      omitidos: erroresLectura.map((e) => ({ ruta: e.ruta, errores: [e.error] })),
-      eliminados: [],
-      hashMatchRutas: new Set(),
+      indexed: [],
+      skipped: readErrors.map((e) => ({ path: e.path, errors: [e.error] })),
+      deleted: [],
+      hashMatchPaths: new Set(),
     };
 
     await this.processNewAndChanged(files, existing, state);
-    this.deleteMissingDocuments(files, existing, erroresLectura, state);
+    this.deleteMissingDocuments(files, existing, readErrors, state);
     await this.reconcileVectors(state);
 
-    const totalChunks = state.indexados.reduce((sum, doc) => sum + doc.chunks, 0);
+    const totalChunks = state.indexed.reduce((sum, doc) => sum + doc.chunks, 0);
     const report: SyncReport = {
-      modo: state.avisoEmbeddings === undefined && this.embeddings !== null ? "hibrido" : "lexico",
-      indexados: state.indexados,
-      eliminados: state.eliminados,
-      omitidos: state.omitidos,
+      mode: state.embeddingsWarning === undefined && this.embeddings !== null ? "hybrid" : "lexical",
+      indexed: state.indexed,
+      deleted: state.deleted,
+      skipped: state.skipped,
       totalChunks,
-      duracionMs: Date.now() - start,
+      durationMs: Date.now() - start,
     };
-    if (state.avisoEmbeddings !== undefined) report.avisoEmbeddings = state.avisoEmbeddings;
+    if (state.embeddingsWarning !== undefined) report.embeddingsWarning = state.embeddingsWarning;
     return report;
   }
 
   /** New/changed documents: embeds each document's own chunks first, then
    * commits via `upsertDocument` (documents+chunks+fts+vectors together, one
-   * transaction). A resolver rejection on a known ruta deletes the stale
-   * row; on a new ruta it is a plain skip. */
+   * transaction). A resolver rejection on a known path deletes the stale
+   * row; on a new path it is a plain skip. */
   private async processNewAndChanged(
     files: DocumentFile[],
     existing: IndexedDocument[],
     state: PassState,
   ): Promise<void> {
-    const existingByRuta = new Map(existing.map((doc) => [doc.ruta, doc]));
+    const existingByPath = new Map(existing.map((doc) => [doc.path, doc]));
 
     for (const file of files) {
-      const hash = computeHash(file.contenido);
-      const existingDoc = existingByRuta.get(file.ruta);
+      const hash = computeHash(file.content);
+      const existingDoc = existingByPath.get(file.path);
 
       if (existingDoc !== undefined && existingDoc.hash === hash) {
-        state.hashMatchRutas.add(file.ruta);
+        state.hashMatchPaths.add(file.path);
         continue;
       }
 
       const result = transformFile(this.parser, this.policy, this.options, file, hash);
       if (!result.ok) {
-        state.omitidos.push({ ruta: file.ruta, errores: result.errores });
+        state.skipped.push({ path: file.path, errors: result.errors });
         if (existingDoc !== undefined) {
-          this.tryDelete(file.ruta, state, false);
+          this.tryDelete(file.path, state, false);
         }
         continue;
       }
@@ -124,40 +124,40 @@ export class SyncIndex {
       const { meta, chunks } = result;
       let chunkEmbeddings: Float32Array[] | null = null;
       if (this.embeddings === null) {
-        state.avisoEmbeddings = "indexado sin embeddings (proveedor no disponible): busqueda en modo lexico";
+        state.embeddingsWarning = "indexed without embeddings (provider unavailable): search runs in lexical mode";
       } else {
         try {
-          const texts = chunks.map((c) => `passage: ${c.encabezado}\n${c.contenido}`);
+          const texts = chunks.map((c) => `passage: ${c.heading}\n${c.content}`);
           chunkEmbeddings = await this.embeddings.embed(texts);
         } catch (error) {
-          state.avisoEmbeddings = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
+          state.embeddingsWarning = `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
         }
       }
 
       try {
         this.store.upsertDocument(meta, chunks, chunkEmbeddings);
-        state.indexados.push({ ruta: file.ruta, titulo: meta.titulo, chunks: chunks.length });
+        state.indexed.push({ path: file.path, title: meta.title, chunks: chunks.length });
       } catch (error) {
-        state.omitidos.push({ ruta: file.ruta, errores: [describeError(error)] });
+        state.skipped.push({ path: file.path, errors: [describeError(error)] });
       }
     }
   }
 
-  /** A ruta present in the index but absent from disk is deleted — unless
-   * protected by this pass's erroresLectura (rule 1: exact ruta or subtree
+  /** A path present in the index but absent from disk is deleted — unless
+   * protected by this pass's readErrors (rule 1: exact path or subtree
    * prefix). */
   private deleteMissingDocuments(
     files: DocumentFile[],
     existing: IndexedDocument[],
-    erroresLectura: ReadError[],
+    readErrors: ReadError[],
     state: PassState,
   ): void {
-    const discoveredRutas = new Set(files.map((f) => f.ruta));
-    const protectedRutas = erroresLectura.map((e) => e.ruta);
+    const discoveredPaths = new Set(files.map((f) => f.path));
+    const protectedPaths = readErrors.map((e) => e.path);
     for (const doc of existing) {
-      if (discoveredRutas.has(doc.ruta)) continue;
-      if (isProtected(doc.ruta, protectedRutas)) continue;
-      this.tryDelete(doc.ruta, state, true);
+      if (discoveredPaths.has(doc.path)) continue;
+      if (isProtected(doc.path, protectedPaths)) continue;
+      this.tryDelete(doc.path, state, true);
     }
   }
 
@@ -168,16 +168,16 @@ export class SyncIndex {
     if (this.embeddings === null) return;
     const missing = this.store
       .listChunksMissingVectors()
-      .filter((chunk) => state.hashMatchRutas.has(chunk.ruta));
+      .filter((chunk) => state.hashMatchPaths.has(chunk.path));
 
-    for (const [ruta, chunksMissing] of groupByRuta(missing)) {
+    for (const [path, chunksMissing] of groupByPath(missing)) {
       let vectors: Float32Array[];
       try {
         vectors = await this.embeddings.embed(
-          chunksMissing.map((c) => `passage: ${c.encabezado}\n${c.contenido}`),
+          chunksMissing.map((c) => `passage: ${c.heading}\n${c.content}`),
         );
       } catch (error) {
-        state.avisoEmbeddings = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
+        state.embeddingsWarning = `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
         continue; // leave as-is (lexical-only), reconsidered on a future pass
       }
       try {
@@ -185,37 +185,37 @@ export class SyncIndex {
           chunksMissing.map((c, i) => ({ chunkId: c.chunkId, embedding: vectors[i]! })),
         );
       } catch (error) {
-        state.omitidos.push({ ruta, errores: [describeError(error)] });
+        state.skipped.push({ path, errors: [describeError(error)] });
       }
     }
   }
 
-  /** Deletes a document, reporting `ruta` in `eliminados` only for a
+  /** Deletes a document, reporting `path` in `deleted` only for a
    * disk-absence deletion (never for a resolver-rejection deletion). A
-   * store-level failure is a per-document skip, reported in `omitidos`
+   * store-level failure is a per-document skip, reported in `skipped`
    * instead of aborting the pass. */
-  private tryDelete(ruta: string, state: PassState, reportAsEliminado: boolean): void {
+  private tryDelete(path: string, state: PassState, reportAsDeleted: boolean): void {
     try {
-      this.store.deleteDocument(ruta);
-      if (reportAsEliminado) state.eliminados.push(ruta);
+      this.store.deleteDocument(path);
+      if (reportAsDeleted) state.deleted.push(path);
     } catch (error) {
-      state.omitidos.push({ ruta, errores: [describeError(error)] });
+      state.skipped.push({ path, errors: [describeError(error)] });
     }
   }
 }
 
-/** True when `ruta` is exactly a failed ruta, or lies beneath one (the
- * `<ruta>/` prefix rule that protects an entire failed subtree). */
-function isProtected(ruta: string, failedRutas: string[]): boolean {
-  return failedRutas.some((failed) => ruta === failed || ruta.startsWith(`${failed}/`));
+/** True when `path` is exactly a failed path, or lies beneath one (the
+ * `<path>/` prefix rule that protects an entire failed subtree). */
+function isProtected(path: string, failedPaths: string[]): boolean {
+  return failedPaths.some((failed) => path === failed || path.startsWith(`${failed}/`));
 }
 
-function groupByRuta(chunks: ChunkMissingVector[]): Map<string, ChunkMissingVector[]> {
-  const byRuta = new Map<string, ChunkMissingVector[]>();
+function groupByPath(chunks: ChunkMissingVector[]): Map<string, ChunkMissingVector[]> {
+  const byPath = new Map<string, ChunkMissingVector[]>();
   for (const chunk of chunks) {
-    const list = byRuta.get(chunk.ruta) ?? [];
+    const list = byPath.get(chunk.path) ?? [];
     list.push(chunk);
-    byRuta.set(chunk.ruta, list);
+    byPath.set(chunk.path, list);
   }
-  return byRuta;
+  return byPath;
 }

@@ -18,32 +18,32 @@ describe("FileIndexWriter", () => {
   it("creates the file on first write and reports it as changed", async () => {
     const writer = new FileIndexWriter(dir, "INDEX.md");
     const result = await writer.write("# Índice\n");
-    expect(result.cambiado).toBe(true);
-    expect(result.ruta).toBe(join(dir, "INDEX.md"));
+    expect(result.changed).toBe(true);
+    expect(result.path).toBe(join(dir, "INDEX.md"));
     expect(await readFile(join(dir, "INDEX.md"), "utf8")).toBe("# Índice\n");
   });
 
   it("skips the write when the content is identical", async () => {
     const writer = new FileIndexWriter(dir, "INDEX.md");
     const result = await writer.write("# Índice\n");
-    expect(result.cambiado).toBe(false);
+    expect(result.changed).toBe(false);
   });
 
   it("rewrites when the content differs", async () => {
     const writer = new FileIndexWriter(dir, "INDEX.md");
     const result = await writer.write("# Índice v2\n");
-    expect(result.cambiado).toBe(true);
+    expect(result.changed).toBe(true);
     expect(await readFile(join(dir, "INDEX.md"), "utf8")).toBe("# Índice v2\n");
   });
 
   it("treats a CRLF copy of the same content as up to date (git autocrlf checkout)", async () => {
-    const contenidoLf = "# Índice\n\n- [guia] glosario.md — Términos (vigente)\n";
-    await writeFile(join(dir, "INDEX.md"), contenidoLf.replaceAll("\n", "\r\n"), "utf8");
+    const contentLf = "# Índice\n\n- [guia] glosario.md — Términos (vigente)\n";
+    await writeFile(join(dir, "INDEX.md"), contentLf.replaceAll("\n", "\r\n"), "utf8");
 
     const writer = new FileIndexWriter(dir, "INDEX.md");
-    const result = await writer.write(contenidoLf);
+    const result = await writer.write(contentLf);
 
-    expect(result.cambiado).toBe(false);
+    expect(result.changed).toBe(false);
     expect(await readFile(join(dir, "INDEX.md"), "utf8")).toContain("\r\n");
   });
 });

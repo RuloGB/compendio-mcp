@@ -23,7 +23,7 @@
   <a href="#how-it-works">How it works</a> &bull;
   <a href="#incremental-reindex">Incremental reindex</a> &bull;
   <a href="#spanish-first-by-design">Spanish-first</a> &bull;
-  <a href="docs/convencion-documentacion.md">Full docs</a>
+  <a href="docs/documentation-convention.md">Full docs</a>
 </p>
 
 ---
@@ -135,10 +135,10 @@ Entirely optional — every field has a default, and Compendio works with no con
   "chunk": { "minTokens": 100, "maxTokens": 800 },
   "search": { "k": 5 },
   "sync": { "throttleMs": 30000 },
-  "convencion": {
-    "modo": "libre",
-    "estadosExcluidos": [],
-    "camposFrontmatter": { "tipo": "tipo", "modulo": "modulo", "estado": "estado" }
+  "convention": {
+    "mode": "loose",
+    "excludedStatuses": [],
+    "frontmatterFields": { "type": "type", "module": "module", "status": "status" }
   }
 }
 ```
@@ -151,29 +151,29 @@ Entirely optional — every field has a default, and Compendio works with no con
 | `search.k` | Default number of fragments returned per search |
 | `chunk` | Fragment size bounds, in tokens |
 | `sync.throttleMs` | Minimum interval between automatic reindex passes |
-| `convencion` | Optional documentation taxonomy — see below |
+| `convention` | Optional documentation taxonomy — see below |
 
-Declaring only part of the `convencion` block merges with the defaults field by field; it never wipes the siblings you didn't mention. `camposFrontmatter` maps `tipo`/`modulo`/`estado` onto non-standard frontmatter keys (e.g. `{ "tipo": "type" }` reads a document's `type:` field as `tipo`).
+Declaring only part of the `convention` block merges with the defaults field by field; it never wipes the siblings you didn't mention. `frontmatterFields` maps `type`/`module`/`status` onto non-standard frontmatter keys (e.g. `{ "status": "estado" }` reads a Spanish document's `estado:` field as `status`).
 
 ### Documentation convention (optional)
 
-Two modes, selected by `convencion.modo`:
+Two modes, selected by `convention.mode`:
 
-- **`libre`** (default, zero-config) — never rejects a file for missing metadata. The title comes from the first H1 (falling back to a humanized filename), the module is inferred from the folder, and `tipo`/`estado` are read from frontmatter when present and left absent otherwise.
-- **`estricto`** (opt-in) — a linter: every document needs an H1 and non-empty `tipo`/`modulo`/`estado`, validated against the lists your project declares. Files that fail are skipped and reported, never breaking the run.
+- **`loose`** (default, zero-config) — never rejects a file for missing metadata. The title comes from the first H1 (falling back to a humanized filename), the module is inferred from the folder, and `type`/`status` are read from frontmatter when present and left absent otherwise.
+- **`strict`** (opt-in) — a linter: every document needs an H1 and non-empty `type`/`module`/`status`, validated against the lists your project declares. Files that fail are skipped and reported, never breaking the run.
 
 ```jsonc
 {
-  "convencion": {
-    "modo": "estricto",
-    "tipos": ["funcional", "adr", "api", "qa", "guia"],
-    "estados": ["borrador", "vigente", "obsoleto"],
-    "estadosExcluidos": ["borrador", "obsoleto"]
+  "convention": {
+    "mode": "strict",
+    "types": ["funcional", "adr", "api", "qa", "guia"],
+    "statuses": ["borrador", "vigente", "obsoleto"],
+    "excludedStatuses": ["borrador", "obsoleto"]
   }
 }
 ```
 
-`estadosExcluidos` hides documents from search by lifecycle state — drafts and deprecated pages stop polluting results. See [`docs/convencion-documentacion.md`](docs/convencion-documentacion.md) for the full convention this repository's own docs follow.
+`excludedStatuses` hides documents from search by lifecycle state — drafts and deprecated pages stop polluting results. See [`docs/documentation-convention.md`](docs/documentation-convention.md) for the full convention this repository's own docs follow.
 
 ## MCP tools
 
@@ -181,9 +181,9 @@ Designed as *progressive disclosure*: orient cheaply → search cheaply → read
 
 **1. `docs_overview()`** — the corpus map. Counts by type and module, plus one line per document. Roughly **10 tokens per document**.
 
-**2. `search_docs({ query, tipo?, modulo?, etiquetas?, k?, incluir_no_vigentes? })`** — the top *k* fragments (5 by default, at most 2 per document), each with path, section, excerpt and score. `tipo` is an open, project-defined string, not a fixed list.
+**2. `search_docs({ query, type?, module?, tags?, k?, include_excluded? })`** — the top *k* fragments (5 by default, at most 2 per document), each with path, section, excerpt and score. `type` is an open, project-defined string, not a fixed list.
 
-**3. `read_doc({ ruta, seccion? })`** — one section, or the whole document. A path that doesn't exist returns the 3 most similar paths instead of an error, so the agent self-corrects instead of retrying blind.
+**3. `read_doc({ path, section? })`** — one section, or the whole document. A path that doesn't exist returns the 3 most similar paths instead of an error, so the agent self-corrects instead of retrying blind.
 
 ## CLI
 
@@ -191,7 +191,7 @@ Designed as *progressive disclosure*: orient cheaply → search cheaply → read
 |---|---|
 | `compendio serve` | Starts the MCP server over stdio |
 | `compendio index` | Full rebuild of the index |
-| `compendio search "..."` | Hybrid search with filters: `--tipo`, `--modulo`, `--etiquetas`, `-k`, `--todos` |
+| `compendio search "..."` | Hybrid search with filters: `--type`, `--module`, `--tags`, `-k`, `--all` |
 | `compendio overview` | Map of the indexed corpus |
 | `compendio index-md` | Generates or updates `docs/INDEX.md` — one line per document |
 | `compendio eval` | Measures retrieval quality against a goldenset |
@@ -229,7 +229,7 @@ A running server reindexes at startup and then, at most once per throttle window
 
 Compendio is built for **Spanish-language documentation**, and that shows up in the product, not just the examples:
 
-- **The MCP contract is in Spanish.** Tool parameters (`ruta`, `tipo`, `modulo`, `etiquetas`, `seccion`), response fields and the tool descriptions the agent reads are all Spanish. Agents reason about your docs in the same language your team writes them in.
+- **The contract is English, the corpus doesn't have to be.** Tool parameters (`path`, `type`, `module`, `tags`, `section`), response fields and tool descriptions are English, so any agent reads them without friction. That is independent of what language your documents are written in: frontmatter keys are stripped before indexing, and the FTS5 tokenizer carries no language-specific stemmer. If your team writes Spanish frontmatter keys, `convention.frontmatterFields` maps them back.
 - **Accents are handled properly.** Search is diacritic-insensitive, so *validación* and *validacion* match. In a Spanish corpus this is not a nicety — accent-sensitive search silently loses results.
 - **The reference corpus and evaluation set are Spanish.** The quality numbers below reflect real Spanish retrieval, not translated English.
 
@@ -256,7 +256,7 @@ Hexagonal: the core knows nothing about SQLite, transformers.js, or the filesyst
 
 ```
 src/
-├── domain/            # pure, no dependencies: model, chunking, ranking, convencion policy
+├── domain/            # pure, no dependencies: model, chunking, ranking, convention policy
 ├── application/       # use cases
 ├── infrastructure/    # adapters: SQLite, markdown parsing, filesystem, embeddings
 ├── composition.ts     # composition root — start here to see the whole app

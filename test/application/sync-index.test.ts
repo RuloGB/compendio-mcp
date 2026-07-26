@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BrokenEmbeddings, FakeEmbeddings } from "../helpers/fake-embeddings";
 import { computeHash } from "../../src/application/index-pipeline";
 import { SyncIndex } from "../../src/application/sync-index";
-import { crearConvencionPolicy, type ConvencionConfig } from "../../src/domain/convencion";
+import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
 import type { Chunk, DocumentMeta, SearchFilters } from "../../src/domain/model";
 import type {
   ChunkEmbedding,
@@ -17,29 +17,29 @@ import type {
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
-const LIBRE: ConvencionConfig = {
-  modo: "libre",
-  estadosExcluidos: [],
-  camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+const LOOSE: ConventionConfig = {
+  mode: "loose",
+  excludedStatuses: [],
+  frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
-const ESTRICTO: ConvencionConfig = {
-  modo: "estricto",
-  tipos: ["guia"],
-  estados: ["vigente"],
-  estadosExcluidos: [],
-  camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+const STRICT: ConventionConfig = {
+  mode: "strict",
+  types: ["guia"],
+  statuses: ["vigente"],
+  excludedStatuses: [],
+  frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
-const OPTIONS = { chunking: { minTokens: 10, maxTokens: 800 }, sinChunking: [] };
+const OPTIONS = { chunking: { minTokens: 10, maxTokens: 800 }, noChunking: [] };
 
-/** A `DocumentSource` whose `files`/`erroresLectura` can be swapped between
+/** A `DocumentSource` whose `files`/`readErrors` can be swapped between
  * `execute()` calls, to simulate consecutive incremental sync passes. */
 class MutableSource implements DocumentSource {
   files: DocumentFile[] = [];
-  erroresLectura: ReadError[] = [];
+  readErrors: ReadError[] = [];
   async discover(): Promise<DiscoverResult> {
-    return { files: this.files, erroresLectura: this.erroresLectura };
+    return { files: this.files, readErrors: this.readErrors };
   }
 }
 
@@ -50,7 +50,7 @@ interface Harness {
   close(): void;
 }
 
-function buildHarness(embeddings: EmbeddingsProvider | null, convencion: ConvencionConfig = LIBRE): Harness {
+function buildHarness(embeddings: EmbeddingsProvider | null, convention: ConventionConfig = LOOSE): Harness {
   const store = new SqliteIndexStore(":memory:");
   const source = new MutableSource();
   const sync = new SyncIndex(
@@ -58,7 +58,7 @@ function buildHarness(embeddings: EmbeddingsProvider | null, convencion: Convenc
     new RemarkMarkdownParser(),
     store,
     embeddings,
-    crearConvencionPolicy(convencion),
+    createConventionPolicy(convention),
     OPTIONS,
   );
   return { store, source, sync, close: () => store.close() };
@@ -78,69 +78,69 @@ function dropVector(store: SqliteIndexStore, chunkId: number): void {
 class RecordingEmbeddings implements EmbeddingsProvider {
   calls: string[][] = [];
   constructor(private readonly inner: EmbeddingsProvider) {}
-  async embed(textos: string[]): Promise<Float32Array[]> {
-    this.calls.push(textos);
-    return this.inner.embed(textos);
+  async embed(texts: string[]): Promise<Float32Array[]> {
+    this.calls.push(texts);
+    return this.inner.embed(texts);
   }
 }
 
 describe("SyncIndex — fingerprint-based incremental diff", () => {
   it("indexes a new file, then leaves an unchanged file untouched on the next pass", async () => {
     const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
-    source.files = [{ ruta: "a.md", contenido: "# A\n\nTexto uno sin cambios.\n" }];
+    source.files = [{ path: "a.md", content: "# A\n\nTexto uno sin cambios.\n" }];
 
     const first = await sync.execute();
-    expect(first.indexados.map((d) => d.ruta)).toEqual(["a.md"]);
-    expect(first.eliminados).toEqual([]);
-    expect(store.getDocumentByRuta("a.md")).not.toBeNull();
+    expect(first.indexed.map((d) => d.path)).toEqual(["a.md"]);
+    expect(first.deleted).toEqual([]);
+    expect(store.getDocumentByPath("a.md")).not.toBeNull();
 
     const second = await sync.execute();
-    expect(second.indexados).toEqual([]);
-    expect(second.eliminados).toEqual([]);
+    expect(second.indexed).toEqual([]);
+    expect(second.deleted).toEqual([]);
     close();
   });
 
   it("re-indexes a changed file (hash differs) and replaces its content", async () => {
     const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
-    source.files = [{ ruta: "a.md", contenido: "# A\n\nTexto original.\n" }];
+    source.files = [{ path: "a.md", content: "# A\n\nTexto original.\n" }];
     await sync.execute();
 
-    source.files = [{ ruta: "a.md", contenido: "# A\n\nTexto completamente cambiado.\n" }];
+    source.files = [{ path: "a.md", content: "# A\n\nTexto completamente cambiado.\n" }];
     const second = await sync.execute();
 
-    expect(second.indexados.map((d) => d.ruta)).toEqual(["a.md"]);
-    const doc = store.getDocumentByRuta("a.md")!;
+    expect(second.indexed.map((d) => d.path)).toEqual(["a.md"]);
+    const doc = store.getDocumentByPath("a.md")!;
     expect(doc.hash).toBe(computeHash("# A\n\nTexto completamente cambiado.\n"));
     expect(store.searchLexical("cambiado", {}, 10)).toHaveLength(1);
     close();
   });
 
-  it("deletes a document whose ruta disappears from disk", async () => {
+  it("deletes a document whose path disappears from disk", async () => {
     const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
-    source.files = [{ ruta: "a.md", contenido: "# A\n\nTexto.\n" }];
+    source.files = [{ path: "a.md", content: "# A\n\nTexto.\n" }];
     await sync.execute();
-    expect(store.getDocumentByRuta("a.md")).not.toBeNull();
+    expect(store.getDocumentByPath("a.md")).not.toBeNull();
 
     source.files = [];
     const second = await sync.execute();
 
-    expect(second.eliminados).toEqual(["a.md"]);
-    expect(store.getDocumentByRuta("a.md")).toBeNull();
+    expect(second.deleted).toEqual(["a.md"]);
+    expect(store.getDocumentByPath("a.md")).toBeNull();
     close();
   });
 
   it("treats a rename as delete-plus-insert, with no lineage preserved", async () => {
     const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
-    source.files = [{ ruta: "viejo.md", contenido: "# Doc\n\nContenido igual.\n" }];
+    source.files = [{ path: "viejo.md", content: "# Doc\n\nContenido igual.\n" }];
     await sync.execute();
 
-    source.files = [{ ruta: "nuevo.md", contenido: "# Doc\n\nContenido igual.\n" }];
+    source.files = [{ path: "nuevo.md", content: "# Doc\n\nContenido igual.\n" }];
     const second = await sync.execute();
 
-    expect(second.eliminados).toEqual(["viejo.md"]);
-    expect(second.indexados.map((d) => d.ruta)).toEqual(["nuevo.md"]);
-    expect(store.getDocumentByRuta("viejo.md")).toBeNull();
-    expect(store.getDocumentByRuta("nuevo.md")).not.toBeNull();
+    expect(second.deleted).toEqual(["viejo.md"]);
+    expect(second.indexed.map((d) => d.path)).toEqual(["nuevo.md"]);
+    expect(store.getDocumentByPath("viejo.md")).toBeNull();
+    expect(store.getDocumentByPath("nuevo.md")).not.toBeNull();
     close();
   });
 });
@@ -149,13 +149,13 @@ describe("SyncIndex — chunk-granular vector-coverage reconciliation", () => {
   it("does not re-embed a fully vectorized hash-match document", async () => {
     const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
     source.files = [
-      { ruta: "a.md", contenido: "# A\n\nIntro.\n\n## Uno\n\nPrimero.\n\n## Dos\n\nSegundo.\n" },
+      { path: "a.md", content: "# A\n\nIntro.\n\n## Uno\n\nPrimero.\n\n## Dos\n\nSegundo.\n" },
     ];
     await sync.execute();
     expect(store.listChunksMissingVectors()).toEqual([]);
 
     const second = await sync.execute();
-    expect(second.indexados).toEqual([]);
+    expect(second.indexed).toEqual([]);
     expect(store.listChunksMissingVectors()).toEqual([]);
     close();
   });
@@ -164,27 +164,27 @@ describe("SyncIndex — chunk-granular vector-coverage reconciliation", () => {
     const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
     source.files = [
       {
-        ruta: "a.md",
-        contenido:
+        path: "a.md",
+        content:
           "# A\n\nIntro larga para que no se fusione con nada mas en el chunking.\n\n" +
           "## Uno\n\nPrimero, un parrafo suficientemente largo para superar el minimo de tokens configurado en la prueba.\n\n" +
           "## Dos\n\nSegundo, otro parrafo igual de largo para que tampoco se fusione con el anterior en el chunking.\n",
       },
     ];
     await sync.execute();
-    const doc = store.getDocumentByRuta("a.md")!;
+    const doc = store.getDocumentByPath("a.md")!;
     const chunks = store.getChunksByDocument(doc.id);
     expect(chunks.length).toBeGreaterThanOrEqual(2);
 
     const gapChunk = chunks[0]!;
     dropVector(store, gapChunk.id);
     expect(store.listChunksMissingVectors()).toEqual([
-      { chunkId: gapChunk.id, ruta: "a.md", encabezado: gapChunk.encabezado, contenido: gapChunk.contenido },
+      { chunkId: gapChunk.id, path: "a.md", heading: gapChunk.heading, content: gapChunk.content },
     ]);
 
     const second = await sync.execute();
 
-    expect(second.indexados).toEqual([]); // hash-match: not re-parsed/re-chunked
+    expect(second.indexed).toEqual([]); // hash-match: not re-parsed/re-chunked
     expect(store.listChunksMissingVectors()).toEqual([]); // gap closed
     close();
   });
@@ -193,46 +193,46 @@ describe("SyncIndex — chunk-granular vector-coverage reconciliation", () => {
     const store = new SqliteIndexStore(":memory:");
     const source = new MutableSource();
     const parser = new RemarkMarkdownParser();
-    const policy = crearConvencionPolicy(LIBRE);
+    const policy = createConventionPolicy(LOOSE);
     const withEmbeddings = new SyncIndex(source, parser, store, new FakeEmbeddings(), policy, OPTIONS);
     const withoutEmbeddings = new SyncIndex(source, parser, store, null, policy, OPTIONS);
 
     source.files = [
       {
-        ruta: "a.md",
-        contenido:
+        path: "a.md",
+        content:
           "# A\n\nIntro larga para que no se fusione con nada mas en el chunking.\n\n" +
           "## Uno\n\nPrimero, un parrafo suficientemente largo para superar el minimo de tokens configurado en la prueba.\n\n" +
           "## Dos\n\nSegundo, otro parrafo igual de largo para que tampoco se fusione con el anterior en el chunking.\n",
       },
     ];
     await withEmbeddings.execute();
-    const doc = store.getDocumentByRuta("a.md")!;
+    const doc = store.getDocumentByPath("a.md")!;
     const gapChunk = store.getChunksByDocument(doc.id)[0]!;
     dropVector(store, gapChunk.id);
     expect(store.listChunksMissingVectors()).toHaveLength(1);
 
     const reportDown = await withoutEmbeddings.execute();
-    expect(reportDown.avisoEmbeddings).toBeUndefined(); // nothing new/changed this pass, no provider to blame for
+    expect(reportDown.embeddingsWarning).toBeUndefined(); // nothing new/changed this pass, no provider to blame for
     expect(store.listChunksMissingVectors()).toHaveLength(1); // gap persists
 
     const reportUp = await withEmbeddings.execute();
-    expect(reportUp.indexados).toEqual([]);
+    expect(reportUp.indexed).toEqual([]);
     expect(store.listChunksMissingVectors()).toEqual([]); // reconsidered and closed
     store.close();
   });
 
-  it("does NOT reconcile a vector gap for a document whose ruta fails to read this pass (never entered the hash-match set)", async () => {
+  it("does NOT reconcile a vector gap for a document whose path fails to read this pass (never entered the hash-match set)", async () => {
     const store = new SqliteIndexStore(":memory:");
     const source = new MutableSource();
     const parser = new RemarkMarkdownParser();
-    const policy = crearConvencionPolicy(LIBRE);
+    const policy = createConventionPolicy(LOOSE);
     const recording = new RecordingEmbeddings(new FakeEmbeddings());
     const sync = new SyncIndex(source, parser, store, recording, policy, OPTIONS);
 
-    source.files = [{ ruta: "a.md", contenido: "# A\n\nTexto de prueba suficientemente largo para un chunk.\n" }];
+    source.files = [{ path: "a.md", content: "# A\n\nTexto de prueba suficientemente largo para un chunk.\n" }];
     await sync.execute();
-    const doc = store.getDocumentByRuta("a.md")!;
+    const doc = store.getDocumentByPath("a.md")!;
     const gapChunk = store.getChunksByDocument(doc.id)[0]!;
     dropVector(store, gapChunk.id);
     expect(store.listChunksMissingVectors()).toHaveLength(1);
@@ -240,113 +240,113 @@ describe("SyncIndex — chunk-granular vector-coverage reconciliation", () => {
     recording.calls = []; // reset the call log from the seeding pass above
 
     // a.md fails to read this pass: absent from `files`, reported in
-    // erroresLectura, so it never enters this pass's hash-match set and is
+    // readErrors, so it never enters this pass's hash-match set and is
     // protected from deletion by rule 1 — but it must ALSO stay untouched by
     // vector-coverage reconciliation, which is restricted to that same set.
     source.files = [];
-    source.erroresLectura = [{ ruta: "a.md", error: "bloqueo temporal" }];
+    source.readErrors = [{ path: "a.md", error: "bloqueo temporal" }];
 
     const report = await sync.execute();
 
-    expect(report.omitidos).toEqual([{ ruta: "a.md", errores: ["bloqueo temporal"] }]);
-    expect(store.getDocumentByRuta("a.md")).not.toBeNull(); // protected from deletion (rule 1)
+    expect(report.skipped).toEqual([{ path: "a.md", errors: ["bloqueo temporal"] }]);
+    expect(store.getDocumentByPath("a.md")).not.toBeNull(); // protected from deletion (rule 1)
     expect(store.listChunksMissingVectors()).toHaveLength(1); // gap NOT closed
     expect(recording.calls).toEqual([]); // provider never invoked for this document's chunks
     store.close();
   });
 });
 
-describe("SyncIndex — read failures protect the affected ruta subtree from deletion", () => {
-  it("excludes a directory-level failed ruta and every indexed ruta beneath it from delete candidates", async () => {
+describe("SyncIndex — read failures protect the affected path subtree from deletion", () => {
+  it("excludes a directory-level failed path and every indexed path beneath it from delete candidates", async () => {
     const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
     source.files = [
-      { ruta: "guias/a.md", contenido: "# A\n\nTexto uno.\n" },
-      { ruta: "guias/b.md", contenido: "# B\n\nTexto dos.\n" },
-      { ruta: "raiz.md", contenido: "# Raiz\n\nTexto tres.\n" },
+      { path: "guias/a.md", content: "# A\n\nTexto uno.\n" },
+      { path: "guias/b.md", content: "# B\n\nTexto dos.\n" },
+      { path: "raiz.md", content: "# Raiz\n\nTexto tres.\n" },
     ];
     await sync.execute();
 
-    source.files = [{ ruta: "raiz.md", contenido: "# Raiz\n\nTexto tres.\n" }];
-    source.erroresLectura = [{ ruta: "guias", error: "permiso denegado" }];
+    source.files = [{ path: "raiz.md", content: "# Raiz\n\nTexto tres.\n" }];
+    source.readErrors = [{ path: "guias", error: "permiso denegado" }];
     const second = await sync.execute();
 
-    expect(second.eliminados).toEqual([]);
-    expect(second.omitidos).toEqual([{ ruta: "guias", errores: ["permiso denegado"] }]);
-    expect(store.getDocumentByRuta("guias/a.md")).not.toBeNull();
-    expect(store.getDocumentByRuta("guias/b.md")).not.toBeNull();
+    expect(second.deleted).toEqual([]);
+    expect(second.skipped).toEqual([{ path: "guias", errors: ["permiso denegado"] }]);
+    expect(store.getDocumentByPath("guias/a.md")).not.toBeNull();
+    expect(store.getDocumentByPath("guias/b.md")).not.toBeNull();
     close();
   });
 
-  it("excludes a directly-failed file ruta from delete candidates", async () => {
+  it("excludes a directly-failed file path from delete candidates", async () => {
     const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
-    source.files = [{ ruta: "a.md", contenido: "# A\n\nTexto.\n" }];
+    source.files = [{ path: "a.md", content: "# A\n\nTexto.\n" }];
     await sync.execute();
 
     source.files = [];
-    source.erroresLectura = [{ ruta: "a.md", error: "bloqueo del editor" }];
+    source.readErrors = [{ path: "a.md", error: "bloqueo del editor" }];
     const second = await sync.execute();
 
-    expect(second.eliminados).toEqual([]);
-    expect(second.omitidos).toEqual([{ ruta: "a.md", errores: ["bloqueo del editor"] }]);
-    expect(store.getDocumentByRuta("a.md")).not.toBeNull();
+    expect(second.deleted).toEqual([]);
+    expect(second.skipped).toEqual([{ path: "a.md", errors: ["bloqueo del editor"] }]);
+    expect(store.getDocumentByPath("a.md")).not.toBeNull();
     close();
   });
 });
 
 describe("SyncIndex — resolver rejection on a changed known document deletes the stale row", () => {
-  it("deletes the stale row when a known ruta's changed content fails policy.resolver() under estricto", async () => {
-    const { store, source, sync, close } = buildHarness(new FakeEmbeddings(), ESTRICTO);
+  it("deletes the stale row when a known path's changed content fails policy.resolver() under strict", async () => {
+    const { store, source, sync, close } = buildHarness(new FakeEmbeddings(), STRICT);
     source.files = [
-      { ruta: "a.md", contenido: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# A\n\nTexto.\n" },
+      { path: "a.md", content: "---\ntype: guia\nmodule: m\nstatus: vigente\n---\n\n# A\n\nTexto.\n" },
     ];
     await sync.execute();
-    expect(store.getDocumentByRuta("a.md")).not.toBeNull();
+    expect(store.getDocumentByPath("a.md")).not.toBeNull();
 
     source.files = [
-      { ruta: "a.md", contenido: "---\ntipo: invalido\n---\n\n# A cambiado\n\nOtro texto.\n" },
+      { path: "a.md", content: "---\ntype: invalido\n---\n\n# A cambiado\n\nOtro texto.\n" },
     ];
     const second = await sync.execute();
 
-    expect(second.omitidos.map((o) => o.ruta)).toEqual(["a.md"]);
-    expect(second.eliminados).toEqual([]); // resolver-rejection deletion, not a disk-absence deletion
-    expect(store.getDocumentByRuta("a.md")).toBeNull();
+    expect(second.skipped.map((o) => o.path)).toEqual(["a.md"]);
+    expect(second.deleted).toEqual([]); // resolver-rejection deletion, not a disk-absence deletion
+    expect(store.getDocumentByPath("a.md")).toBeNull();
     close();
   });
 
-  it("is a plain skip, with nothing to delete, when a NEW ruta fails policy.resolver() under estricto", async () => {
-    const { store, source, sync, close } = buildHarness(new FakeEmbeddings(), ESTRICTO);
-    source.files = [{ ruta: "b.md", contenido: "---\ntipo: invalido\n---\n\n# B\n\nTexto.\n" }];
+  it("is a plain skip, with nothing to delete, when a NEW path fails policy.resolver() under strict", async () => {
+    const { store, source, sync, close } = buildHarness(new FakeEmbeddings(), STRICT);
+    source.files = [{ path: "b.md", content: "---\ntype: invalido\n---\n\n# B\n\nTexto.\n" }];
 
     const report = await sync.execute();
 
-    expect(report.omitidos.map((o) => o.ruta)).toEqual(["b.md"]);
-    expect(report.eliminados).toEqual([]);
-    expect(store.getDocumentByRuta("b.md")).toBeNull();
+    expect(report.skipped.map((o) => o.path)).toEqual(["b.md"]);
+    expect(report.deleted).toEqual([]);
+    expect(store.getDocumentByPath("b.md")).toBeNull();
     close();
   });
 });
 
 describe("SyncIndex — per-document embedding ordering and graceful degradation", () => {
-  it("commits lexical-only with avisoEmbeddings when the provider throws for this pass", async () => {
+  it("commits lexical-only with embeddingsWarning when the provider throws for this pass", async () => {
     const { store, source, sync, close } = buildHarness(new BrokenEmbeddings());
-    source.files = [{ ruta: "a.md", contenido: "# A\n\nTexto.\n" }];
+    source.files = [{ path: "a.md", content: "# A\n\nTexto.\n" }];
 
     const report = await sync.execute();
 
-    expect(report.indexados.map((d) => d.ruta)).toEqual(["a.md"]);
-    expect(report.avisoEmbeddings).toContain("roto");
+    expect(report.indexed.map((d) => d.path)).toEqual(["a.md"]);
+    expect(report.embeddingsWarning).toContain("roto");
     expect(store.hasVectors()).toBe(false);
     close();
   });
 
-  it("commits lexical-only with avisoEmbeddings when no provider is configured", async () => {
+  it("commits lexical-only with embeddingsWarning when no provider is configured", async () => {
     const { store, source, sync, close } = buildHarness(null);
-    source.files = [{ ruta: "a.md", contenido: "# A\n\nTexto.\n" }];
+    source.files = [{ path: "a.md", content: "# A\n\nTexto.\n" }];
 
     const report = await sync.execute();
 
-    expect(report.indexados.map((d) => d.ruta)).toEqual(["a.md"]);
-    expect(report.avisoEmbeddings).toBeDefined();
+    expect(report.indexed.map((d) => d.path)).toEqual(["a.md"]);
+    expect(report.embeddingsWarning).toBeDefined();
     expect(store.hasVectors()).toBe(false);
     close();
   });
@@ -354,7 +354,7 @@ describe("SyncIndex — per-document embedding ordering and graceful degradation
 
 describe("SyncIndex — embed-before-upsert atomicity (load-bearing: a hash-current row must never lack its vectors)", () => {
   /** Delegates every call to `inner`, except `upsertDocument`, which pushes
-   * `upsert:<ruta>` onto the SHARED `order` log (also used by the
+   * `upsert:<path>` onto the SHARED `order` log (also used by the
    * embeddings stub below) and records the exact `embeddings` argument it
    * received — one shared log is what makes "embed happened before upsert"
    * a meaningful, directly comparable assertion. */
@@ -367,7 +367,7 @@ describe("SyncIndex — embed-before-upsert atomicity (load-bearing: a hash-curr
     ) {}
 
     upsertDocument(meta: DocumentMeta, chunks: Chunk[], embeddings: Float32Array[] | null): SavedDocument {
-      this.order.push(`upsert:${meta.ruta}`);
+      this.order.push(`upsert:${meta.path}`);
       this.upsertEmbeddingsAtCallTime.push(embeddings);
       return this.inner.upsertDocument(meta, chunks, embeddings);
     }
@@ -380,8 +380,8 @@ describe("SyncIndex — embed-before-upsert atomicity (load-bearing: a hash-curr
     saveEmbeddings(items: ChunkEmbedding[]): void {
       this.inner.saveEmbeddings(items);
     }
-    deleteDocument(ruta: string): void {
-      this.inner.deleteDocument(ruta);
+    deleteDocument(path: string): void {
+      this.inner.deleteDocument(path);
     }
     listChunksMissingVectors() {
       return this.inner.listChunksMissingVectors();
@@ -393,8 +393,8 @@ describe("SyncIndex — embed-before-upsert atomicity (load-bearing: a hash-curr
     listDocuments() {
       return this.inner.listDocuments();
     }
-    getDocumentByRuta(ruta: string) {
-      return this.inner.getDocumentByRuta(ruta);
+    getDocumentByPath(path: string) {
+      return this.inner.getDocumentByPath(path);
     }
     getChunksByDocument(documentId: number) {
       return this.inner.getChunksByDocument(documentId);
@@ -425,9 +425,9 @@ describe("SyncIndex — embed-before-upsert atomicity (load-bearing: a hash-curr
     const store = new RecordingStore(inner, order);
     const source = new MutableSource();
     const recordingEmbeddings: EmbeddingsProvider = {
-      async embed(textos: string[]): Promise<Float32Array[]> {
+      async embed(texts: string[]): Promise<Float32Array[]> {
         order.push("embed:a.md");
-        return new FakeEmbeddings().embed(textos);
+        return new FakeEmbeddings().embed(texts);
       },
     };
     const sync = new SyncIndex(
@@ -435,12 +435,12 @@ describe("SyncIndex — embed-before-upsert atomicity (load-bearing: a hash-curr
       new RemarkMarkdownParser(),
       store,
       recordingEmbeddings,
-      crearConvencionPolicy(LIBRE),
+      createConventionPolicy(LOOSE),
       OPTIONS,
     );
 
     source.files = [
-      { ruta: "a.md", contenido: "# A\n\nTexto suficientemente largo para producir un chunk real.\n" },
+      { path: "a.md", content: "# A\n\nTexto suficientemente largo para producir un chunk real.\n" },
     ];
 
     await sync.execute();
@@ -452,8 +452,8 @@ describe("SyncIndex — embed-before-upsert atomicity (load-bearing: a hash-curr
     expect(store.upsertEmbeddingsAtCallTime).toHaveLength(1);
     expect(store.upsertEmbeddingsAtCallTime[0]).not.toBeNull();
 
-    // The provider's embed() call for this ruta happened strictly BEFORE the
-    // store commit for the same ruta — one shared log makes this a direct,
+    // The provider's embed() call for this path happened strictly BEFORE the
+    // store commit for the same path — one shared log makes this a direct,
     // meaningful index comparison rather than two independently-timed spies.
     expect(order).toEqual(["embed:a.md", "upsert:a.md"]);
 
@@ -465,8 +465,8 @@ describe("SyncIndex — per-document write-failure resilience", () => {
   class ThrowingStore implements IndexStore {
     constructor(
       private readonly inner: IndexStore,
-      private readonly failUpsertRuta: string,
-      private readonly failDeleteRuta: string,
+      private readonly failUpsertPath: string,
+      private readonly failDeletePath: string,
     ) {}
     reset(): void {
       this.inner.reset();
@@ -477,12 +477,12 @@ describe("SyncIndex — per-document write-failure resilience", () => {
     saveEmbeddings(items: ChunkEmbedding[]): void {
       this.inner.saveEmbeddings(items);
     }
-    deleteDocument(ruta: string): void {
-      if (ruta === this.failDeleteRuta) throw new Error("fallo simulado de borrado");
-      this.inner.deleteDocument(ruta);
+    deleteDocument(path: string): void {
+      if (path === this.failDeletePath) throw new Error("fallo simulado de borrado");
+      this.inner.deleteDocument(path);
     }
     upsertDocument(meta: DocumentMeta, chunks: Chunk[], embeddings: Float32Array[] | null): SavedDocument {
-      if (meta.ruta === this.failUpsertRuta) throw new Error("fallo simulado de upsert");
+      if (meta.path === this.failUpsertPath) throw new Error("fallo simulado de upsert");
       return this.inner.upsertDocument(meta, chunks, embeddings);
     }
     listChunksMissingVectors() {
@@ -494,8 +494,8 @@ describe("SyncIndex — per-document write-failure resilience", () => {
     listDocuments() {
       return this.inner.listDocuments();
     }
-    getDocumentByRuta(ruta: string) {
-      return this.inner.getDocumentByRuta(ruta);
+    getDocumentByPath(path: string) {
+      return this.inner.getDocumentByPath(path);
     }
     getChunksByDocument(documentId: number) {
       return this.inner.getChunksByDocument(documentId);
@@ -523,8 +523,8 @@ describe("SyncIndex — per-document write-failure resilience", () => {
   it("skips a document whose upsertDocument throws and one whose deleteDocument throws, completing the rest of the pass", async () => {
     const inner = new SqliteIndexStore(":memory:");
     inner.saveDocument(
-      { ruta: "a-borrar.md", titulo: "A borrar", resumen: "r", etiquetas: [], hash: "hash-antiguo" },
-      [{ encabezado: "H", contenido: "contenido viejo", orden: 0 }],
+      { path: "a-borrar.md", title: "A borrar", summary: "r", tags: [], hash: "hash-antiguo" },
+      [{ heading: "H", content: "contenido viejo", position: 0 }],
     );
     const store = new ThrowingStore(inner, "falla-upsert.md", "a-borrar.md");
     const source = new MutableSource();
@@ -533,22 +533,22 @@ describe("SyncIndex — per-document write-failure resilience", () => {
       new RemarkMarkdownParser(),
       store,
       new FakeEmbeddings(),
-      crearConvencionPolicy(LIBRE),
+      createConventionPolicy(LOOSE),
       OPTIONS,
     );
 
     source.files = [
-      { ruta: "ok.md", contenido: "# OK\n\nTexto bien.\n" },
-      { ruta: "falla-upsert.md", contenido: "# Falla\n\nTexto que no se guarda.\n" },
+      { path: "ok.md", content: "# OK\n\nTexto bien.\n" },
+      { path: "falla-upsert.md", content: "# Falla\n\nTexto que no se guarda.\n" },
     ];
     // a-borrar.md is indexed in `inner` but absent from this pass's disk listing.
 
     const report = await sync.execute();
 
-    expect(report.indexados.map((d) => d.ruta)).toEqual(["ok.md"]);
-    expect(report.omitidos.map((o) => o.ruta).sort()).toEqual(["a-borrar.md", "falla-upsert.md"]);
-    expect(inner.getDocumentByRuta("ok.md")).not.toBeNull();
-    expect(inner.getDocumentByRuta("a-borrar.md")).not.toBeNull(); // delete failed: row survives, not orphaned
+    expect(report.indexed.map((d) => d.path)).toEqual(["ok.md"]);
+    expect(report.skipped.map((o) => o.path).sort()).toEqual(["a-borrar.md", "falla-upsert.md"]);
+    expect(inner.getDocumentByPath("ok.md")).not.toBeNull();
+    expect(inner.getDocumentByPath("a-borrar.md")).not.toBeNull(); // delete failed: row survives, not orphaned
     inner.close();
   });
 });

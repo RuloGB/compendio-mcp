@@ -1,5 +1,5 @@
 ---
-etiquetas: [lead, importacion, csv, lote]
+tags: [lead, importacion, csv, lote]
 ---
 
 # Importación masiva de leads por CSV

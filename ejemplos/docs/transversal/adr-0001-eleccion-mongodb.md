@@ -1,5 +1,5 @@
 ---
-estado: obsoleto
+status: obsoleto
 ---
 
 # ADR-0001: MongoDB como base de datos inicial

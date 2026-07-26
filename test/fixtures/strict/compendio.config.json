@@ -1,0 +1,9 @@
+{
+  "docsDir": "docs",
+  "convention": {
+    "mode": "strict",
+    "types": ["functional", "adr", "api", "qa", "guide"],
+    "statuses": ["draft", "current", "deprecated"],
+    "excludedStatuses": ["draft", "deprecated"]
+  }
+}

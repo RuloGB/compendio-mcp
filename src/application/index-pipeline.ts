@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { chunkOutline, type ChunkingOptions } from "../domain/chunking.js";
-import type { ConvencionPolicy } from "../domain/convencion.js";
+import type { ConventionPolicy } from "../domain/convention.js";
 import type { Chunk, DocumentMeta } from "../domain/model.js";
 import type { DocumentFile, MarkdownParser } from "../domain/ports.js";
 
@@ -8,7 +8,7 @@ export interface PipelineOptions {
   chunking: ChunkingOptions;
   /** File names (relative path or basename) indexed as a single chunk,
    * without heading-based chunking. The glossary is the canonical case. */
-  sinChunking: string[];
+  noChunking: string[];
 }
 
 export interface PipelineSuccess {
@@ -19,15 +19,15 @@ export interface PipelineSuccess {
 
 export interface PipelineFailure {
   ok: false;
-  errores: string[];
+  errors: string[];
 }
 
 export type PipelineResult = PipelineSuccess | PipelineFailure;
 
 /** SHA-256 of raw file content — the sole change fingerprint shared by the
  * full-rebuild (`IndexDocuments`) and incremental-sync (`SyncIndex`) paths. */
-export function computeHash(contenido: string): string {
-  return createHash("sha256").update(contenido, "utf8").digest("hex");
+export function computeHash(content: string): string {
+  return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
 export function describeError(error: unknown): string {
@@ -44,48 +44,48 @@ export function describeError(error: unknown): string {
  */
 export function transformFile(
   parser: MarkdownParser,
-  policy: ConvencionPolicy,
+  policy: ConventionPolicy,
   options: PipelineOptions,
   file: DocumentFile,
   hash: string,
 ): PipelineResult {
   let parsed;
   try {
-    parsed = parser.parse(file.contenido);
+    parsed = parser.parse(file.content);
   } catch (error) {
-    return { ok: false, errores: [describeError(error)] };
+    return { ok: false, errors: [describeError(error)] };
   }
 
   const resolution = policy.resolver({
     data: parsed.data,
-    ruta: file.ruta,
-    titulo: parsed.outline.titulo,
-    resumen: parsed.outline.resumen,
+    path: file.path,
+    title: parsed.outline.title,
+    summary: parsed.outline.summary,
     hash,
   });
 
   if (!resolution.ok) {
-    return { ok: false, errores: resolution.errores };
+    return { ok: false, errors: resolution.errors };
   }
 
-  const chunks = isSinChunking(file.ruta, options.sinChunking)
-    ? wholeDocumentChunk(resolution.meta.titulo, parsed.body)
+  const chunks = isNoChunking(file.path, options.noChunking)
+    ? wholeDocumentChunk(resolution.meta.title, parsed.body)
     : chunkOutline(parsed.outline, options.chunking);
 
   if (chunks.length === 0) {
-    return { ok: false, errores: ["el documento no tiene contenido indexable"] };
+    return { ok: false, errors: ["the document has no indexable content"] };
   }
 
   return { ok: true, meta: resolution.meta, chunks };
 }
 
-function isSinChunking(ruta: string, sinChunking: string[]): boolean {
-  const basename = ruta.split("/").pop() ?? ruta;
-  return sinChunking.some((entry) => entry === ruta || entry === basename);
+function isNoChunking(path: string, noChunking: string[]): boolean {
+  const basename = path.split("/").pop() ?? path;
+  return noChunking.some((entry) => entry === path || entry === basename);
 }
 
-function wholeDocumentChunk(titulo: string, body: string): Chunk[] {
-  const contenido = body.trim();
-  if (contenido.length === 0) return [];
-  return [{ encabezado: titulo, contenido, orden: 0 }];
+function wholeDocumentChunk(title: string, body: string): Chunk[] {
+  const content = body.trim();
+  if (content.length === 0) return [];
+  return [{ heading: title, content, position: 0 }];
 }

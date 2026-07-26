@@ -26,11 +26,11 @@ export class TransformersEmbeddings implements EmbeddingsProvider {
     return new TransformersEmbeddings(extractor as FeatureExtractor);
   }
 
-  async embed(textos: string[]): Promise<Float32Array[]> {
-    if (textos.length === 0) return [];
-    const output = await this.extractor(textos, { pooling: "mean", normalize: true });
+  async embed(texts: string[]): Promise<Float32Array[]> {
+    if (texts.length === 0) return [];
+    const output = await this.extractor(texts, { pooling: "mean", normalize: true });
     const [rows, dim] = [output.dims[0] ?? 0, output.dims[output.dims.length - 1] ?? 0];
-    if (rows !== textos.length || dim === 0) {
+    if (rows !== texts.length || dim === 0) {
       throw new Error(`salida de embeddings inesperada (dims: ${output.dims.join("x")})`);
     }
     const data =
@@ -54,7 +54,7 @@ export class LazyEmbeddings implements EmbeddingsProvider {
 
   constructor(private readonly factory: () => Promise<EmbeddingsProvider>) {}
 
-  async embed(textos: string[]): Promise<Float32Array[]> {
+  async embed(texts: string[]): Promise<Float32Array[]> {
     if (this.failure !== null) throw this.failure;
     if (this.provider === null) {
       try {
@@ -64,6 +64,6 @@ export class LazyEmbeddings implements EmbeddingsProvider {
         throw this.failure;
       }
     }
-    return this.provider.embed(textos);
+    return this.provider.embed(texts);
   }
 }

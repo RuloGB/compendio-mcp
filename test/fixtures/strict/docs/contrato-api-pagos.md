@@ -1,7 +1,7 @@
 ---
-tipo: api
-modulo: demo
-estado: vigente
+type: api
+module: demo
+status: current
 ---
 
 # API sintética: contrato de pagos

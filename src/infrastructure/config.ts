@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ConvencionConfig } from "../domain/convencion.js";
+import type { ConventionConfig } from "../domain/convention.js";
 import { INDEX_FILE } from "../domain/index-markdown.js";
 
 export interface CompendioConfig {
@@ -28,19 +28,19 @@ export interface CompendioConfig {
     throttleMs: number;
   };
   /**
-   * Documentation convention: zero-config `libre` inference vs opt-in
-   * `estricto` linting. `estadosExcluidos` (search deny-list) lives here,
-   * not under `search` — the retired `search.estadosExcluidos` key is
-   * warn-and-ignore, not a compatibility shim (see
-   * `warnIfLegacyEstadosExcluidos`).
+   * Documentation convention: zero-config `loose` inference vs opt-in
+   * `strict` linting. `excludedStatuses` (the search deny-list) lives here,
+   * not under `search`.
    */
-  convencion: ConvencionConfig;
+  convention: ConventionConfig;
 }
 
 export const CONFIG_FILE = "compendio.config.json";
 
 /** Files indexed as a single chunk (no heading-based chunking). */
-export const SIN_CHUNKING = ["glosario.md"];
+// es-frozen: filename in the Spanish `ejemplos/` reference corpus; translating
+// it would change the corpus chunk count and move the eval baseline.
+export const NO_CHUNKING = ["glosario.md"];
 
 /** Default incremental-sync throttle: 30 seconds. */
 export const DEFAULT_THROTTLE_MS = 30000;
@@ -53,10 +53,10 @@ export const DEFAULT_CONFIG: CompendioConfig = {
   chunk: { minTokens: 100, maxTokens: 800 },
   search: { k: 5 },
   sync: { throttleMs: DEFAULT_THROTTLE_MS },
-  convencion: {
-    modo: "libre",
-    estadosExcluidos: [],
-    camposFrontmatter: { tipo: "tipo", modulo: "modulo", estado: "estado" },
+  convention: {
+    mode: "loose",
+    excludedStatuses: [],
+    frontmatterFields: { type: "type", module: "module", status: "status" },
   },
 };
 
@@ -80,25 +80,7 @@ export function loadConfig(root: string): CompendioConfig {
       `${CONFIG_FILE} no es JSON valido: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  warnIfLegacyEstadosExcluidos(parsed);
   return mergeConfig(structuredClone(DEFAULT_CONFIG), parsed as Partial<CompendioConfig>);
-}
-
-/**
- * Detects the retired top-level `search.estadosExcluidos` key and warns on
- * stderr. Warn-and-ignore, not a compatibility shim: the legacy value is
- * never read into the returned config, and no longer has any effect on
- * search, `docs_overview`, or `INDEX.md`.
- */
-function warnIfLegacyEstadosExcluidos(parsed: unknown): void {
-  if (typeof parsed !== "object" || parsed === null) return;
-  const search = (parsed as Record<string, unknown>)["search"];
-  if (typeof search !== "object" || search === null) return;
-  if ("estadosExcluidos" in search) {
-    console.error(
-      `${CONFIG_FILE}: 'search.estadosExcluidos' esta obsoleto y ya no tiene ningun efecto; usa 'convencion.estadosExcluidos'.`,
-    );
-  }
 }
 
 function mergeConfig(base: CompendioConfig, override: Partial<CompendioConfig>): CompendioConfig {
@@ -108,13 +90,12 @@ function mergeConfig(base: CompendioConfig, override: Partial<CompendioConfig>):
     db: override.db ?? base.db,
     embeddings: { ...base.embeddings, ...override.embeddings },
     chunk: { ...base.chunk, ...override.chunk },
-    // Explicit whitelist (not a spread): a raw parsed config may still carry
-    // the retired `search.estadosExcluidos` key at runtime even though the
-    // type no longer declares it — `warnIfLegacyEstadosExcluidos` warns, and
-    // this line ensures it never leaks into the returned config.
+    // Explicit whitelist (not a spread): a raw parsed config may carry keys
+    // the type does not declare, and this line ensures none of them leak into
+    // the returned config.
     search: { k: override.search?.k ?? base.search.k },
     sync: { throttleMs: validThrottleMs(override.sync?.throttleMs) ?? base.sync.throttleMs },
-    convencion: mergeConvencion(base.convencion, override.convencion),
+    convention: mergeConvention(base.convention, override.convention),
   };
 }
 
@@ -126,22 +107,22 @@ function validThrottleMs(value: unknown): number | undefined {
 }
 
 /**
- * Two-level merge: `modo`/`tipos`/`estados`/`estadosExcluidos` are
- * whole-value replaces (same pattern as `exclude`); `camposFrontmatter`
+ * Two-level merge: `mode`/`types`/`statuses`/`excludedStatuses` are
+ * whole-value replaces (same pattern as `exclude`); `frontmatterFields`
  * merges per key so declaring one mapped field never wipes its siblings'
  * identity defaults.
  */
-function mergeConvencion(
-  base: ConvencionConfig,
-  override: Partial<ConvencionConfig> | undefined,
-): ConvencionConfig {
-  const tipos = override?.tipos ?? base.tipos;
-  const estados = override?.estados ?? base.estados;
+function mergeConvention(
+  base: ConventionConfig,
+  override: Partial<ConventionConfig> | undefined,
+): ConventionConfig {
+  const types = override?.types ?? base.types;
+  const statuses = override?.statuses ?? base.statuses;
   return {
-    modo: override?.modo ?? base.modo,
-    ...(tipos !== undefined ? { tipos } : {}),
-    ...(estados !== undefined ? { estados } : {}),
-    estadosExcluidos: override?.estadosExcluidos ?? base.estadosExcluidos,
-    camposFrontmatter: { ...base.camposFrontmatter, ...override?.camposFrontmatter },
+    mode: override?.mode ?? base.mode,
+    ...(types !== undefined ? { types } : {}),
+    ...(statuses !== undefined ? { statuses } : {}),
+    excludedStatuses: override?.excludedStatuses ?? base.excludedStatuses,
+    frontmatterFields: { ...base.frontmatterFields, ...override?.frontmatterFields },
   };
 }

@@ -1,7 +1,7 @@
 ---
-tipo: funcional
-modulo: demo
-estado: vigente
+type: functional
+module: demo
+status: current
 ---
 
 # Especificación funcional: alertas de inventario

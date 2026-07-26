@@ -1,5 +1,5 @@
 import type { ChunkingOptions } from "../domain/chunking.js";
-import type { ConvencionPolicy } from "../domain/convencion.js";
+import type { ConventionPolicy } from "../domain/convention.js";
 import type { SearchMode } from "../domain/model.js";
 import type {
   DocumentSource,
@@ -10,31 +10,31 @@ import type {
 import { computeHash, describeError, transformFile } from "./index-pipeline.js";
 
 export interface IndexedFileReport {
-  ruta: string;
-  titulo: string;
+  path: string;
+  title: string;
   chunks: number;
 }
 
 export interface SkippedFileReport {
-  ruta: string;
-  errores: string[];
+  path: string;
+  errors: string[];
 }
 
 export interface IndexReport {
-  modo: SearchMode;
-  indexados: IndexedFileReport[];
-  omitidos: SkippedFileReport[];
+  mode: SearchMode;
+  indexed: IndexedFileReport[];
+  skipped: SkippedFileReport[];
   totalChunks: number;
-  duracionMs: number;
+  durationMs: number;
   /** Present when embeddings were requested but unavailable (degraded mode). */
-  avisoEmbeddings?: string;
+  embeddingsWarning?: string;
 }
 
 export interface IndexDocumentsOptions {
   chunking: ChunkingOptions;
   /** File names (relative path or basename) indexed as a single chunk,
    * without heading-based chunking. The glossary is the canonical case. */
-  sinChunking: string[];
+  noChunking: string[];
   embeddingBatchSize?: number;
 }
 
@@ -42,9 +42,9 @@ const DEFAULT_BATCH_SIZE = 16;
 
 /**
  * Full reindex pipeline: discover -> parse & resolve -> chunk -> embed ->
- * persist. A file is skipped and reported in `omitidos` for any resilience
+ * persist. A file is skipped and reported in `skipped` for any resilience
  * reason (unreadable, unparseable, no indexable content) or, under the
- * injected `ConvencionPolicy`, for a metadata reason. If the embeddings
+ * injected `ConventionPolicy`, for a metadata reason. If the embeddings
  * provider is missing or fails, indexing completes in lexical-only mode
  * instead of crashing (graceful degradation).
  */
@@ -54,29 +54,29 @@ export class IndexDocuments {
     private readonly parser: MarkdownParser,
     private readonly store: IndexStore,
     private readonly embeddings: EmbeddingsProvider | null,
-    private readonly policy: ConvencionPolicy,
+    private readonly policy: ConventionPolicy,
     private readonly options: IndexDocumentsOptions,
   ) {}
 
   async execute(): Promise<IndexReport> {
     const start = Date.now();
-    const { files, erroresLectura } = await this.source.discover();
+    const { files, readErrors } = await this.source.discover();
 
-    const indexados: IndexedFileReport[] = [];
-    const omitidos: SkippedFileReport[] = erroresLectura.map((e) => ({
-      ruta: e.ruta,
-      errores: [e.error],
+    const indexed: IndexedFileReport[] = [];
+    const skipped: SkippedFileReport[] = readErrors.map((e) => ({
+      path: e.path,
+      errors: [e.error],
     }));
-    const pending: { chunkId: number; texto: string }[] = [];
+    const pending: { chunkId: number; text: string }[] = [];
 
     this.store.reset();
 
     for (const file of files) {
-      const hash = computeHash(file.contenido);
+      const hash = computeHash(file.content);
       const result = transformFile(this.parser, this.policy, this.options, file, hash);
 
       if (!result.ok) {
-        omitidos.push({ ruta: file.ruta, errores: result.errores });
+        skipped.push({ path: file.path, errors: result.errors });
         continue;
       }
 
@@ -85,43 +85,43 @@ export class IndexDocuments {
       chunks.forEach((chunk, i) => {
         pending.push({
           chunkId: saved.chunkIds[i]!,
-          texto: `${chunk.encabezado}\n${chunk.contenido}`,
+          text: `${chunk.heading}\n${chunk.content}`,
         });
       });
-      indexados.push({ ruta: file.ruta, titulo: meta.titulo, chunks: chunks.length });
+      indexed.push({ path: file.path, title: meta.title, chunks: chunks.length });
     }
 
-    const aviso = await this.embedPending(pending);
+    const warning = await this.embedPending(pending);
 
     const report: IndexReport = {
-      modo: aviso === null && this.embeddings !== null ? "hibrido" : "lexico",
-      indexados,
-      omitidos,
+      mode: warning === null && this.embeddings !== null ? "hybrid" : "lexical",
+      indexed,
+      skipped,
       totalChunks: pending.length,
-      duracionMs: Date.now() - start,
+      durationMs: Date.now() - start,
     };
-    if (aviso !== null) report.avisoEmbeddings = aviso;
+    if (warning !== null) report.embeddingsWarning = warning;
     return report;
   }
 
   /** Returns a warning message when embeddings could not be generated. */
-  private async embedPending(pending: { chunkId: number; texto: string }[]): Promise<string | null> {
+  private async embedPending(pending: { chunkId: number; text: string }[]): Promise<string | null> {
     if (this.embeddings === null) {
-      return "indexado sin embeddings (proveedor no disponible): busqueda en modo lexico";
+      return "indexed without embeddings (provider unavailable): search runs in lexical mode";
     }
     const batchSize = this.options.embeddingBatchSize ?? DEFAULT_BATCH_SIZE;
     try {
       for (let i = 0; i < pending.length; i += batchSize) {
         const batch = pending.slice(i, i + batchSize);
         // "passage: " prefix is required by the E5 embedding family.
-        const vectors = await this.embeddings.embed(batch.map((p) => `passage: ${p.texto}`));
+        const vectors = await this.embeddings.embed(batch.map((p) => `passage: ${p.text}`));
         this.store.saveEmbeddings(
           batch.map((p, j) => ({ chunkId: p.chunkId, embedding: vectors[j]! })),
         );
       }
       return null;
     } catch (error) {
-      return `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
+      return `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
     }
   }
 

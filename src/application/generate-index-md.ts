@@ -1,17 +1,17 @@
 import { createHash } from "node:crypto";
-import type { ConvencionPolicy } from "../domain/convencion.js";
+import type { ConventionPolicy } from "../domain/convention.js";
 import { INDEX_FILE, renderIndexMd, type IndexEntry } from "../domain/index-markdown.js";
 import type { DocumentSource, IndexFileWriter, MarkdownParser } from "../domain/ports.js";
 import type { SkippedFileReport } from "./index-documents.js";
 
 export interface IndexMdReport {
   /** Path of the index file, as resolved by the writer. */
-  ruta: string;
+  path: string;
   /** False when INDEX.md already had the generated content. */
-  cambiado: boolean;
+  changed: boolean;
   /** Documents listed in the index. */
-  documentos: number;
-  omitidos: SkippedFileReport[];
+  documents: number;
+  skipped: SkippedFileReport[];
 }
 
 /**
@@ -26,49 +26,49 @@ export class GenerateIndexMd {
     private readonly source: DocumentSource,
     private readonly parser: MarkdownParser,
     private readonly writer: IndexFileWriter,
-    private readonly policy: ConvencionPolicy,
-    private readonly comparar: (a: IndexEntry, b: IndexEntry) => number,
+    private readonly policy: ConventionPolicy,
+    private readonly compare: (a: IndexEntry, b: IndexEntry) => number,
   ) {}
 
   async execute(): Promise<IndexMdReport> {
-    const { files, erroresLectura } = await this.source.discover();
+    const { files, readErrors } = await this.source.discover();
     const entries: IndexEntry[] = [];
-    const omitidos: SkippedFileReport[] = erroresLectura
-      .filter((e) => e.ruta !== INDEX_FILE)
-      .map((e) => ({ ruta: e.ruta, errores: [e.error] }));
+    const skipped: SkippedFileReport[] = readErrors
+      .filter((e) => e.path !== INDEX_FILE)
+      .map((e) => ({ path: e.path, errors: [e.error] }));
 
     for (const file of files) {
       // The index never lists itself, even if the config exclude was overridden.
-      if (file.ruta === INDEX_FILE) continue;
+      if (file.path === INDEX_FILE) continue;
 
       let parsed;
       try {
-        parsed = this.parser.parse(file.contenido);
+        parsed = this.parser.parse(file.content);
       } catch (error) {
-        omitidos.push({ ruta: file.ruta, errores: [describeError(error)] });
+        skipped.push({ path: file.path, errors: [describeError(error)] });
         continue;
       }
 
       const resolution = this.policy.resolver({
         data: parsed.data,
-        ruta: file.ruta,
-        titulo: parsed.outline.titulo,
-        resumen: parsed.outline.resumen,
-        hash: createHash("sha256").update(file.contenido, "utf8").digest("hex"),
+        path: file.path,
+        title: parsed.outline.title,
+        summary: parsed.outline.summary,
+        hash: createHash("sha256").update(file.content, "utf8").digest("hex"),
       });
       if (!resolution.ok) {
-        omitidos.push({ ruta: file.ruta, errores: resolution.errores });
+        skipped.push({ path: file.path, errors: resolution.errors });
         continue;
       }
       entries.push(resolution.meta);
     }
 
-    const escrito = await this.writer.write(renderIndexMd(entries, this.comparar));
+    const written = await this.writer.write(renderIndexMd(entries, this.compare));
     return {
-      ruta: escrito.ruta,
-      cambiado: escrito.cambiado,
-      documentos: entries.length,
-      omitidos,
+      path: written.path,
+      changed: written.changed,
+      documents: entries.length,
+      skipped,
     };
   }
 }

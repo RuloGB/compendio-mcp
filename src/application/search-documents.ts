@@ -6,20 +6,20 @@ import type { EmbeddingsProvider, IndexStore } from "../domain/ports.js";
 export interface SearchQuery {
   query: string;
   /** Open string, project-defined; empty/whitespace-only is treated as absent. */
-  tipo?: string;
-  modulo?: string;
-  etiquetas?: string[];
+  type?: string;
+  module?: string;
+  tags?: string[];
   k?: number;
-  /** Include documents whose estado is in the config deny-list (excluded by default). */
-  incluirNoVigentes?: boolean;
+  /** Include documents whose status is in the config deny-list (excluded by default). */
+  includeExcluded?: boolean;
   /** Skip the vector leg even when embeddings are available. */
-  forzarLexico?: boolean;
+  forceLexical?: boolean;
 }
 
 export interface SearchDefaults {
   k: number;
-  /** Deny-list applied unless `incluirNoVigentes` is requested; default []. */
-  estadosExcluidos: string[];
+  /** Deny-list applied unless `includeExcluded` is requested; default []. */
+  excludedStatuses: string[];
 }
 
 const MAX_CHUNKS_PER_DOCUMENT = 2;
@@ -30,8 +30,8 @@ const MIN_CANDIDATES = 50;
 /**
  * Hybrid search: the query runs against FTS5 (BM25) and sqlite-vec, both
  * rankings are combined with Reciprocal Rank Fusion, and results are capped
- * at 2 chunks per document. Falls back to lexical-only mode ("modo":
- * "lexico") when embeddings or the vector index are unavailable.
+ * at 2 chunks per document. Falls back to lexical-only mode ("mode":
+ * "lexical") when embeddings or the vector index are unavailable.
  */
 export class SearchDocuments {
   constructor(
@@ -60,36 +60,36 @@ export class SearchDocuments {
     ).slice(0, k);
 
     const documents = this.store.getDocumentsByIds(chunks.map((c) => c.documentId));
-    const resultados: SearchResultItem[] = [];
+    const results: SearchResultItem[] = [];
     for (const entry of top) {
       const chunk = chunkById.get(entry.id);
       if (chunk === undefined) continue;
       const doc = documents.get(chunk.documentId);
       if (doc === undefined) continue;
       const item: SearchResultItem = {
-        ruta: doc.ruta,
-        titulo: doc.titulo,
-        seccion: chunk.encabezado,
-        extracto: buildExcerpt(chunk.contenido),
+        path: doc.path,
+        title: doc.title,
+        section: chunk.heading,
+        excerpt: buildExcerpt(chunk.content),
         score: Number(entry.score.toFixed(4)),
       };
-      if (doc.estado !== undefined) item.estado = doc.estado;
-      resultados.push(item);
+      if (doc.status !== undefined) item.status = doc.status;
+      results.push(item);
     }
 
-    return { modo: vectorIds === null ? "lexico" : "hibrido", resultados };
+    return { mode: vectorIds === null ? "lexical" : "hybrid", results };
   }
 
   private buildFilters(query: SearchQuery): SearchFilters {
     const filters: SearchFilters = {};
-    const tipo = query.tipo?.trim();
-    if (tipo !== undefined && tipo.length > 0) filters.tipo = tipo;
-    if (query.modulo !== undefined) filters.modulo = query.modulo;
-    if (query.etiquetas !== undefined && query.etiquetas.length > 0) {
-      filters.etiquetas = query.etiquetas.map((e) => e.toLowerCase());
+    const type = query.type?.trim();
+    if (type !== undefined && type.length > 0) filters.type = type;
+    if (query.module !== undefined) filters.module = query.module;
+    if (query.tags !== undefined && query.tags.length > 0) {
+      filters.tags = query.tags.map((e) => e.toLowerCase());
     }
-    if (query.incluirNoVigentes !== true && this.defaults.estadosExcluidos.length > 0) {
-      filters.estadosExcluidos = this.defaults.estadosExcluidos;
+    if (query.includeExcluded !== true && this.defaults.excludedStatuses.length > 0) {
+      filters.excludedStatuses = this.defaults.excludedStatuses;
     }
     return filters;
   }
@@ -100,7 +100,7 @@ export class SearchDocuments {
     filters: SearchFilters,
     limit: number,
   ): Promise<number[] | null> {
-    if (query.forzarLexico === true) return null;
+    if (query.forceLexical === true) return null;
     if (this.embeddings === null || !this.store.hasVectors()) return null;
     try {
       // "query: " prefix is required by the E5 embedding family.

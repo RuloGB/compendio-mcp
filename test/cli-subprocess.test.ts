@@ -32,7 +32,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DIST_DIR = join(REPO_ROOT, "dist");
 const CLI = join(DIST_DIR, "cli.js");
-const FIXTURE = join(REPO_ROOT, "test", "fixtures", "estricto");
+const FIXTURE = join(REPO_ROOT, "test", "fixtures", "strict");
 
 /** Most recent mtime under `dir`, used to detect a stale `dist/`. */
 function newestMtimeMs(dir: string): number {
@@ -74,9 +74,9 @@ beforeAll(() => {
   // next to the config, and the fixture must stay pristine.
   cpSync(join(FIXTURE, "docs"), join(workdir, "docs"), { recursive: true });
   cpSync(join(FIXTURE, "compendio.config.json"), join(workdir, "compendio.config.json"));
-  // `--lexico` throughout: the real embeddings provider would download a model
+  // `--lexical` throughout: the real embeddings provider would download a model
   // on first use. Lexical mode keeps these tests hermetic and offline.
-  indexRun = runCli(["--root", workdir, "index", "--lexico"]);
+  indexRun = runCli(["--root", workdir, "index", "--lexical"]);
 }, 120_000);
 
 afterAll(() => {
@@ -118,16 +118,39 @@ describe("CLI subprocess: corpus commands", () => {
   it("index exits 0 and reports the indexed documents", () => {
     expect(indexRun.status).toBe(0);
     // The fixture ships 5 documents; INDEX.md is excluded by the indexer.
-    expect(indexRun.stdout).toMatch(/Indexados 5 documentos \(\d+ chunks\)/);
+    expect(indexRun.stdout).toMatch(/Indexed 5 documents \(\d+ chunks\)/);
   });
 
   it("search exits 0 and writes parseable JSON to stdout", () => {
-    const run = runCli(["--root", workdir, "search", "onboarding de un servicio", "--lexico"]);
+    const run = runCli(["--root", workdir, "search", "onboarding de un servicio", "--lexical"]);
     expect(run.status).toBe(0);
-    const payload = JSON.parse(run.stdout) as { modo: string; resultados: { ruta: string }[] };
-    expect(payload.modo).toBe("lexico");
-    expect(payload.resultados.length).toBeGreaterThan(0);
-    expect(payload.resultados.map((r) => r.ruta)).toContain("guia-onboarding.md");
+    const payload = JSON.parse(run.stdout) as { mode: string; results: { path: string }[] };
+    expect(payload.mode).toBe("lexical");
+    expect(payload.results.length).toBeGreaterThan(0);
+    expect(payload.results.map((r) => r.path)).toContain("guia-onboarding.md");
+  });
+
+  it("excludedStatuses deny-list: a draft document is hidden by default and surfaced with --all", () => {
+    // The fixture declares excludedStatuses: ["draft", "deprecated"] and
+    // ships plan-pruebas-alertas.md in status draft specifically to
+    // exercise this deny-list. "plan de pruebas" is unique to that document
+    // within the fixture (checked against the other 4 docs' prose).
+    const denied = runCli(["--root", workdir, "search", "plan de pruebas alertas", "--lexical"]);
+    expect(denied.status).toBe(0);
+    const deniedPayload = JSON.parse(denied.stdout) as { results: { path: string }[] };
+    expect(deniedPayload.results.map((r) => r.path)).not.toContain("plan-pruebas-alertas.md");
+
+    const allowed = runCli([
+      "--root",
+      workdir,
+      "search",
+      "plan de pruebas alertas",
+      "--lexical",
+      "--all",
+    ]);
+    expect(allowed.status).toBe(0);
+    const allowedPayload = JSON.parse(allowed.stdout) as { results: { path: string }[] };
+    expect(allowedPayload.results.map((r) => r.path)).toContain("plan-pruebas-alertas.md");
   });
 });
 
@@ -168,15 +191,15 @@ describe("CLI subprocess: invoked through a link (npx / global install)", () => 
       return;
     }
 
-    const run = runCli(["--root", workdir, "search", "onboarding de un servicio", "--lexico"], link.cli);
+    const run = runCli(["--root", workdir, "search", "onboarding de un servicio", "--lexical"], link.cli);
 
     // Asserting the exit code alone would NOT catch the regression: with the
     // broken guard the process exits 0 too. The tell is empty stdout — the
     // command parsed nothing and did nothing. Assert on the output.
     expect(run.status).toBe(0);
     expect(run.stdout.trim().length).toBeGreaterThan(0);
-    const payload = JSON.parse(run.stdout) as { resultados: { ruta: string }[] };
-    expect(payload.resultados.map((r) => r.ruta)).toContain("guia-onboarding.md");
+    const payload = JSON.parse(run.stdout) as { results: { path: string }[] };
+    expect(payload.results.map((r) => r.path)).toContain("guia-onboarding.md");
   });
 
   it("reports --version through the link too", (ctx) => {

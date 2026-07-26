@@ -9,8 +9,8 @@ import type { SearchDocuments } from "./search-documents.js";
 export interface EvalReport {
   k: number;
   /** Absent when the index has no vectors (lexical-only corpus). */
-  hibrido?: EvalSummary;
-  lexico: EvalSummary;
+  hybrid?: EvalSummary;
+  lexical: EvalSummary;
 }
 
 /** Chunk over-fetch per question so at least k unique documents surface. */
@@ -28,35 +28,35 @@ export class EvaluateSearch {
     private readonly hasVectors: () => boolean,
   ) {}
 
-  async execute(casos: EvalCase[], k: number): Promise<EvalReport> {
-    const lexico = await this.runMode(casos, k, true);
-    const report: EvalReport = { k, lexico };
+  async execute(cases: EvalCase[], k: number): Promise<EvalReport> {
+    const lexical = await this.runMode(cases, k, true);
+    const report: EvalReport = { k, lexical };
     if (this.hasVectors()) {
-      report.hibrido = await this.runMode(casos, k, false);
+      report.hybrid = await this.runMode(cases, k, false);
     }
     return report;
   }
 
-  private async runMode(casos: EvalCase[], k: number, forzarLexico: boolean): Promise<EvalSummary> {
+  private async runMode(cases: EvalCase[], k: number, forceLexical: boolean): Promise<EvalSummary> {
     const outcomes: EvalCaseOutcome[] = [];
-    for (const caso of casos) {
+    for (const item of cases) {
       const response = await this.search.execute({
-        query: caso.pregunta,
+        query: item.question,
         k: k * CHUNK_FETCH_FACTOR,
-        forzarLexico,
+        forceLexical,
       });
-      const rankedDocs = uniqueInOrder(response.resultados.map((r) => r.ruta));
-      const index = rankedDocs.indexOf(normalizePath(caso.esperado));
-      outcomes.push({ ...caso, posicion: index === -1 ? null : index + 1 });
+      const rankedDocs = uniqueInOrder(response.results.map((r) => r.path));
+      const index = rankedDocs.indexOf(normalizePath(item.expected));
+      outcomes.push({ ...item, rank: index === -1 ? null : index + 1 });
     }
     return summarizeEval(outcomes, k);
   }
 }
 
-function uniqueInOrder(rutas: string[]): string[] {
-  return [...new Set(rutas.map(normalizePath))];
+function uniqueInOrder(paths: string[]): string[] {
+  return [...new Set(paths.map(normalizePath))];
 }
 
-function normalizePath(ruta: string): string {
-  return ruta.replaceAll("\\", "/").trim();
+function normalizePath(path: string): string {
+  return path.replaceAll("\\", "/").trim();
 }
