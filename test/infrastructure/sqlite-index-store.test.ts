@@ -37,13 +37,13 @@ describe("SqliteIndexStore", () => {
 
   it("applies type, module and tags filters", () => {
     store.saveDocument(meta({ path: "a.md", tags: ["lead"] }), [
-      { heading: "A", content: "contenido comun", position: 0 },
+      { heading: "A", content: "content comun", position: 0 },
     ]);
     store.saveDocument(meta({ path: "b.md", status: "borrador" }), [
-      { heading: "B", content: "contenido comun", position: 0 },
+      { heading: "B", content: "content comun", position: 0 },
     ]);
     store.saveDocument(meta({ path: "c.md", type: "adr" }), [
-      { heading: "C", content: "contenido comun", position: 0 },
+      { heading: "C", content: "content comun", position: 0 },
     ]);
 
     expect(store.searchLexical("comun", {}, 10)).toHaveLength(3);
@@ -83,12 +83,12 @@ describe("SqliteIndexStore", () => {
 
   it("reset drops documents, chunks and vectors", () => {
     const saved = store.saveDocument(meta({}), [
-      { heading: "A", content: "contenido", position: 0 },
+      { heading: "A", content: "content", position: 0 },
     ]);
     store.saveEmbeddings([{ chunkId: saved.chunkIds[0]!, embedding: new Float32Array([1, 0]) }]);
     store.reset();
     expect(store.listDocuments()).toEqual([]);
-    expect(store.searchLexical("contenido", {}, 10)).toEqual([]);
+    expect(store.searchLexical("content", {}, 10)).toEqual([]);
     expect(store.hasVectors()).toBe(false);
   });
 
@@ -174,7 +174,7 @@ describe("SqliteIndexStore — deleteDocument", () => {
 
   it("leaves no chunks/chunks_fts/chunks_vec orphans and no stale lexical hits", () => {
     const saved = store.saveDocument(meta({ path: "borrar.md" }), [
-      { heading: "A", content: "contenido unico borrado", position: 0 },
+      { heading: "A", content: "content unico borrado", position: 0 },
     ]);
     store.saveEmbeddings([{ chunkId: saved.chunkIds[0]!, embedding: new Float32Array([1, 0, 0]) }]);
     expect(store.hasVectors()).toBe(true);
@@ -211,7 +211,7 @@ describe("SqliteIndexStore — upsertDocument", () => {
   it("re-indexing a changed document replaces content with no duplicates", () => {
     store.upsertDocument(
       meta({ path: "cambia.md", hash: "h1" }),
-      [{ heading: "A", content: "contenido viejo", position: 0 }],
+      [{ heading: "A", content: "content viejo", position: 0 }],
       null,
     );
     const first = store.getDocumentByPath("cambia.md");
@@ -220,7 +220,7 @@ describe("SqliteIndexStore — upsertDocument", () => {
 
     store.upsertDocument(
       meta({ path: "cambia.md", hash: "h2" }),
-      [{ heading: "B", content: "contenido nuevo", position: 0 }],
+      [{ heading: "B", content: "content nuevo", position: 0 }],
       null,
     );
 
@@ -332,15 +332,15 @@ describe("SqliteIndexStore — reset() schema guarantee (Pre-existing NOT NULL s
       DROP TABLE IF EXISTS documents;
       CREATE TABLE documents (
         id INTEGER PRIMARY KEY,
-        ruta TEXT UNIQUE NOT NULL,
-        titulo TEXT NOT NULL,
-        resumen TEXT NOT NULL,
-        tipo TEXT NOT NULL,
-        modulo TEXT NOT NULL,
-        estado TEXT NOT NULL,
-        propietario TEXT,
-        etiquetas TEXT,
-        actualizado TEXT,
+        path TEXT UNIQUE NOT NULL,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        type TEXT NOT NULL,
+        module TEXT NOT NULL,
+        status TEXT NOT NULL,
+        owner TEXT,
+        tags TEXT,
+        updated TEXT,
         hash TEXT NOT NULL
       );
     `);

@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { SCHEMA_DDL } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
 /**
  * Decision D (design.md): does `fts5(content, heading, content=chunks,
@@ -10,35 +11,33 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  * DDL is the highest-blast-radius line in the project and "probably" is not
  * a basis for renaming it.
  *
- * This file uses `better-sqlite3` directly on `:memory:`, with no
- * `sqlite-vec` and no `SqliteIndexStore` import, so it can land as commit 1
- * against the still-Spanish tree and answer the question before anything
- * downstream depends on the answer.
+ * The probe answered yes, so the production DDL uses bare `content` and the
+ * `body` fallback was never needed.
  *
- * If ANY assertion below fails, the fallback (design.md Decision D) is:
- * physical column `body` instead of `content`, `Chunk.content` stays
- * `content` in the domain, and `toChunk` absorbs the asymmetry.
+ * It executes `SCHEMA_DDL` — the production constant — rather than a local
+ * copy, so the probe can never drift into validating a schema the code no
+ * longer uses. `better-sqlite3` is driven directly on `:memory:` with no
+ * `sqlite-vec` and no `SqliteIndexStore` instance, so what is under test is
+ * the DDL itself, not the store wrapping it.
  */
 
-const SCHEMA = `
-  CREATE TABLE chunks (
-    id INTEGER PRIMARY KEY,
-    document_id INTEGER NOT NULL,
-    heading TEXT NOT NULL,
-    content TEXT NOT NULL,
-    position INTEGER NOT NULL
-  );
-  CREATE VIRTUAL TABLE chunks_fts USING fts5(
-    content, heading, content=chunks, content_rowid=id,
-    tokenize='unicode61 remove_diacritics 2'
-  );
-`;
+const SCHEMA = SCHEMA_DDL;
 
 describe("FTS5 external-content probe: bare `content` column vs `content=` option", () => {
   let db: Database.Database;
 
   beforeEach(() => {
     db = new Database(":memory:");
+    db.exec(SCHEMA);
+    // `chunks.document_id` is a real foreign key in the production DDL and
+    // better-sqlite3 enforces foreign keys by default, so the parent rows have
+    // to exist. The earlier local copy of the schema had no `documents` table
+    // at all, which is precisely the drift this probe now cannot have.
+    const insertDoc = db.prepare(
+      `INSERT INTO documents (id, path, title, summary, hash) VALUES (?, ?, ?, ?, ?)`,
+    );
+    insertDoc.run(100, "a.md", "A", "resumen", "h1");
+    insertDoc.run(200, "b.md", "B", "resumen", "h2");
   });
 
   afterEach(() => {
@@ -46,11 +45,12 @@ describe("FTS5 external-content probe: bare `content` column vs `content=` optio
   });
 
   it("A0: both CREATE statements execute without throwing", () => {
-    expect(() => db.exec(SCHEMA)).not.toThrow();
+    const fresh = new Database(":memory:");
+    expect(() => fresh.exec(SCHEMA)).not.toThrow();
+    fresh.close();
   });
 
   it("A1: inserts through the production statement shapes, with accented Spanish content", () => {
-    db.exec(SCHEMA);
     const insertChunk = db.prepare(
       `INSERT INTO chunks (id, document_id, heading, content, position) VALUES (?, ?, ?, ?, ?)`,
     );
@@ -65,7 +65,6 @@ describe("FTS5 external-content probe: bare `content` column vs `content=` optio
   });
 
   it("A2: an unaccented MATCH finds the accented row via the join-by-rowid shape", () => {
-    db.exec(SCHEMA);
     db.prepare(
       `INSERT INTO chunks (id, document_id, heading, content, position) VALUES (?, ?, ?, ?, ?)`,
     ).run(1, 100, "Duplicados", "gestión de duplicados", 0);
@@ -85,7 +84,6 @@ describe("FTS5 external-content probe: bare `content` column vs `content=` optio
   });
 
   it("A3: a column-scoped match (`content : gestion`) still returns the row", () => {
-    db.exec(SCHEMA);
     db.prepare(
       `INSERT INTO chunks (id, document_id, heading, content, position) VALUES (?, ?, ?, ?, ?)`,
     ).run(1, 100, "Duplicados", "gestión de duplicados", 0);
@@ -105,7 +103,6 @@ describe("FTS5 external-content probe: bare `content` column vs `content=` optio
   });
 
   it("A4-A7: the 'delete' command form removes exactly one row's terms with no collateral damage, and integrity-check passes", () => {
-    db.exec(SCHEMA);
     const insertChunk = db.prepare(
       `INSERT INTO chunks (id, document_id, heading, content, position) VALUES (?, ?, ?, ?, ?)`,
     );

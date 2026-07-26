@@ -13,57 +13,57 @@ import type { ChunkEmbedding, ChunkMissingVector, IndexStore, SavedDocument } fr
 
 interface DocumentRow {
   id: number;
-  ruta: string;
-  titulo: string;
-  resumen: string;
-  tipo: string | null;
-  modulo: string | null;
-  estado: string | null;
-  propietario: string | null;
-  etiquetas: string | null;
-  actualizado: string | null;
+  path: string;
+  title: string;
+  summary: string;
+  type: string | null;
+  module: string | null;
+  status: string | null;
+  owner: string | null;
+  tags: string | null;
+  updated: string | null;
   hash: string;
 }
 
 interface ChunkRow {
   id: number;
   document_id: number;
-  encabezado: string;
-  contenido: string;
-  orden: number;
+  heading: string;
+  content: string;
+  position: number;
 }
 
 /**
- * Base schema DDL (nullable tipo/modulo/estado — Optional Persisted
+ * Base schema DDL (nullable type/module/status — Optional Persisted
  * Metadata). Used both by `migrate()` (non-destructive `CREATE TABLE IF NOT
  * EXISTS`, guaranteeing the schema exists on brand-new database files) and
  * by `reset()` (destructive drop-and-recreate, guaranteeing the *current*
  * schema on every `compendio index` run, including upgrading a pre-existing
  * database created with the old `NOT NULL` columns).
  */
-const SCHEMA_DDL = `
+export const SCHEMA_DDL = `
   CREATE TABLE IF NOT EXISTS documents (
     id INTEGER PRIMARY KEY,
-    ruta TEXT UNIQUE NOT NULL,
-    titulo TEXT NOT NULL,
-    resumen TEXT NOT NULL,
-    tipo TEXT,
-    modulo TEXT,
-    estado TEXT,
-    propietario TEXT,
-    etiquetas TEXT,
-    actualizado TEXT,
+    path TEXT UNIQUE NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    type TEXT,
+    module TEXT,
+    status TEXT,
+    owner TEXT,
+    tags TEXT,
+    updated TEXT,
     hash TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS chunks (
     id INTEGER PRIMARY KEY,
     document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    encabezado TEXT NOT NULL,
-    contenido TEXT NOT NULL,
-    orden INTEGER NOT NULL
+    heading TEXT NOT NULL,
+    content TEXT NOT NULL,
+    position INTEGER NOT NULL
   );
   CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-    contenido, encabezado, content=chunks, content_rowid=id,
+    content, heading, content=chunks, content_rowid=id,
     tokenize='unicode61 remove_diacritics 2'
   );
 `;
@@ -111,7 +111,7 @@ export class SqliteIndexStore implements IndexStore {
   /**
    * Index-run-scoped schema guarantee: drops and recreates the full schema
    * (nullable columns) inside a single transaction, so a database created by
-   * a prior version with `NOT NULL` tipo/modulo/estado columns is upgraded
+   * a prior version with `NOT NULL` type/module/status columns is upgraded
    * in place, with no manual deletion of `.compendio/` required. The single
    * transaction shrinks (does not eliminate) the window in which a
    * concurrent reader could observe a missing table.
@@ -149,28 +149,28 @@ export class SqliteIndexStore implements IndexStore {
     insertVec: Database.Statement | null,
   ): SavedDocument {
     const insertDocument = this.db.prepare(`
-      INSERT INTO documents (ruta, titulo, resumen, tipo, modulo, estado, propietario, etiquetas, actualizado, hash)
-      VALUES (@ruta, @titulo, @resumen, @tipo, @modulo, @estado, @propietario, @etiquetas, @actualizado, @hash)
+      INSERT INTO documents (path, title, summary, type, module, status, owner, tags, updated, hash)
+      VALUES (@path, @title, @summary, @type, @module, @status, @owner, @tags, @updated, @hash)
     `);
     const insertChunk = this.db.prepare(`
-      INSERT INTO chunks (document_id, encabezado, contenido, orden)
+      INSERT INTO chunks (document_id, heading, content, position)
       VALUES (?, ?, ?, ?)
     `);
     const insertFts = this.db.prepare(`
-      INSERT INTO chunks_fts(rowid, contenido, encabezado) VALUES (?, ?, ?)
+      INSERT INTO chunks_fts(rowid, content, heading) VALUES (?, ?, ?)
     `);
 
     const documentId = Number(
       insertDocument.run({
-        ruta: meta.path,
-        titulo: meta.title,
-        resumen: meta.summary,
-        tipo: meta.type ?? null,
-        modulo: meta.module ?? null,
-        estado: meta.status ?? null,
-        propietario: meta.owner ?? null,
-        etiquetas: JSON.stringify(meta.tags),
-        actualizado: meta.updated ?? null,
+        path: meta.path,
+        title: meta.title,
+        summary: meta.summary,
+        type: meta.type ?? null,
+        module: meta.module ?? null,
+        status: meta.status ?? null,
+        owner: meta.owner ?? null,
+        tags: JSON.stringify(meta.tags),
+        updated: meta.updated ?? null,
         hash: meta.hash,
       }).lastInsertRowid,
     );
@@ -200,17 +200,17 @@ export class SqliteIndexStore implements IndexStore {
    */
   private deleteDocumentRows(documentId: number): void {
     const chunks = this.db
-      .prepare(`SELECT id, contenido, encabezado FROM chunks WHERE document_id = ?`)
-      .all(documentId) as { id: number; contenido: string; encabezado: string }[];
+      .prepare(`SELECT id, content, heading FROM chunks WHERE document_id = ?`)
+      .all(documentId) as { id: number; content: string; heading: string }[];
     const vecGuarded = this.vectorsEnabled && this.tableExists("chunks_vec");
     const deleteFts = this.db.prepare(
-      `INSERT INTO chunks_fts(chunks_fts, rowid, contenido, encabezado) VALUES ('delete', ?, ?, ?)`,
+      `INSERT INTO chunks_fts(chunks_fts, rowid, content, heading) VALUES ('delete', ?, ?, ?)`,
     );
     const deleteVec = vecGuarded
       ? this.db.prepare(`DELETE FROM chunks_vec WHERE chunk_id = ?`)
       : null;
     for (const chunk of chunks) {
-      deleteFts.run(chunk.id, chunk.contenido, chunk.encabezado);
+      deleteFts.run(chunk.id, chunk.content, chunk.heading);
       if (deleteVec !== null) deleteVec.run(BigInt(chunk.id));
     }
     this.db.prepare(`DELETE FROM chunks WHERE document_id = ?`).run(documentId);
@@ -219,7 +219,7 @@ export class SqliteIndexStore implements IndexStore {
 
   deleteDocument(path: string): void {
     const run = this.db.transaction((): void => {
-      const doc = this.db.prepare(`SELECT id FROM documents WHERE ruta = ?`).get(path) as
+      const doc = this.db.prepare(`SELECT id FROM documents WHERE path = ?`).get(path) as
         | { id: number }
         | undefined;
       if (doc === undefined) return;
@@ -239,7 +239,7 @@ export class SqliteIndexStore implements IndexStore {
     if (embeddings !== null && embeddings.length > 0) {
       this.ensureVectorTable(embeddings[0]!.length);
     }
-    const findExisting = this.db.prepare(`SELECT id FROM documents WHERE ruta = ?`);
+    const findExisting = this.db.prepare(`SELECT id FROM documents WHERE path = ?`);
     // Prepared only when the table is actually present (either created just
     // now above, or by a prior upsertDocument/saveEmbeddings call) — the
     // vectorsEnabled-alone guard governs WHETHER embeddings get written, not
@@ -264,7 +264,7 @@ export class SqliteIndexStore implements IndexStore {
     if (!this.vectorsEnabled || !this.tableExists("chunks_vec")) return [];
     return this.db
       .prepare(
-        `SELECT c.id AS chunkId, d.ruta AS path, c.encabezado AS heading, c.contenido AS content
+        `SELECT c.id AS chunkId, d.path AS path, c.heading AS heading, c.content AS content
          FROM chunks c
          JOIN documents d ON d.id = c.document_id
          WHERE c.id NOT IN (SELECT chunk_id FROM chunks_vec)
@@ -376,13 +376,13 @@ export class SqliteIndexStore implements IndexStore {
 
   listDocuments(): IndexedDocument[] {
     const rows = this.db
-      .prepare(`SELECT * FROM documents ORDER BY ruta`)
+      .prepare(`SELECT * FROM documents ORDER BY path`)
       .all() as DocumentRow[];
     return rows.map(toDocument);
   }
 
   getDocumentByPath(path: string): IndexedDocument | null {
-    const row = this.db.prepare(`SELECT * FROM documents WHERE ruta = ?`).get(path) as
+    const row = this.db.prepare(`SELECT * FROM documents WHERE path = ?`).get(path) as
       | DocumentRow
       | undefined;
     return row === undefined ? null : toDocument(row);
@@ -390,7 +390,7 @@ export class SqliteIndexStore implements IndexStore {
 
   getChunksByDocument(documentId: number): IndexedChunk[] {
     const rows = this.db
-      .prepare(`SELECT * FROM chunks WHERE document_id = ? ORDER BY orden`)
+      .prepare(`SELECT * FROM chunks WHERE document_id = ? ORDER BY position`)
       .all(documentId) as ChunkRow[];
     return rows.map(toChunk);
   }
@@ -439,23 +439,23 @@ function buildFilterSql(filters: SearchFilters): { sql: string; params: unknown[
   const clauses: string[] = [];
   const params: unknown[] = [];
   if (filters.type !== undefined) {
-    clauses.push("d.tipo = ?");
+    clauses.push("d.type = ?");
     params.push(filters.type);
   }
   if (filters.module !== undefined) {
-    clauses.push("d.modulo = ?");
+    clauses.push("d.module = ?");
     params.push(filters.module);
   }
   if (filters.excludedStatuses !== undefined && filters.excludedStatuses.length > 0) {
     // NULL-aware deny-list: a document with no status is never excluded.
     clauses.push(
-      `(d.estado IS NULL OR d.estado NOT IN (${filters.excludedStatuses.map(() => "?").join(",")}))`,
+      `(d.status IS NULL OR d.status NOT IN (${filters.excludedStatuses.map(() => "?").join(",")}))`,
     );
     params.push(...filters.excludedStatuses);
   }
   if (filters.tags !== undefined && filters.tags.length > 0) {
     clauses.push(
-      `EXISTS (SELECT 1 FROM json_each(d.etiquetas) je
+      `EXISTS (SELECT 1 FROM json_each(d.tags) je
         WHERE je.value IN (${filters.tags.map(() => "?").join(",")}))`,
     );
     params.push(...filters.tags);
@@ -473,17 +473,17 @@ function toBlob(embedding: Float32Array): Buffer {
 function toDocument(row: DocumentRow): IndexedDocument {
   const doc: IndexedDocument = {
     id: row.id,
-    path: row.ruta,
-    title: row.titulo,
-    summary: row.resumen,
-    tags: row.etiquetas === null ? [] : (JSON.parse(row.etiquetas) as string[]),
+    path: row.path,
+    title: row.title,
+    summary: row.summary,
+    tags: row.tags === null ? [] : (JSON.parse(row.tags) as string[]),
     hash: row.hash,
   };
-  if (row.tipo !== null) doc.type = row.tipo;
-  if (row.modulo !== null) doc.module = row.modulo;
-  if (row.estado !== null) doc.status = row.estado;
-  if (row.propietario !== null) doc.owner = row.propietario;
-  if (row.actualizado !== null) doc.updated = row.actualizado;
+  if (row.type !== null) doc.type = row.type;
+  if (row.module !== null) doc.module = row.module;
+  if (row.status !== null) doc.status = row.status;
+  if (row.owner !== null) doc.owner = row.owner;
+  if (row.updated !== null) doc.updated = row.updated;
   return doc;
 }
 
@@ -491,8 +491,8 @@ function toChunk(row: ChunkRow): IndexedChunk {
   return {
     id: row.id,
     documentId: row.document_id,
-    heading: row.encabezado,
-    content: row.contenido,
-    position: row.orden,
+    heading: row.heading,
+    content: row.content,
+    position: row.position,
   };
 }
