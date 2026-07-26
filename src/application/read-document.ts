@@ -1,4 +1,4 @@
-import type { DocumentMeta } from "../domain/model.js";
+import type { DocumentMeta, IndexedDocument } from "../domain/model.js";
 import type { IndexStore } from "../domain/ports.js";
 import { closestMatches, normalize } from "../domain/similarity.js";
 
@@ -28,8 +28,28 @@ const SUGGESTION_LIMIT = 3;
 export class ReadDocument {
   constructor(private readonly store: IndexStore) {}
 
+  /**
+   * Resolves a requested path, tolerating one leading directory segment.
+   *
+   * Indexed paths are relative to the docs directory (`func/x.md`), but a
+   * caller that just saw the file on disk holds the project-relative path
+   * (`docs/func/x.md`). Both name exactly one document, so rejecting the second
+   * buys nothing: observed agents spend a failed call per document and then
+   * retry with the prefix stripped, doubling every read in a session.
+   *
+   * Only attempted when the literal path misses, and only one segment deep, so
+   * a genuine document at `a/b.md` always wins over stripping into `b.md`.
+   */
+  private resolve(path: string): IndexedDocument | null {
+    const exact = this.store.getDocumentByPath(path);
+    if (exact !== null) return exact;
+    const separator = path.indexOf("/");
+    if (separator === -1) return null;
+    return this.store.getDocumentByPath(path.slice(separator + 1));
+  }
+
   execute(request: ReadRequest): ReadResult {
-    const doc = this.store.getDocumentByPath(request.path);
+    const doc = this.resolve(request.path);
     if (doc === null) {
       const paths = this.store.listDocuments().map((d) => d.path);
       return {
