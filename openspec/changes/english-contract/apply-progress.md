@@ -203,8 +203,50 @@ active-proof tasks; all other commits are gated by keep-green-throughout, not ne
   - Gate: `npm run typecheck` clean, `npm test` 24 files / 219 tests green, `npm run build` clean,
     `src/domain/` purity verified, I2 (`unicode61 remove_diacritics 2`, exactly one line) and I4
     (`RRF_K = 60`, unchanged) reverified directly.
-- [ ] Commit 6 — Configuration surface (M) — NOT STARTED
-- [ ] Commit 7 — Frontmatter source keys, with the corpus (S, high scrutiny) — NOT STARTED
+- [x] **Commit 6 — Configuration surface (M)** — `7aa1eda`
+  - Applied inline by the orchestrator, not a sub-agent: the monthly API spend limit was exhausted and
+    delegation kept failing. Staged renames with per-stage verification rather than one bulk pass.
+  - `convencion`→`convention`, `modo`→`mode`, `"libre"`/`"estricto"`→`"loose"`/`"strict"`,
+    `camposFrontmatter`→`frontmatterFields`, `sinChunking`/`SIN_CHUNKING`/`isSinChunking`→
+    `noChunking`/`NO_CHUNKING`/`isNoChunking`, the whole `crear*` factory family to `create*`,
+    `leerCampo`→`readField`, `inferirModulo`→`inferModule`, `humanizarNombreArchivo`→`humanizeFileName`,
+    `aplicarCamposOpcionales`→`applyOptionalFields`, `mergeConvencion`→`mergeConvention`.
+  - File renames: `src/domain/convencion.ts`→`convention.ts`, `test/domain/convencion.test.ts`→
+    `convention.test.ts` (via `git mv`, rename detected at 100%).
+  - **Case-sensitivity bite, twice.** The first scripted pass used case-sensitive whole-word patterns
+    and silently missed every capitalised form: `ESTRICTO_FIXTURE_DOCS`, `ESTRICTO_FIXTURE_CONVENCION`,
+    and the test-local `LIBRE`/`ESTRICTO`/`cfgLibre`/`comparar` constants. The commit's own `rg -i`
+    done-when sweep is what surfaced them — exactly the failure mode Decision B was written for, now
+    observed live rather than argued.
+  - **Deletion (decision 5)**: `warnIfLegacyEstadosExcluidos` removed, not translated. Two of its three
+    tests went with it. The third was NOT deleted: it actually covered `mergeConfig`'s explicit
+    whitelist, which survives, so it was rewritten around an unknown key. Deleting it would have left
+    the whitelist untested — a coverage hole inside a green suite.
+  - **Silent class, actively proven**: `test/fixtures/estricto/compendio.config.json` edited here
+    (untyped keys). Mutation test — reverting its key to `convencion` makes commit 1's deny-list
+    subprocess assertion FAIL. The mechanism is wired, not merely green.
+  - The fixture DIRECTORY keeps its Spanish name until commit 10; both path literals referencing it
+    (`build.ts:35`, `cli-subprocess.test.ts:35`) were protected by a line-level guard and verified intact.
+  - `es-frozen` markers added to `NO_CHUNKING`'s value and `EXAMPLES_DOCS`'s path literal.
+  - Gate: typecheck clean, 217 tests green (219 − 3 legacy tests + 1 rewritten), residual sweep clean.
+- [x] **Commit 7 — Frontmatter source keys, with the corpus (S, high scrutiny)** — `1782aac`
+  - Defaults flipped to `type`/`module`/`status`; hardcoded pass-through keys to `tags`/`owner`/
+    `updated`; the tags error string re-authored in English.
+  - **Corpus: exactly 3 lines across 3 files**, keys only. All values, all prose and `goldenset.yaml`
+    untouched. The first attempt changed only 2 files — perl's `$.` does not reset between files — and
+    the design's "exactly 3 changed lines" count gate is what caught it. Worth keeping: a gate that
+    specifies an exact expected count catches partial application; a gate that just says "clean" does not.
+  - **Canary (Decision I) passed**: `compendio index-md` on `ejemplos/` leaves `docs/INDEX.md`
+    byte-identical (`git diff --exit-code` clean). That is what proves `(borrador)`/`(obsoleto)` still
+    resolve through the new key rather than silently vanishing.
+  - **Eval reproduced cell for cell**: hybrid 1.00 / 0.943 / 0, lexical 0.95 / 0.857 / 1 at position 9,
+    27 chunks, hybrid mode.
+  - The config partial-merge test was reoriented rather than mechanically updated: with English
+    defaults, its `{ type: "type" }` override would have become vacuous, so it now declares
+    `{ type: "tipo" }` — which also documents the supported path for Spanish corpora.
+  - Deliberate custom-mapping tests in `convention.test.ts` keep Spanish source keys on purpose: they
+    exist to prove the mapping mechanism, which is now how a Spanish project stays zero-friction.
+  - Gate: typecheck clean, 217 tests green, canary clean, eval matching.
 - [ ] Commit 8 — SQL schema (L) — NOT STARTED (fallback resolved: no `body` variant, use `content`)
 - [ ] Commit 9 — MCP and CLI surface (L) — NOT STARTED
 - [ ] Commit 10 — Strict fixture translation (M) — NOT STARTED
