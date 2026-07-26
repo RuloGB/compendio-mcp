@@ -53,7 +53,7 @@ src/
 
 ### MCP tools (progressive disclosure)
 
-Registered in `server.ts`, designed to be used in this order: orient cheaply → search cheaply → read only what's needed.
+Registered in `server.ts`. Progressive disclosure is a set of rungs, **not a mandatory sequence**: `search_docs` is the entry point for a specific question (it usually answers outright, in one call), `docs_overview` is for enumerating the corpus or picking filter values, and `read_doc` is the last resort — with a `section`, since a whole document costs several times more. The tool descriptions carry this routing, so it holds without any per-project agent configuration.
 
 1. `docs_overview()` — corpus map (counts by type/module, ~10 tokens/doc). `byType`/`byModule` buckets and per-document `[type]`/`(status)` segments are omitted entirely when a document/corpus has no value for that field — never a synthetic "no type" bucket or `[undefined]`.
 2. `search_docs({ query, type?, module?, tags?, k?, include_excluded? })` — hybrid search, top-k fragments. `type` is an open, project-defined string (no enum). Docs whose `status` is listed in the project's `convention.excludedStatuses` are excluded unless `include_excluded` is set; with nothing declared (the default), nothing is excluded and the flag is a no-op.
