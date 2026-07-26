@@ -114,7 +114,7 @@ describe("GenerateIndexMd — libre mode over inline fixtures", () => {
   });
 });
 
-describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
+describe("GenerateIndexMd — strict mode over inline fixtures", () => {
   it("orders entries by declared types, tie-broken alphabetically by path", async () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([

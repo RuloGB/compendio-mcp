@@ -32,7 +32,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DIST_DIR = join(REPO_ROOT, "dist");
 const CLI = join(DIST_DIR, "cli.js");
-const FIXTURE = join(REPO_ROOT, "test", "fixtures", "estricto");
+const FIXTURE = join(REPO_ROOT, "test", "fixtures", "strict");
 
 /** Most recent mtime under `dir`, used to detect a stale `dist/`. */
 function newestMtimeMs(dir: string): number {
@@ -130,9 +130,9 @@ describe("CLI subprocess: corpus commands", () => {
     expect(payload.results.map((r) => r.path)).toContain("guia-onboarding.md");
   });
 
-  it("excludedStatuses deny-list: a borrador document is hidden by default and surfaced with --all", () => {
-    // The fixture declares excludedStatuses: ["borrador", "obsoleto"] and
-    // ships plan-pruebas-alertas.md in status borrador specifically to
+  it("excludedStatuses deny-list: a draft document is hidden by default and surfaced with --all", () => {
+    // The fixture declares excludedStatuses: ["draft", "deprecated"] and
+    // ships plan-pruebas-alertas.md in status draft specifically to
     // exercise this deny-list. "plan de pruebas" is unique to that document
     // within the fixture (checked against the other 4 docs' prose).
     const denied = runCli(["--root", workdir, "search", "plan de pruebas alertas", "--lexical"]);

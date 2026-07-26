@@ -34,13 +34,13 @@ export const EXAMPLES_CONVENTION: ConventionConfig = {
  * constants, and the same `excludedStatuses` deny-list.
  */
 export const STRICT_FIXTURE_DOCS = fileURLToPath(
-  new URL("../fixtures/estricto/docs", import.meta.url),
+  new URL("../fixtures/strict/docs", import.meta.url),
 );
 export const STRICT_FIXTURE_CONVENTION: ConventionConfig = {
   mode: "strict",
-  types: ["funcional", "adr", "api", "qa", "guia"],
-  statuses: ["borrador", "vigente", "obsoleto"],
-  excludedStatuses: ["borrador", "obsoleto"],
+  types: ["functional", "adr", "api", "qa", "guide"],
+  statuses: ["draft", "current", "deprecated"],
+  excludedStatuses: ["draft", "deprecated"],
   frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
