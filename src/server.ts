@@ -43,9 +43,10 @@ export function createMcpServer(container: Container): McpServer {
     {
       title: "Documentation map",
       description:
-        "Returns a map of the documentation corpus: counts by type and module, plus one line per " +
-        "document ([type] path — summary (status)). Start here before searching — it is the " +
-        "cheapest way to learn what exists.",
+        "Map of the documentation corpus: counts by type and module, plus one line per document " +
+        "([type] path — summary (status)). Use it to enumerate what exists, or to pick filter " +
+        "values for search_docs. For a specific question, call search_docs first — it answers in " +
+        "one call, while orienting here lists the whole corpus before you can read anything.",
       inputSchema: {},
     },
     async () => {
@@ -62,8 +63,10 @@ export function createMcpServer(container: Container): McpServer {
       title: "Documentation search",
       description:
         "Hybrid search (lexical BM25 + semantic) in natural language over the project's " +
-        "documentation, with metadata filters. Returns compact fragments (path, section, " +
-        "excerpt); call read_doc to read a full section. If the project declares " +
+        "documentation, with metadata filters. Default entry point for any specific question: " +
+        "the returned fragments usually answer it outright, with no further read. Returns " +
+        "compact fragments (path, title, section, excerpt, score) — pass a result's section to " +
+        "read_doc when you need that section in full. If the project declares " +
         "convention.excludedStatuses, documents in those statuses are left out unless " +
         "include_excluded is set; if it declares none, no document is excluded by status.",
       inputSchema: {
@@ -100,14 +103,18 @@ export function createMcpServer(container: Container): McpServer {
       title: "Read a document",
       description:
         "Returns one section of a document (or the whole document when no section is given), " +
-        "along with its frontmatter. If the path does not exist, responds with the 3 closest " +
-        "matching paths instead of failing.",
+        "along with its frontmatter. Prefer passing section: a whole document costs several " +
+        "times more than the section you actually need. If the path does not exist, responds " +
+        "with the 3 closest matching paths instead of failing.",
       inputSchema: {
         path: z.string().min(1).describe("Document path, relative to the docs directory"),
         section: z
           .string()
           .optional()
-          .describe("Heading (or part of it) of the section to read, e.g. 'Business rules'"),
+          .describe(
+            "Heading (or part of it) of the section to read, e.g. 'Business rules'. " +
+              "Use the section field of a search_docs result.",
+          ),
       },
     },
     async (args) => {
