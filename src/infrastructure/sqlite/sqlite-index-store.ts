@@ -276,7 +276,7 @@ export class SqliteIndexStore implements IndexStore {
   replaceEmbeddings(items: ChunkEmbedding[]): void {
     if (items.length === 0) return;
     if (!this.vectorsEnabled) {
-      throw new Error("la extension sqlite-vec no esta disponible en esta instalacion");
+      throw new Error("the sqlite-vec extension is not available in this installation");
     }
     const dimension = items[0]!.embedding.length;
     this.ensureVectorTable(dimension);
@@ -294,7 +294,7 @@ export class SqliteIndexStore implements IndexStore {
   saveEmbeddings(items: ChunkEmbedding[]): void {
     if (items.length === 0) return;
     if (!this.vectorsEnabled) {
-      throw new Error("la extension sqlite-vec no esta disponible en esta instalacion");
+      throw new Error("the sqlite-vec extension is not available in this installation");
     }
     const dimension = items[0]!.embedding.length;
     this.ensureVectorTable(dimension);

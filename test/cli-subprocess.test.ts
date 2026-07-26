@@ -74,9 +74,9 @@ beforeAll(() => {
   // next to the config, and the fixture must stay pristine.
   cpSync(join(FIXTURE, "docs"), join(workdir, "docs"), { recursive: true });
   cpSync(join(FIXTURE, "compendio.config.json"), join(workdir, "compendio.config.json"));
-  // `--lexico` throughout: the real embeddings provider would download a model
+  // `--lexical` throughout: the real embeddings provider would download a model
   // on first use. Lexical mode keeps these tests hermetic and offline.
-  indexRun = runCli(["--root", workdir, "index", "--lexico"]);
+  indexRun = runCli(["--root", workdir, "index", "--lexical"]);
 }, 120_000);
 
 afterAll(() => {
@@ -118,11 +118,11 @@ describe("CLI subprocess: corpus commands", () => {
   it("index exits 0 and reports the indexed documents", () => {
     expect(indexRun.status).toBe(0);
     // The fixture ships 5 documents; INDEX.md is excluded by the indexer.
-    expect(indexRun.stdout).toMatch(/Indexados 5 documentos \(\d+ chunks\)/);
+    expect(indexRun.stdout).toMatch(/Indexed 5 documents \(\d+ chunks\)/);
   });
 
   it("search exits 0 and writes parseable JSON to stdout", () => {
-    const run = runCli(["--root", workdir, "search", "onboarding de un servicio", "--lexico"]);
+    const run = runCli(["--root", workdir, "search", "onboarding de un servicio", "--lexical"]);
     expect(run.status).toBe(0);
     const payload = JSON.parse(run.stdout) as { mode: string; results: { path: string }[] };
     expect(payload.mode).toBe("lexical");
@@ -130,12 +130,12 @@ describe("CLI subprocess: corpus commands", () => {
     expect(payload.results.map((r) => r.path)).toContain("guia-onboarding.md");
   });
 
-  it("excludedStatuses deny-list: a borrador document is hidden by default and surfaced with --todos", () => {
+  it("excludedStatuses deny-list: a borrador document is hidden by default and surfaced with --all", () => {
     // The fixture declares excludedStatuses: ["borrador", "obsoleto"] and
     // ships plan-pruebas-alertas.md in status borrador specifically to
     // exercise this deny-list. "plan de pruebas" is unique to that document
     // within the fixture (checked against the other 4 docs' prose).
-    const denied = runCli(["--root", workdir, "search", "plan de pruebas alertas", "--lexico"]);
+    const denied = runCli(["--root", workdir, "search", "plan de pruebas alertas", "--lexical"]);
     expect(denied.status).toBe(0);
     const deniedPayload = JSON.parse(denied.stdout) as { results: { path: string }[] };
     expect(deniedPayload.results.map((r) => r.path)).not.toContain("plan-pruebas-alertas.md");
@@ -145,8 +145,8 @@ describe("CLI subprocess: corpus commands", () => {
       workdir,
       "search",
       "plan de pruebas alertas",
-      "--lexico",
-      "--todos",
+      "--lexical",
+      "--all",
     ]);
     expect(allowed.status).toBe(0);
     const allowedPayload = JSON.parse(allowed.stdout) as { results: { path: string }[] };
@@ -191,7 +191,7 @@ describe("CLI subprocess: invoked through a link (npx / global install)", () => 
       return;
     }
 
-    const run = runCli(["--root", workdir, "search", "onboarding de un servicio", "--lexico"], link.cli);
+    const run = runCli(["--root", workdir, "search", "onboarding de un servicio", "--lexical"], link.cli);
 
     // Asserting the exit code alone would NOT catch the regression: with the
     // broken guard the process exits 0 too. The tell is empty stdout — the

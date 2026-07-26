@@ -53,7 +53,7 @@ describe("renderIndexMd", () => {
 
   it("renders only the header for an empty corpus", () => {
     const salida = renderIndexMd([]);
-    expect(salida).toContain("# Índice de la documentación");
+    expect(salida).toContain("# Documentation index");
     expect(salida).not.toContain("- [");
     expect(salida.endsWith("\n")).toBe(true);
   });

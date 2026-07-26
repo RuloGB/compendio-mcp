@@ -20,34 +20,34 @@ const program = new Command();
 program
   .name("compendio")
   .description(
-    "Indexa la documentacion markdown del proyecto y la sirve a agentes de IA " +
-      "mediante busqueda hibrida local (BM25 + embeddings).",
+    "Indexes the project's markdown documentation and serves it to AI agents " +
+      "through local hybrid search (BM25 + embeddings).",
   )
   .version(SERVER_VERSION)
-  .option("-C, --root <dir>", "raiz del proyecto (donde vive compendio.config.json)", process.cwd());
+  .option("-C, --root <dir>", "project root (where compendio.config.json lives)", process.cwd());
 
 program
   .command("index")
-  .description("Reindexa toda la documentacion en .compendio/compendio.db")
-  .option("--dir <dir>", "directorio de documentacion (sobrescribe la configuracion)")
-  .option("--lexico", "indexa sin embeddings (solo busqueda lexica)")
-  .action(async (options: { dir?: string; lexico?: boolean }) => {
+  .description("Reindexes all documentation into .compendio/compendio.db")
+  .option("--dir <dir>", "documentation directory (overrides the config)")
+  .option("--lexical", "index without embeddings (lexical search only)")
+  .action(async (options: { dir?: string; lexical?: boolean }) => {
     await withContainer(
-      { docsDir: options.dir, forceLexical: options.lexico },
+      { docsDir: options.dir, forceLexical: options.lexical },
       async (container) => {
         const report = await container.indexDocuments.execute();
         for (const skippedItem of report.skipped) {
-          console.warn(`AVISO ${skippedItem.path}: ${skippedItem.errors.join("; ")}`);
+          console.warn(`WARNING ${skippedItem.path}: ${skippedItem.errors.join("; ")}`);
         }
         if (report.embeddingsWarning !== undefined) {
-          console.warn(`AVISO ${report.embeddingsWarning}`);
+          console.warn(`WARNING ${report.embeddingsWarning}`);
         }
         console.log(
-          `Indexados ${report.indexed.length} documentos (${report.totalChunks} chunks) ` +
-            `en ${report.durationMs} ms [mode ${report.mode}]`,
+          `Indexed ${report.indexed.length} documents (${report.totalChunks} chunks) ` +
+            `in ${report.durationMs} ms [mode ${report.mode}]`,
         );
         if (report.skipped.length > 0) {
-          console.log(`Omitidos ${report.skipped.length} documentos con frontmatter invalido.`);
+          console.log(`Skipped ${report.skipped.length} documents with invalid frontmatter.`);
         }
       },
     );
@@ -55,53 +55,53 @@ program
 
 program
   .command("index-md")
-  .description("Genera o actualiza INDEX.md en el directorio de documentacion")
-  .option("--dir <dir>", "directorio de documentacion (sobrescribe la configuracion)")
+  .description("Generates or updates INDEX.md in the documentation directory")
+  .option("--dir <dir>", "documentation directory (overrides the config)")
   .action(async (options: { dir?: string }) => {
     await withContainer({ docsDir: options.dir }, async (container) => {
       const report = await container.generateIndexMd.execute();
       for (const skippedItem of report.skipped) {
         console.warn(
-          `AVISO ${skippedItem.path}: ${skippedItem.errors.join("; ")} (no aparece en INDEX.md)`,
+          `WARNING ${skippedItem.path}: ${skippedItem.errors.join("; ")} (not listed in INDEX.md)`,
         );
       }
-      const resultado = report.changed ? "actualizado" : "sin cambios";
-      console.log(`INDEX.md ${resultado}: ${report.documents} documentos en ${report.path}`);
+      const outcome = report.changed ? "updated" : "unchanged";
+      console.log(`INDEX.md ${outcome}: ${report.documents} documents at ${report.path}`);
     });
   });
 
 program
   .command("search")
-  .description("Busca en la documentacion indexada y muestra el resultado en JSON")
+  .description("Searches the indexed documentation and prints the result as JSON")
   .argument("<query>", "consulta en lenguaje natural")
-  .option("-k, --k <n>", "numero de resultados", parsePositiveInt)
-  .option("--tipo <tipo>", "filtra por tipo de documento (segun la convention del proyecto)")
-  .option("--modulo <modulo>", "filtra por modulo")
-  .option("--etiquetas <lista>", "filtra por etiquetas, separadas por comas")
-  .option("--todos", "incluye documentos excluidos por convention.estadosExcluidos")
-  .option("--lexico", "fuerza busqueda solo lexica (sin embeddings)")
+  .option("-k, --k <n>", "number of results", parsePositiveInt)
+  .option("--type <type>", "filter by document type (per the project's convention)")
+  .option("--module <module>", "filter by module")
+  .option("--tags <list>", "filter by tags, comma separated")
+  .option("--all", "include documents excluded by convention.excludedStatuses")
+  .option("--lexical", "force lexical-only search (no embeddings)")
   .action(
     async (
       queryText: string,
       options: {
         k?: number;
-        tipo?: string;
-        modulo?: string;
-        etiquetas?: string;
-        todos?: boolean;
-        lexico?: boolean;
+        type?: string;
+        module?: string;
+        tags?: string;
+        all?: boolean;
+        lexical?: boolean;
       },
     ) => {
       await withContainer({}, async (container) => {
         const query: SearchQuery = { query: queryText };
-        if (options.tipo !== undefined) query.type = parseType(options.tipo);
-        if (options.modulo !== undefined) query.module = options.modulo;
-        if (options.etiquetas !== undefined) {
-          query.tags = options.etiquetas.split(",").map((e) => e.trim());
+        if (options.type !== undefined) query.type = parseType(options.type);
+        if (options.module !== undefined) query.module = options.module;
+        if (options.tags !== undefined) {
+          query.tags = options.tags.split(",").map((e) => e.trim());
         }
         if (options.k !== undefined) query.k = options.k;
-        if (options.todos === true) query.includeExcluded = true;
-        if (options.lexico === true) query.forceLexical = true;
+        if (options.all === true) query.includeExcluded = true;
+        if (options.lexical === true) query.forceLexical = true;
         const response = await container.searchDocuments.execute(query);
         console.log(JSON.stringify(response, null, 2));
       });
@@ -110,7 +110,7 @@ program
 
 program
   .command("overview")
-  .description("Muestra el mapa del corpus indexado (igual que la tool docs_overview)")
+  .description("Shows the map of the indexed corpus (same as the docs_overview tool)")
   .action(async () => {
     await withContainer({}, async (container) => {
       console.log(formatOverview(container.getOverview.execute()));
@@ -119,9 +119,9 @@ program
 
 program
   .command("eval")
-  .description("Evalua la calidad de la busqueda contra un goldenset (hibrido vs lexico)")
-  .option("--goldenset <path>", "fichero YAML con preguntas y documento esperado", "goldenset.yaml")
-  .option("-k, --k <n>", "k para recall@k", parsePositiveInt)
+  .description("Evaluates search quality against a goldenset (hybrid vs lexical)")
+  .option("--goldenset <path>", "YAML file with questions and the expected document", "goldenset.yaml")
+  .option("-k, --k <n>", "k for recall@k", parsePositiveInt)
   .action(async (options: { goldenset: string; k?: number }) => {
     const root = program.opts<GlobalOptions>().root;
     const cases = loadGoldenset(resolve(root, options.goldenset));
@@ -134,7 +134,7 @@ program
 
 program
   .command("serve")
-  .description("Arranca el servidor MCP por stdio (para registrarlo en un cliente MCP)")
+  .description("Starts the MCP server over stdio, to register it in an MCP client")
   .action(async () => {
     const root = program.opts<GlobalOptions>().root;
     const container = createContainer({ root });
@@ -174,7 +174,7 @@ function parsePositiveInt(value: string): number {
 }
 
 /**
- * `tipo` is an open, project-defined string (declared via `convention.types`
+ * `type` is an open, project-defined string (declared via `convention.types`
  * in `compendio.config.json`, or freeform in `loose` mode) — there is no
  * closed list to validate against at the CLI layer, so this is a passthrough,
  * never a hard exit. Exported for direct unit testing.
@@ -188,13 +188,13 @@ function loadGoldenset(path: string): EvalCase[] {
   try {
     raw = readFileSync(path, "utf8");
   } catch {
-    console.error(`No se encuentra el goldenset en "${path}".`);
+    console.error(`Goldenset not found at "${path}".`);
     process.exit(2);
   }
   const parsed = parseYaml(raw) as unknown;
   if (!Array.isArray(parsed)) {
     // es-frozen: quotes ejemplos/goldenset.yaml's real (frozen) key names
-    console.error("El goldenset debe ser una lista YAML de { pregunta, esperado }.");
+    console.error("The goldenset must be a YAML list of { pregunta, esperado } entries.");
     process.exit(2);
   }
   const cases: EvalCase[] = [];
@@ -204,7 +204,7 @@ function loadGoldenset(path: string): EvalCase[] {
     // es-frozen: indexes into ejemplos/goldenset.yaml's real (frozen) keys
     const expected = (entry as Record<string, unknown>)["esperado"];
     if (typeof question !== "string" || typeof expected !== "string") {
-      console.error(`Entrada invalida en el goldenset: ${JSON.stringify(entry)}`);
+      console.error(`Invalid goldenset entry: ${JSON.stringify(entry)}`);
       process.exit(2);
     }
     cases.push({ question, expected });
@@ -217,7 +217,7 @@ function printEvalReport(
   hybrid: EvalSummary | undefined,
   k: number,
 ): void {
-  console.log(`Goldenset: ${lexical.cases} preguntas | k = ${k}\n`);
+  console.log(`Goldenset: ${lexical.cases} questions | k = ${k}\n`);
   const header = `mode      recall@${k}   MRR      failures`;
   console.log(header);
   console.log("-".repeat(header.length));
@@ -226,16 +226,16 @@ function printEvalReport(
   }
   console.log(formatEvalRow("lexical", lexical));
   if (hybrid === undefined) {
-    console.log("\nEl indice no tiene vectores: solo se evalua el mode lexical.");
+    console.log("\nThe index has no vectors: only lexical mode is evaluated.");
   }
   for (const [mode, summary] of [
     ["hybrid", hybrid],
     ["lexical", lexical],
   ] as const) {
     if (summary === undefined || summary.failures.length === 0) continue;
-    console.log(`\nFailures en mode ${mode}:`);
+    console.log(`\nFailures in ${mode} mode:`);
     for (const failure of summary.failures) {
-      const rank = failure.rank === null ? "no aparece" : `posicion ${failure.rank}`;
+      const rank = failure.rank === null ? "not found" : `position ${failure.rank}`;
       console.log(`- "${failure.question}" -> ${failure.expected} (${rank})`);
     }
   }

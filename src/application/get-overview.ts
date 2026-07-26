@@ -89,7 +89,7 @@ export function formatOverview(
     lines.push("");
     lines.push("Sincronizacion:");
     for (const skippedItem of sync.skipped) {
-      lines.push(`AVISO ${skippedItem.path}: ${skippedItem.errors.join("; ")}`);
+      lines.push(`WARNING ${skippedItem.path}: ${skippedItem.errors.join("; ")}`);
     }
     if (sync.embeddingsWarning !== undefined) {
       lines.push(`AVISO ${sync.embeddingsWarning}`);

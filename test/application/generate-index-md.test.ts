@@ -95,7 +95,7 @@ describe("GenerateIndexMd — libre mode over inline fixtures", () => {
     const report = await useCase.execute();
 
     expect(report.documents).toBe(0);
-    expect(writer.content).toContain("# Índice de la documentación");
+    expect(writer.content).toContain("# Documentation index");
     expect(writer.content!.split("\n").some((l) => l.startsWith("- "))).toBe(false);
   });
 
