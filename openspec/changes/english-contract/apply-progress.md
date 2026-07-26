@@ -247,11 +247,11 @@ active-proof tasks; all other commits are gated by keep-green-throughout, not ne
   - Deliberate custom-mapping tests in `convention.test.ts` keep Spanish source keys on purpose: they
     exist to prove the mapping mechanism, which is now how a Spanish project stays zero-friction.
   - Gate: typecheck clean, 217 tests green, canary clean, eval matching.
-- [ ] Commit 8 — SQL schema (L) — NOT STARTED (fallback resolved: no `body` variant, use `content`)
-- [ ] Commit 9 — MCP and CLI surface (L) — NOT STARTED
-- [ ] Commit 10 — Strict fixture translation (M) — NOT STARTED
-- [ ] Commit 11 — Specs and documentation (M) — NOT STARTED
-- [ ] Final Verification (12.1-12.13) — NOT STARTED
+- [x] **Commit 8 — SQL schema** — `5d096bc` (bare `content` alongside `content=chunks`; `orden`→`position`; SCHEMA_DDL exported so the FTS5 probe runs the production constant)
+- [x] **Commit 9 — MCP and CLI surface** — `4c5bb68` (wire params, flags and all user-facing strings re-authored; both INDEX.md regenerated, diff is header lines only)
+- [x] **Commit 10 — Strict fixture** — `760d44a` (directory + taxonomy values; fixture filenames and prose deliberately left Spanish, see the commit message)
+- [x] **Commit 11 — Specs and documentation** — `bedca82` (README pitch and CLAUDE.md conventions re-authored, not translated)
+- [x] **Final Verification** — production sweep clean except es-frozen goldenset keys; eval reproduces the baseline exactly; a follow-up commit fixed leftovers the sweep caught, including three vacuously-passing server tests
 
 ## Decisions recorded during apply
 
