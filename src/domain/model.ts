@@ -67,4 +67,17 @@ export interface SearchResultItem {
 export interface SearchResponse {
   mode: SearchMode;
   results: SearchResultItem[];
+  /**
+   * Why an empty `results` is empty, when a filter or the project's own status
+   * deny-list is the likely cause. Absent whenever there are results, and
+   * absent on an unfiltered miss — a bare query that matches nothing needs no
+   * explanation, and inventing one would be noise on every empty search.
+   */
+  noMatchReason?: string;
+  /**
+   * Set when a filter targeting a field no document declares was dropped so the
+   * query could return something. Names what was ignored and how to fix the
+   * project's config — a dropped filter is never silent.
+   */
+  filterWarning?: string;
 }

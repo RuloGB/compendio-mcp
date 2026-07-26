@@ -34,6 +34,24 @@ function getRegisteredTool(
   return tool;
 }
 
+describe("server instructions", () => {
+  it("ships routing guidance that frames competence, not file format", () => {
+    const server = createMcpServer(fakeContainer());
+    const internals = server.server as unknown as { _instructions?: string };
+    const instructions = internals._instructions ?? "";
+    expect(instructions.length).toBeGreaterThan(0);
+    expect(instructions).toContain("search_docs");
+    // An agent classifies "what message does the user see?" as a code question.
+    // Naming the question shapes is what puts this server in the running; if
+    // this drops out, the instructions have gone back to describing markdown
+    // files instead of the questions they answer.
+    expect(instructions).toMatch(/business rules/i);
+    // And they must keep conceding what source code owns — an instruction that
+    // over-claims gets discounted wholesale.
+    expect(instructions).toMatch(/authority/i);
+  });
+});
+
 describe("search_docs tool — open type schema", () => {
   it("accepts a type value outside any closed taxonomy", () => {
     const server = createMcpServer(fakeContainer());

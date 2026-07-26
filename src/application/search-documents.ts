@@ -1,6 +1,12 @@
-import { buildExcerpt } from "../domain/excerpt.js";
+import { buildExcerpt, excerptBudget } from "../domain/excerpt.js";
 import { capPerDocument, reciprocalRankFusion } from "../domain/fusion.js";
 import type { SearchFilters, SearchResponse, SearchResultItem } from "../domain/model.js";
+import {
+  collectFacets,
+  describeDroppedFilters,
+  dropImpossibleFilters,
+  explainEmptyResult,
+} from "../domain/search-diagnostics.js";
 import type { EmbeddingsProvider, IndexStore } from "../domain/ports.js";
 
 export interface SearchQuery {
@@ -42,7 +48,35 @@ export class SearchDocuments {
 
   async execute(query: SearchQuery): Promise<SearchResponse> {
     const k = query.k ?? this.defaults.k;
-    const filters = this.buildFilters(query);
+    const requested = this.buildFilters(query);
+    const first = await this.runSearch(query, requested, k);
+    if (first.results.length > 0) return first;
+
+    // Nothing came back. Before reporting a zero — which observed agents read
+    // as "search harder" — check whether a filter targeted a field this corpus
+    // does not declare at all, and if so retry without it.
+    const facets = collectFacets(this.store.listDocuments());
+    const { filters: viable, droppedFields } = dropImpossibleFilters(requested, facets);
+    if (droppedFields.length > 0) {
+      const retry = await this.runSearch(query, viable, k);
+      retry.filterWarning = describeDroppedFilters(droppedFields);
+      if (retry.results.length === 0) {
+        const reason = explainEmptyResult(viable, facets);
+        if (reason !== undefined) retry.noMatchReason = reason;
+      }
+      return retry;
+    }
+
+    const reason = explainEmptyResult(requested, facets);
+    if (reason !== undefined) first.noMatchReason = reason;
+    return first;
+  }
+
+  private async runSearch(
+    query: SearchQuery,
+    filters: SearchFilters,
+    k: number,
+  ): Promise<SearchResponse> {
     const limit = Math.max(MIN_CANDIDATES, k * CANDIDATE_FACTOR);
 
     const lexicalIds = this.store.searchLexical(query.query, filters, limit);
@@ -70,7 +104,10 @@ export class SearchDocuments {
         path: doc.path,
         title: doc.title,
         section: chunk.heading,
-        excerpt: buildExcerpt(chunk.content),
+        // `results.length` is this item's 0-based rank among emitted results,
+        // which is what the caller sees — not its index in `top`, where a
+        // dropped chunk would leave a hole.
+        excerpt: buildExcerpt(chunk.content, excerptBudget(results.length)),
         score: Number(entry.score.toFixed(4)),
       };
       if (doc.status !== undefined) item.status = doc.status;

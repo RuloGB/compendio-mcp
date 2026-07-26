@@ -43,6 +43,29 @@ describe("ReadDocument over the ejemplos corpus", () => {
     expect(result.content).toContain("Un lead se considera duplicado");
   });
 
+  it("tolerates a leading docs-dir segment on the path", () => {
+    // A caller that just saw the file on disk holds "docs/leadsviewer/x.md",
+    // while indexed paths are docs-relative. Both name one document, and
+    // rejecting the first costs a failed call per read.
+    const result = harness.read.execute({ path: "docs/leadsviewer/validacion-formulario.md" });
+    expect(result.type).toBe("document");
+    if (result.type !== "document") return;
+    expect(result.meta.path).toBe("leadsviewer/validacion-formulario.md");
+  });
+
+  it("prefers a real document over stripping a segment off the request", () => {
+    // Stripping must never shadow an exact hit: only a miss triggers the retry.
+    const result = harness.read.execute({ path: "leadsviewer/validacion-formulario.md" });
+    expect(result.type).toBe("document");
+    if (result.type !== "document") return;
+    expect(result.meta.path).toBe("leadsviewer/validacion-formulario.md");
+  });
+
+  it("still reports a genuinely unknown path after the prefix retry", () => {
+    const result = harness.read.execute({ path: "docs/no/existe.md" });
+    expect(result.type).toBe("path-not-found");
+  });
+
   it("suggests the 3 closest paths when the path does not exist", () => {
     const result = harness.read.execute({ path: "leadsviewer/validacion-formulari.md" });
     expect(result.type).toBe("path-not-found");

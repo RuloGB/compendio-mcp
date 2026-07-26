@@ -35,8 +35,45 @@ function readPackageVersion(): string {
  * orient cheap (docs_overview) -> search cheap (search_docs) -> read only
  * what is needed (read_doc).
  */
+/**
+ * Server-level instructions, surfaced by MCP clients as guidance rather than
+ * buried in a tool list.
+ *
+ * They describe the server's COMPETENCE, not its substrate. An agent does not
+ * classify "what message does the user see on a malformed email?" as a
+ * documentation question — it classifies it as "find the validation code" and
+ * reaches for grep. Naming the question shapes this server answers is what
+ * puts it in the running at all.
+ *
+ * They deliberately do NOT tell an agent to search here instead of reading
+ * source. Documentation goes stale and source cannot, so on "what does it do
+ * today" the code is the authority and a doc is only a claim about it. What
+ * source can never hold is intent — why a choice was made, what a rule is
+ * meant to guarantee — and that is the claim worth making. An instruction that
+ * over-claims gets discounted wholesale, so conceding the ground compendio
+ * does not own is what makes the rest of it credible.
+ */
+const SERVER_INSTRUCTIONS = [
+  "Compendio indexes this project's own documentation: the decisions, business rules,",
+  "workflows, limits and user-facing messages the team wrote down.",
+  "",
+  "Reach for search_docs whenever a question touches what the project does or why —",
+  "behaviour, validation rules, the exact text of a user-facing message, limits,",
+  "endpoints, deployment steps, or the reasoning behind a technical choice. It usually",
+  "answers in one call, and it is the cheapest way to find out where to look next.",
+  "",
+  "Source code stays the authority on what the system does today: documentation can go",
+  "stale, code cannot. What code cannot hold is intent — why a choice was made, which",
+  "alternatives were rejected, what a rule is meant to guarantee. For that the docs are",
+  "the only record. Use both: search here to learn what the project says and why, then",
+  "confirm against source when the answer has to reflect current behaviour.",
+].join("\n");
+
 export function createMcpServer(container: Container): McpServer {
-  const server = new McpServer({ name: "compendio-mcp", version: SERVER_VERSION });
+  const server = new McpServer(
+    { name: "compendio-mcp", version: SERVER_VERSION },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
 
   server.registerTool(
     "docs_overview",
@@ -63,17 +100,41 @@ export function createMcpServer(container: Container): McpServer {
       title: "Documentation search",
       description:
         "Hybrid search (lexical BM25 + semantic) in natural language over the project's " +
-        "documentation, with metadata filters. Default entry point for any specific question: " +
-        "the returned fragments usually answer it outright, with no further read. Returns " +
-        "compact fragments (path, title, section, excerpt, score) — pass a result's section to " +
-        "read_doc when you need that section in full. If the project declares " +
+        "documentation, with metadata filters. Entry point for any question about what the " +
+        "project does or why — behaviour, business rules, the exact text of a user-facing " +
+        "message, limits, endpoints, deployment steps, or the reasoning behind a decision. " +
+        "Cheapest first probe for such a question; source code remains the authority on " +
+        "current behaviour, while these docs are the only record of intent. " +
+        "The top result carries a full-length excerpt that usually answers outright; the rest " +
+        "carry short ones, enough to tell whether the top result is the right one. Each result " +
+        "has path, title, section, excerpt and score. An excerpt ending in '…' was cut — that " +
+        "is the signal to call read_doc with its path and section. If the project declares " +
         "convention.excludedStatuses, documents in those statuses are left out unless " +
         "include_excluded is set; if it declares none, no document is excluded by status.",
       inputSchema: {
         query: z.string().min(1).describe("Natural-language query"),
-        type: z.string().optional().describe("Filter by document type (as defined by the project's convention)"),
-        module: z.string().optional().describe("Filter by module"),
-        tags: z.array(z.string()).optional().describe("Filter by tags (matching one is enough)"),
+        // Filters are a footgun on first contact: their values are
+        // project-defined and frequently absent altogether, so an agent that
+        // infers them from directory names gets a guaranteed empty result.
+        // Cheaper to stop the guess than to explain it afterwards.
+        type: z
+          .string()
+          .optional()
+          .describe(
+            "Filter by document type — project-defined, and absent entirely in many projects. " +
+              "Omit it unless docs_overview showed you the value; never infer it from directory " +
+              "names or paths.",
+          ),
+        module: z
+          .string()
+          .optional()
+          .describe("Filter by module — same caveat as type: omit unless docs_overview showed the value."),
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Filter by tags (matching one is enough) — same caveat: omit unless docs_overview showed them.",
+          ),
         k: z.number().int().min(1).max(20).optional().describe("Number of results (5 by default)"),
         include_excluded: z
           .boolean()
