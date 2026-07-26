@@ -1,4 +1,4 @@
-import type { ConvencionPolicy } from "../domain/convencion.js";
+import type { ConventionPolicy } from "../domain/convention.js";
 import type { IndexedDocument, SearchMode } from "../domain/model.js";
 import type {
   ChunkMissingVector,
@@ -43,7 +43,7 @@ interface PassState {
  *
  * 1. Read failures (`readErrors`) exclude both the reported `path` and
  *    every indexed `path` beneath it from the delete-candidate set.
- * 2. Under `estricto`, a resolver rejection on an already-indexed `path`
+ * 2. Under `strict`, a resolver rejection on an already-indexed `path`
  *    deletes that stale row; on a brand-new `path` it is a plain skip.
  * 3. Vector-coverage reconciliation is chunk-granular
  *    (`listChunksMissingVectors()`), restricted to this pass's hash-match
@@ -59,7 +59,7 @@ export class SyncIndex {
     private readonly parser: MarkdownParser,
     private readonly store: IndexStore,
     private readonly embeddings: EmbeddingsProvider | null,
-    private readonly policy: ConvencionPolicy,
+    private readonly policy: ConventionPolicy,
     private readonly options: PipelineOptions,
   ) {}
 
@@ -124,13 +124,13 @@ export class SyncIndex {
       const { meta, chunks } = result;
       let chunkEmbeddings: Float32Array[] | null = null;
       if (this.embeddings === null) {
-        state.embeddingsWarning = "indexado sin embeddings (proveedor no disponible): busqueda en modo lexico";
+        state.embeddingsWarning = "indexado sin embeddings (proveedor no disponible): busqueda en mode lexico";
       } else {
         try {
           const texts = chunks.map((c) => `passage: ${c.heading}\n${c.content}`);
           chunkEmbeddings = await this.embeddings.embed(texts);
         } catch (error) {
-          state.embeddingsWarning = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
+          state.embeddingsWarning = `embeddings no disponibles (${describeError(error)}): busqueda en mode lexico`;
         }
       }
 
@@ -177,7 +177,7 @@ export class SyncIndex {
           chunksMissing.map((c) => `passage: ${c.heading}\n${c.content}`),
         );
       } catch (error) {
-        state.embeddingsWarning = `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
+        state.embeddingsWarning = `embeddings no disponibles (${describeError(error)}): busqueda en mode lexico`;
         continue; // leave as-is (lexical-only), reconsidered on a future pass
       }
       try {

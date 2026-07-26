@@ -123,10 +123,10 @@ describe("toSyncInfo — content-based omission", () => {
   });
 
   it("surfaces embeddingsWarning when the most recent pass degraded to lexical-only", () => {
-    const report = fakeReport({ embeddingsWarning: "embeddings no disponibles: busqueda en modo lexico" });
+    const report = fakeReport({ embeddingsWarning: "embeddings no disponibles: busqueda en mode lexico" });
     expect(toSyncInfo(report)).toEqual({
       skipped: [],
-      embeddingsWarning: "embeddings no disponibles: busqueda en modo lexico",
+      embeddingsWarning: "embeddings no disponibles: busqueda en mode lexico",
     });
   });
 });
@@ -150,13 +150,13 @@ describe("formatOverview — sync block", () => {
 
     const salida = formatOverview(overview, {
       skipped: [{ path: "roto.md", errors: ["permiso denegado"] }],
-      embeddingsWarning: "embeddings no disponibles: busqueda en modo lexico",
+      embeddingsWarning: "embeddings no disponibles: busqueda en mode lexico",
     });
 
     expect(salida).toContain("Sincronizacion");
     expect(salida).toContain("roto.md");
     expect(salida).toContain("permiso denegado");
-    expect(salida).toContain("embeddings no disponibles: busqueda en modo lexico");
+    expect(salida).toContain("embeddings no disponibles: busqueda en mode lexico");
     store.close();
   });
 });

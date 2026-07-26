@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { chunkOutline, type ChunkingOptions } from "../domain/chunking.js";
-import type { ConvencionPolicy } from "../domain/convencion.js";
+import type { ConventionPolicy } from "../domain/convention.js";
 import type { Chunk, DocumentMeta } from "../domain/model.js";
 import type { DocumentFile, MarkdownParser } from "../domain/ports.js";
 
@@ -8,7 +8,7 @@ export interface PipelineOptions {
   chunking: ChunkingOptions;
   /** File names (relative path or basename) indexed as a single chunk,
    * without heading-based chunking. The glossary is the canonical case. */
-  sinChunking: string[];
+  noChunking: string[];
 }
 
 export interface PipelineSuccess {
@@ -44,7 +44,7 @@ export function describeError(error: unknown): string {
  */
 export function transformFile(
   parser: MarkdownParser,
-  policy: ConvencionPolicy,
+  policy: ConventionPolicy,
   options: PipelineOptions,
   file: DocumentFile,
   hash: string,
@@ -68,7 +68,7 @@ export function transformFile(
     return { ok: false, errors: resolution.errors };
   }
 
-  const chunks = isSinChunking(file.path, options.sinChunking)
+  const chunks = isNoChunking(file.path, options.noChunking)
     ? wholeDocumentChunk(resolution.meta.title, parsed.body)
     : chunkOutline(parsed.outline, options.chunking);
 
@@ -79,9 +79,9 @@ export function transformFile(
   return { ok: true, meta: resolution.meta, chunks };
 }
 
-function isSinChunking(path: string, sinChunking: string[]): boolean {
+function isNoChunking(path: string, noChunking: string[]): boolean {
   const basename = path.split("/").pop() ?? path;
-  return sinChunking.some((entry) => entry === path || entry === basename);
+  return noChunking.some((entry) => entry === path || entry === basename);
 }
 
 function wholeDocumentChunk(title: string, body: string): Chunk[] {

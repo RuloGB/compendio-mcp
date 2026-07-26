@@ -41,7 +41,7 @@ export function formatDocLine(doc: {
   return `- ${typeSegment}${doc.path} — ${doc.summary}${statusSegment}`;
 }
 
-/** Default ordering: alphabetical by `path` (the zero-config/libre default). */
+/** Default ordering: alphabetical by `path` (the zero-config/loose default). */
 function compararAlfabetico(a: IndexEntry, b: IndexEntry): number {
   return a.path.localeCompare(b.path);
 }
@@ -49,14 +49,14 @@ function compararAlfabetico(a: IndexEntry, b: IndexEntry): number {
 /**
  * Renders INDEX.md: one line per document. Ordering is delegated to an
  * injectable comparator (default = alphabetical by `path`); pass the
- * `estricto` declared-taxonomy comparator from `crearComparadorIndice` to
+ * `strict` declared-taxonomy comparator from `createIndexComparator` to
  * order by the declared `types` sequence instead.
  */
 export function renderIndexMd(
   docs: IndexEntry[],
-  comparar: (a: IndexEntry, b: IndexEntry) => number = compararAlfabetico,
+  compare: (a: IndexEntry, b: IndexEntry) => number = compararAlfabetico,
 ): string {
-  const lines = [...docs].sort(comparar).map((doc) =>
+  const lines = [...docs].sort(compare).map((doc) =>
     formatDocLine({
       type: doc.type,
       path: doc.path,

@@ -1,5 +1,5 @@
 import type { ChunkingOptions } from "../domain/chunking.js";
-import type { ConvencionPolicy } from "../domain/convencion.js";
+import type { ConventionPolicy } from "../domain/convention.js";
 import type { SearchMode } from "../domain/model.js";
 import type {
   DocumentSource,
@@ -34,7 +34,7 @@ export interface IndexDocumentsOptions {
   chunking: ChunkingOptions;
   /** File names (relative path or basename) indexed as a single chunk,
    * without heading-based chunking. The glossary is the canonical case. */
-  sinChunking: string[];
+  noChunking: string[];
   embeddingBatchSize?: number;
 }
 
@@ -44,7 +44,7 @@ const DEFAULT_BATCH_SIZE = 16;
  * Full reindex pipeline: discover -> parse & resolve -> chunk -> embed ->
  * persist. A file is skipped and reported in `skipped` for any resilience
  * reason (unreadable, unparseable, no indexable content) or, under the
- * injected `ConvencionPolicy`, for a metadata reason. If the embeddings
+ * injected `ConventionPolicy`, for a metadata reason. If the embeddings
  * provider is missing or fails, indexing completes in lexical-only mode
  * instead of crashing (graceful degradation).
  */
@@ -54,7 +54,7 @@ export class IndexDocuments {
     private readonly parser: MarkdownParser,
     private readonly store: IndexStore,
     private readonly embeddings: EmbeddingsProvider | null,
-    private readonly policy: ConvencionPolicy,
+    private readonly policy: ConventionPolicy,
     private readonly options: IndexDocumentsOptions,
   ) {}
 
@@ -107,7 +107,7 @@ export class IndexDocuments {
   /** Returns a warning message when embeddings could not be generated. */
   private async embedPending(pending: { chunkId: number; text: string }[]): Promise<string | null> {
     if (this.embeddings === null) {
-      return "indexado sin embeddings (proveedor no disponible): busqueda en modo lexico";
+      return "indexado sin embeddings (proveedor no disponible): busqueda en mode lexico";
     }
     const batchSize = this.options.embeddingBatchSize ?? DEFAULT_BATCH_SIZE;
     try {
@@ -121,7 +121,7 @@ export class IndexDocuments {
       }
       return null;
     } catch (error) {
-      return `embeddings no disponibles (${describeError(error)}): busqueda en modo lexico`;
+      return `embeddings no disponibles (${describeError(error)}): busqueda en mode lexico`;
     }
   }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DocumentMeta } from "../../src/domain/model";
 import {
-  aplicarCamposOpcionales,
+  applyOptionalFields,
   isNonEmptyString,
   resolveTags,
 } from "../../src/domain/frontmatter";
@@ -46,32 +46,32 @@ describe("resolveTags", () => {
   });
 });
 
-describe("aplicarCamposOpcionales", () => {
+describe("applyOptionalFields", () => {
   function baseMeta(): DocumentMeta {
     return { path: "a.md", title: "A", summary: "R", tags: [], hash: "h" };
   }
 
   it("attaches a trimmed propietario when present", () => {
     const meta = baseMeta();
-    aplicarCamposOpcionales(meta, { propietario: " BA " });
+    applyOptionalFields(meta, { propietario: " BA " });
     expect(meta.owner).toBe("BA");
   });
 
   it("normalizes a YAML date (gray-matter parses dates into Date objects)", () => {
     const meta = baseMeta();
-    aplicarCamposOpcionales(meta, { actualizado: new Date("2026-07-19T00:00:00Z") });
+    applyOptionalFields(meta, { actualizado: new Date("2026-07-19T00:00:00Z") });
     expect(meta.updated).toBe("2026-07-19");
   });
 
   it("keeps a string actualizado trimmed as-is", () => {
     const meta = baseMeta();
-    aplicarCamposOpcionales(meta, { actualizado: " 2026-07-19 " });
+    applyOptionalFields(meta, { actualizado: " 2026-07-19 " });
     expect(meta.updated).toBe("2026-07-19");
   });
 
   it("leaves both fields absent when neither is present", () => {
     const meta = baseMeta();
-    aplicarCamposOpcionales(meta, {});
+    applyOptionalFields(meta, {});
     expect(meta.owner).toBeUndefined();
     expect(meta.updated).toBeUndefined();
   });

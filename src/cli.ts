@@ -44,7 +44,7 @@ program
         }
         console.log(
           `Indexados ${report.indexed.length} documentos (${report.totalChunks} chunks) ` +
-            `en ${report.durationMs} ms [modo ${report.mode}]`,
+            `en ${report.durationMs} ms [mode ${report.mode}]`,
         );
         if (report.skipped.length > 0) {
           console.log(`Omitidos ${report.skipped.length} documentos con frontmatter invalido.`);
@@ -75,10 +75,10 @@ program
   .description("Busca en la documentacion indexada y muestra el resultado en JSON")
   .argument("<query>", "consulta en lenguaje natural")
   .option("-k, --k <n>", "numero de resultados", parsePositiveInt)
-  .option("--tipo <tipo>", "filtra por tipo de documento (segun la convencion del proyecto)")
+  .option("--tipo <tipo>", "filtra por tipo de documento (segun la convention del proyecto)")
   .option("--modulo <modulo>", "filtra por modulo")
   .option("--etiquetas <lista>", "filtra por etiquetas, separadas por comas")
-  .option("--todos", "incluye documentos excluidos por convencion.estadosExcluidos")
+  .option("--todos", "incluye documentos excluidos por convention.estadosExcluidos")
   .option("--lexico", "fuerza busqueda solo lexica (sin embeddings)")
   .action(
     async (
@@ -174,8 +174,8 @@ function parsePositiveInt(value: string): number {
 }
 
 /**
- * `tipo` is an open, project-defined string (declared via `convencion.types`
- * in `compendio.config.json`, or freeform in `libre` mode) — there is no
+ * `tipo` is an open, project-defined string (declared via `convention.types`
+ * in `compendio.config.json`, or freeform in `loose` mode) — there is no
  * closed list to validate against at the CLI layer, so this is a passthrough,
  * never a hard exit. Exported for direct unit testing.
  */
@@ -218,7 +218,7 @@ function printEvalReport(
   k: number,
 ): void {
   console.log(`Goldenset: ${lexical.cases} preguntas | k = ${k}\n`);
-  const header = `modo      recall@${k}   MRR      failures`;
+  const header = `mode      recall@${k}   MRR      failures`;
   console.log(header);
   console.log("-".repeat(header.length));
   if (hybrid !== undefined) {
@@ -226,14 +226,14 @@ function printEvalReport(
   }
   console.log(formatEvalRow("lexical", lexical));
   if (hybrid === undefined) {
-    console.log("\nEl indice no tiene vectores: solo se evalua el modo lexical.");
+    console.log("\nEl indice no tiene vectores: solo se evalua el mode lexical.");
   }
-  for (const [modo, summary] of [
+  for (const [mode, summary] of [
     ["hybrid", hybrid],
     ["lexical", lexical],
   ] as const) {
     if (summary === undefined || summary.failures.length === 0) continue;
-    console.log(`\nFailures en modo ${modo}:`);
+    console.log(`\nFailures en mode ${mode}:`);
     for (const failure of summary.failures) {
       const rank = failure.rank === null ? "no aparece" : `posicion ${failure.rank}`;
       console.log(`- "${failure.question}" -> ${failure.expected} (${rank})`);
@@ -241,9 +241,9 @@ function printEvalReport(
   }
 }
 
-function formatEvalRow(modo: string, summary: EvalSummary): string {
+function formatEvalRow(mode: string, summary: EvalSummary): string {
   return (
-    modo.padEnd(10) +
+    mode.padEnd(10) +
     summary.recallAtK.toFixed(2).padEnd(11) +
     summary.mrr.toFixed(3).padEnd(9) +
     String(summary.failures.length)

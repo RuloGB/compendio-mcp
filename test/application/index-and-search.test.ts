@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   buildHarness,
-  ESTRICTO_FIXTURE_CONVENCION,
-  ESTRICTO_FIXTURE_DOCS,
+  STRICT_FIXTURE_CONVENTION,
+  STRICT_FIXTURE_DOCS,
   type TestHarness,
 } from "../helpers/build";
 import { BrokenEmbeddings, FakeEmbeddings } from "../helpers/fake-embeddings";
@@ -14,7 +14,7 @@ import type { IndexReport } from "../../src/application/index-documents";
 import { ReadDocument } from "../../src/application/read-document";
 import { SearchDocuments } from "../../src/application/search-documents";
 import { SyncIndex } from "../../src/application/sync-index";
-import { crearConvencionPolicy, type ConvencionConfig } from "../../src/domain/convencion";
+import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
 import type { DiscoverResult, DocumentFile, DocumentSource } from "../../src/domain/ports";
 import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
@@ -48,7 +48,7 @@ describe("index + hybrid search over the ejemplos corpus", () => {
   it("zero-config: includeExcluded is a no-op because ejemplos declares no excludedStatuses", async () => {
     // informes/plan-pruebas.md keeps a light `estado: borrador` frontmatter field on purpose,
     // to demonstrate that a declared status alone does not exclude a document from search
-    // unless the project also opts into `convencion.excludedStatuses`.
+    // unless the project also opts into `convention.excludedStatuses`.
     const porDefecto = await harness.search.execute({ query: "borrador plan de pruebas panel", k: 10 });
     expect(porDefecto.results.map((r) => r.path)).toContain("informes/plan-pruebas.md");
 
@@ -156,15 +156,15 @@ describe("graceful degradation to lexical mode", () => {
 });
 
 // --- Secondary synthetic fixture (D1.3): reproduces the retired,
-// pre-migration full-convention (estricto) behavior that ejemplos/ used to
+// pre-migration full-convention (strict) behavior that ejemplos/ used to
 // demonstrate before becoming the zero-config corpus. ---------------------
 
-describe("estricto synthetic fixture — declared taxonomy, type filtering, deny-list", () => {
+describe("strict synthetic fixture — declared taxonomy, type filtering, deny-list", () => {
   let harness: TestHarness;
   let report: IndexReport;
 
   beforeAll(async () => {
-    harness = buildHarness(new FakeEmbeddings(), ESTRICTO_FIXTURE_CONVENCION, ESTRICTO_FIXTURE_DOCS);
+    harness = buildHarness(new FakeEmbeddings(), STRICT_FIXTURE_CONVENTION, STRICT_FIXTURE_DOCS);
     report = await harness.index.execute();
   });
 
@@ -196,19 +196,19 @@ describe("estricto synthetic fixture — declared taxonomy, type filtering, deny
   });
 });
 
-// --- IndexDocuments: libre/estricto convention modes + resilience -------
+// --- IndexDocuments: loose/strict convention modes + resilience -------
 
-const LIBRE: ConvencionConfig = {
-  modo: "libre",
+const LOOSE: ConventionConfig = {
+  mode: "loose",
   excludedStatuses: [],
-  camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
+  frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
 };
 
-function cfgEstricto(overrides: Partial<ConvencionConfig> = {}): ConvencionConfig {
+function cfgStrict(overrides: Partial<ConventionConfig> = {}): ConventionConfig {
   return {
-    modo: "estricto",
+    mode: "strict",
     excludedStatuses: [],
-    camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
+    frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
     ...overrides,
   };
 }
@@ -225,17 +225,17 @@ class StaticSource implements DocumentSource {
 
 function buildIndexer(
   source: DocumentSource,
-  convencion: ConvencionConfig = LIBRE,
+  convention: ConventionConfig = LOOSE,
 ): { indexer: IndexDocuments; store: SqliteIndexStore } {
   const store = new SqliteIndexStore(":memory:");
-  const indexer = new IndexDocuments(source, new RemarkMarkdownParser(), store, null, crearConvencionPolicy(convencion), {
+  const indexer = new IndexDocuments(source, new RemarkMarkdownParser(), store, null, createConventionPolicy(convention), {
     chunking: { minTokens: 10, maxTokens: 800 },
-    sinChunking: [],
+    noChunking: [],
   });
   return { indexer, store };
 }
 
-describe("IndexDocuments — libre mode never skips for metadata reasons", () => {
+describe("IndexDocuments — loose mode never skips for metadata reasons", () => {
   it("indexes a document with no frontmatter at all, with type/module/status absent", async () => {
     const { indexer, store } = buildIndexer(
       new StaticSource([{ path: "sin-frontmatter.md", content: "# Sin frontmatter\n\nTexto suelto.\n" }]),
@@ -252,7 +252,7 @@ describe("IndexDocuments — libre mode never skips for metadata reasons", () =>
   });
 });
 
-describe("IndexDocuments — estricto mode validates declared taxonomies", () => {
+describe("IndexDocuments — strict mode validates declared taxonomies", () => {
   it("accepts a document whose type/status match the declared taxonomies", async () => {
     const { indexer, store } = buildIndexer(
       new StaticSource([
@@ -261,7 +261,7 @@ describe("IndexDocuments — estricto mode validates declared taxonomies", () =>
           content: "---\ntipo: guia\nmodulo: auth\nestado: vigente\n---\n\n# Login\n\nResumen.\n",
         },
       ]),
-      cfgEstricto({ types: ["guia"], statuses: ["vigente"] }),
+      cfgStrict({ types: ["guia"], statuses: ["vigente"] }),
     );
     const report = await indexer.execute();
     expect(report.skipped).toEqual([]);
@@ -277,7 +277,7 @@ describe("IndexDocuments — estricto mode validates declared taxonomies", () =>
           content: "---\ntipo: no-declarado\nmodulo: auth\nestado: vigente\n---\n\n# Login\n\nResumen.\n",
         },
       ]),
-      cfgEstricto({ types: ["guia"] }),
+      cfgStrict({ types: ["guia"] }),
     );
     const report = await indexer.execute();
     expect(report.indexed).toEqual([]);
@@ -288,7 +288,7 @@ describe("IndexDocuments — estricto mode validates declared taxonomies", () =>
 });
 
 describe("IndexDocuments — resilience skip reasons (mode-independent)", () => {
-  it("folds an unreadable file into skipped and continues indexing the rest, under libre", async () => {
+  it("folds an unreadable file into skipped and continues indexing the rest, under loose", async () => {
     const { indexer, store } = buildIndexer(
       new StaticSource(
         [{ path: "ok.md", content: "# OK\n\nTexto.\n" }],
@@ -301,7 +301,7 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
     store.close();
   });
 
-  it("folds an unreadable file into skipped and continues indexing the rest, under estricto", async () => {
+  it("folds an unreadable file into skipped and continues indexing the rest, under strict", async () => {
     const { indexer, store } = buildIndexer(
       new StaticSource(
         [
@@ -312,7 +312,7 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
         ],
         [{ path: "roto.md", error: "permiso denegado" }],
       ),
-      cfgEstricto(),
+      cfgStrict(),
     );
     const report = await indexer.execute();
     expect(report.indexed).toHaveLength(1);
@@ -320,7 +320,7 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
     store.close();
   });
 
-  it("skips a document with malformed YAML frontmatter and continues, under libre", async () => {
+  it("skips a document with malformed YAML frontmatter and continues, under loose", async () => {
     const { indexer, store } = buildIndexer(
       new StaticSource([
         { path: "ok.md", content: "# OK\n\nTexto.\n" },
@@ -334,7 +334,7 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
     store.close();
   });
 
-  it("skips a document with malformed YAML frontmatter and continues, under estricto", async () => {
+  it("skips a document with malformed YAML frontmatter and continues, under strict", async () => {
     const { indexer, store } = buildIndexer(
       new StaticSource([
         {
@@ -343,7 +343,7 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
         },
         { path: "malformado.md", content: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
       ]),
-      cfgEstricto(),
+      cfgStrict(),
     );
     const report = await indexer.execute();
     expect(report.indexed).toHaveLength(1);
@@ -478,11 +478,11 @@ describe("SyncIndex — end-to-end incremental sync over a temp docs directory",
     const store = new SqliteIndexStore(":memory:");
     const source = new FileDocumentSource(dir, []);
     const parser = new RemarkMarkdownParser();
-    const policy = crearConvencionPolicy(LIBRE);
+    const policy = createConventionPolicy(LOOSE);
     const embeddings = new FakeEmbeddings();
     const sync = new SyncIndex(source, parser, store, embeddings, policy, {
       chunking: { minTokens: 10, maxTokens: 800 },
-      sinChunking: [],
+      noChunking: [],
     });
     const search = new SearchDocuments(store, embeddings, { k: 10, excludedStatuses: [] });
     const read = new ReadDocument(store);

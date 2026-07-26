@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BrokenEmbeddings, FakeEmbeddings } from "../helpers/fake-embeddings";
 import { computeHash } from "../../src/application/index-pipeline";
 import { SyncIndex } from "../../src/application/sync-index";
-import { crearConvencionPolicy, type ConvencionConfig } from "../../src/domain/convencion";
+import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
 import type { Chunk, DocumentMeta, SearchFilters } from "../../src/domain/model";
 import type {
   ChunkEmbedding,
@@ -17,21 +17,21 @@ import type {
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
-const LIBRE: ConvencionConfig = {
-  modo: "libre",
+const LOOSE: ConventionConfig = {
+  mode: "loose",
   excludedStatuses: [],
-  camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
+  frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
 };
 
-const ESTRICTO: ConvencionConfig = {
-  modo: "estricto",
+const STRICT: ConventionConfig = {
+  mode: "strict",
   types: ["guia"],
   statuses: ["vigente"],
   excludedStatuses: [],
-  camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
+  frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
 };
 
-const OPTIONS = { chunking: { minTokens: 10, maxTokens: 800 }, sinChunking: [] };
+const OPTIONS = { chunking: { minTokens: 10, maxTokens: 800 }, noChunking: [] };
 
 /** A `DocumentSource` whose `files`/`readErrors` can be swapped between
  * `execute()` calls, to simulate consecutive incremental sync passes. */
@@ -50,7 +50,7 @@ interface Harness {
   close(): void;
 }
 
-function buildHarness(embeddings: EmbeddingsProvider | null, convencion: ConvencionConfig = LIBRE): Harness {
+function buildHarness(embeddings: EmbeddingsProvider | null, convention: ConventionConfig = LOOSE): Harness {
   const store = new SqliteIndexStore(":memory:");
   const source = new MutableSource();
   const sync = new SyncIndex(
@@ -58,7 +58,7 @@ function buildHarness(embeddings: EmbeddingsProvider | null, convencion: Convenc
     new RemarkMarkdownParser(),
     store,
     embeddings,
-    crearConvencionPolicy(convencion),
+    createConventionPolicy(convention),
     OPTIONS,
   );
   return { store, source, sync, close: () => store.close() };
@@ -193,7 +193,7 @@ describe("SyncIndex — chunk-granular vector-coverage reconciliation", () => {
     const store = new SqliteIndexStore(":memory:");
     const source = new MutableSource();
     const parser = new RemarkMarkdownParser();
-    const policy = crearConvencionPolicy(LIBRE);
+    const policy = createConventionPolicy(LOOSE);
     const withEmbeddings = new SyncIndex(source, parser, store, new FakeEmbeddings(), policy, OPTIONS);
     const withoutEmbeddings = new SyncIndex(source, parser, store, null, policy, OPTIONS);
 
@@ -226,7 +226,7 @@ describe("SyncIndex — chunk-granular vector-coverage reconciliation", () => {
     const store = new SqliteIndexStore(":memory:");
     const source = new MutableSource();
     const parser = new RemarkMarkdownParser();
-    const policy = crearConvencionPolicy(LIBRE);
+    const policy = createConventionPolicy(LOOSE);
     const recording = new RecordingEmbeddings(new FakeEmbeddings());
     const sync = new SyncIndex(source, parser, store, recording, policy, OPTIONS);
 
@@ -294,8 +294,8 @@ describe("SyncIndex — read failures protect the affected path subtree from del
 });
 
 describe("SyncIndex — resolver rejection on a changed known document deletes the stale row", () => {
-  it("deletes the stale row when a known path's changed content fails policy.resolver() under estricto", async () => {
-    const { store, source, sync, close } = buildHarness(new FakeEmbeddings(), ESTRICTO);
+  it("deletes the stale row when a known path's changed content fails policy.resolver() under strict", async () => {
+    const { store, source, sync, close } = buildHarness(new FakeEmbeddings(), STRICT);
     source.files = [
       { path: "a.md", content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# A\n\nTexto.\n" },
     ];
@@ -313,8 +313,8 @@ describe("SyncIndex — resolver rejection on a changed known document deletes t
     close();
   });
 
-  it("is a plain skip, with nothing to delete, when a NEW path fails policy.resolver() under estricto", async () => {
-    const { store, source, sync, close } = buildHarness(new FakeEmbeddings(), ESTRICTO);
+  it("is a plain skip, with nothing to delete, when a NEW path fails policy.resolver() under strict", async () => {
+    const { store, source, sync, close } = buildHarness(new FakeEmbeddings(), STRICT);
     source.files = [{ path: "b.md", content: "---\ntipo: invalido\n---\n\n# B\n\nTexto.\n" }];
 
     const report = await sync.execute();
@@ -435,7 +435,7 @@ describe("SyncIndex — embed-before-upsert atomicity (load-bearing: a hash-curr
       new RemarkMarkdownParser(),
       store,
       recordingEmbeddings,
-      crearConvencionPolicy(LIBRE),
+      createConventionPolicy(LOOSE),
       OPTIONS,
     );
 
@@ -533,7 +533,7 @@ describe("SyncIndex — per-document write-failure resilience", () => {
       new RemarkMarkdownParser(),
       store,
       new FakeEmbeddings(),
-      crearConvencionPolicy(LIBRE),
+      createConventionPolicy(LOOSE),
       OPTIONS,
     );
 

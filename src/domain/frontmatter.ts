@@ -40,7 +40,7 @@ export function resolveTags(data: Record<string, unknown>): TagsResult {
  * `DocumentMeta` object literal in place. Shared by both convention policies
  * so the normalization (date -> `YYYY-MM-DD`, trimming) stays in one place.
  */
-export function aplicarCamposOpcionales(meta: DocumentMeta, data: Record<string, unknown>): void {
+export function applyOptionalFields(meta: DocumentMeta, data: Record<string, unknown>): void {
   const owner = data["propietario"];
   if (isNonEmptyString(owner)) meta.owner = owner.trim();
   const updated = data["actualizado"];

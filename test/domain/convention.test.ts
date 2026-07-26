@@ -1,29 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
-  crearComparadorIndice,
-  crearConvencionPolicy,
-  humanizarNombreArchivo,
-  inferirModulo,
-  type ConvencionConfig,
-} from "../../src/domain/convencion";
+  createIndexComparator,
+  createConventionPolicy,
+  humanizeFileName,
+  inferModule,
+  type ConventionConfig,
+} from "../../src/domain/convention";
 import type { IndexEntry } from "../../src/domain/index-markdown";
 
 const IDENTIDAD = { type: "tipo", module: "modulo", status: "estado" };
 
-function cfgLibre(overrides: Partial<ConvencionConfig> = {}): ConvencionConfig {
+function cfgLoose(overrides: Partial<ConventionConfig> = {}): ConventionConfig {
   return {
-    modo: "libre",
+    mode: "loose",
     excludedStatuses: [],
-    camposFrontmatter: IDENTIDAD,
+    frontmatterFields: IDENTIDAD,
     ...overrides,
   };
 }
 
-function cfgEstricto(overrides: Partial<ConvencionConfig> = {}): ConvencionConfig {
+function cfgStrict(overrides: Partial<ConventionConfig> = {}): ConventionConfig {
   return {
-    modo: "estricto",
+    mode: "strict",
     excludedStatuses: [],
-    camposFrontmatter: IDENTIDAD,
+    frontmatterFields: IDENTIDAD,
     ...overrides,
   };
 }
@@ -35,29 +35,29 @@ const BASE_INPUT = {
   hash: "abc123",
 };
 
-describe("humanizarNombreArchivo", () => {
+describe("humanizeFileName", () => {
   it("strips .md, replaces separators, collapses whitespace, sentence-cases the first letter", () => {
-    expect(humanizarNombreArchivo("docs/mi-guia_de-uso.md")).toBe("Mi guia de uso");
+    expect(humanizeFileName("docs/mi-guia_de-uso.md")).toBe("Mi guia de uso");
   });
 
   it("handles a root-level filename with no directory segment", () => {
-    expect(humanizarNombreArchivo("readme.md")).toBe("Readme");
+    expect(humanizeFileName("readme.md")).toBe("Readme");
   });
 });
 
-describe("inferirModulo", () => {
+describe("inferModule", () => {
   it("returns the first POSIX segment when path contains a slash", () => {
-    expect(inferirModulo("auth/login.md")).toBe("auth");
+    expect(inferModule("auth/login.md")).toBe("auth");
   });
 
   it("returns undefined for a root-level path with no slash", () => {
-    expect(inferirModulo("readme.md")).toBeUndefined();
+    expect(inferModule("readme.md")).toBeUndefined();
   });
 });
 
-describe("crearConvencionPolicy — libre", () => {
+describe("createConventionPolicy — loose", () => {
   it("uses the H1 title when present", () => {
-    const policy = crearConvencionPolicy(cfgLibre());
+    const policy = createConventionPolicy(cfgLoose());
     const result = policy.resolver({ ...BASE_INPUT, data: {} });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -65,7 +65,7 @@ describe("crearConvencionPolicy — libre", () => {
   });
 
   it("falls back to the humanized filename when there is no H1", () => {
-    const policy = crearConvencionPolicy(cfgLibre());
+    const policy = createConventionPolicy(cfgLoose());
     const result = policy.resolver({ ...BASE_INPUT, title: "", data: {} });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -73,7 +73,7 @@ describe("crearConvencionPolicy — libre", () => {
   });
 
   it("infers module from the first path segment under docsDir", () => {
-    const policy = crearConvencionPolicy(cfgLibre());
+    const policy = createConventionPolicy(cfgLoose());
     const result = policy.resolver({ ...BASE_INPUT, data: {} });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -81,7 +81,7 @@ describe("crearConvencionPolicy — libre", () => {
   });
 
   it("leaves module absent for a root-level file", () => {
-    const policy = crearConvencionPolicy(cfgLibre());
+    const policy = createConventionPolicy(cfgLoose());
     const result = policy.resolver({ ...BASE_INPUT, path: "readme.md", data: {} });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -89,7 +89,7 @@ describe("crearConvencionPolicy — libre", () => {
   });
 
   it("prefers frontmatter over folder inference for module", () => {
-    const policy = crearConvencionPolicy(cfgLibre());
+    const policy = createConventionPolicy(cfgLoose());
     const result = policy.resolver({ ...BASE_INPUT, data: { modulo: "identity" } });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -97,7 +97,7 @@ describe("crearConvencionPolicy — libre", () => {
   });
 
   it("never invents type or status when there is no signal", () => {
-    const policy = crearConvencionPolicy(cfgLibre());
+    const policy = createConventionPolicy(cfgLoose());
     const result = policy.resolver({ ...BASE_INPUT, data: {} });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -106,7 +106,7 @@ describe("crearConvencionPolicy — libre", () => {
   });
 
   it("treats empty-string module as absent and falls through to folder inference", () => {
-    const policy = crearConvencionPolicy(cfgLibre());
+    const policy = createConventionPolicy(cfgLoose());
     const result = policy.resolver({ ...BASE_INPUT, data: { modulo: "" } });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -114,7 +114,7 @@ describe("crearConvencionPolicy — libre", () => {
   });
 
   it("treats empty-string type and null status as absent, not as literal values", () => {
-    const policy = crearConvencionPolicy(cfgLibre());
+    const policy = createConventionPolicy(cfgLoose());
     const result = policy.resolver({ ...BASE_INPUT, data: { tipo: "", estado: null } });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -123,9 +123,9 @@ describe("crearConvencionPolicy — libre", () => {
   });
 });
 
-describe("crearConvencionPolicy — estricto", () => {
+describe("createConventionPolicy — strict", () => {
   it("rejects a type value outside the declared taxonomy", () => {
-    const policy = crearConvencionPolicy(cfgEstricto({ types: ["guia"] }));
+    const policy = createConventionPolicy(cfgStrict({ types: ["guia"] }));
     const result = policy.resolver({
       ...BASE_INPUT,
       data: { tipo: "adr", modulo: "auth", estado: "vigente" },
@@ -136,7 +136,7 @@ describe("crearConvencionPolicy — estricto", () => {
   });
 
   it("validates type and status independently when only one taxonomy is declared", () => {
-    const policy = crearConvencionPolicy(cfgEstricto({ types: ["guia"] }));
+    const policy = createConventionPolicy(cfgStrict({ types: ["guia"] }));
     const result = policy.resolver({
       ...BASE_INPUT,
       data: { tipo: "guia", modulo: "auth", estado: "anything-non-empty" },
@@ -148,7 +148,7 @@ describe("crearConvencionPolicy — estricto", () => {
   });
 
   it("accepts any non-empty type when no taxonomy is declared", () => {
-    const policy = crearConvencionPolicy(cfgEstricto());
+    const policy = createConventionPolicy(cfgStrict());
     const result = policy.resolver({
       ...BASE_INPUT,
       data: { tipo: "anything", modulo: "auth", estado: "vigente" },
@@ -159,7 +159,7 @@ describe("crearConvencionPolicy — estricto", () => {
   });
 
   it("rejects a missing/empty type even when no taxonomy is declared", () => {
-    const policy = crearConvencionPolicy(cfgEstricto());
+    const policy = createConventionPolicy(cfgStrict());
     const result = policy.resolver({
       ...BASE_INPUT,
       data: { tipo: "", modulo: "auth", estado: "vigente" },
@@ -170,7 +170,7 @@ describe("crearConvencionPolicy — estricto", () => {
   });
 
   it("always validates module by presence only, regardless of type/status declarations", () => {
-    const policy = crearConvencionPolicy(cfgEstricto({ types: ["guia"], statuses: ["vigente"] }));
+    const policy = createConventionPolicy(cfgStrict({ types: ["guia"], statuses: ["vigente"] }));
     const result = policy.resolver({
       ...BASE_INPUT,
       data: { tipo: "guia", estado: "vigente" },
@@ -181,7 +181,7 @@ describe("crearConvencionPolicy — estricto", () => {
   });
 
   it("skips a document with no H1 and does not fall back to filename humanization", () => {
-    const policy = crearConvencionPolicy(cfgEstricto({ types: ["guia"], statuses: ["vigente"] }));
+    const policy = createConventionPolicy(cfgStrict({ types: ["guia"], statuses: ["vigente"] }));
     const result = policy.resolver({
       ...BASE_INPUT,
       title: "",
@@ -193,10 +193,10 @@ describe("crearConvencionPolicy — estricto", () => {
   });
 });
 
-describe("crearConvencionPolicy — camposFrontmatter", () => {
+describe("createConventionPolicy — frontmatterFields", () => {
   it("resolves type from a custom mapped field name", () => {
-    const policy = crearConvencionPolicy(
-      cfgLibre({ camposFrontmatter: { type: "type", module: "modulo", status: "estado" } }),
+    const policy = createConventionPolicy(
+      cfgLoose({ frontmatterFields: { type: "type", module: "modulo", status: "estado" } }),
     );
     const result = policy.resolver({ ...BASE_INPUT, data: { type: "guide" } });
     expect(result.ok).toBe(true);
@@ -205,8 +205,8 @@ describe("crearConvencionPolicy — camposFrontmatter", () => {
   });
 
   it("leaves module/status at their identity mapping when only type is remapped", () => {
-    const policy = crearConvencionPolicy(
-      cfgLibre({ camposFrontmatter: { type: "type", module: "modulo", status: "estado" } }),
+    const policy = createConventionPolicy(
+      cfgLoose({ frontmatterFields: { type: "type", module: "modulo", status: "estado" } }),
     );
     const result = policy.resolver({
       ...BASE_INPUT,
@@ -219,9 +219,9 @@ describe("crearConvencionPolicy — camposFrontmatter", () => {
   });
 
   it("resolves both fields from a shared source key with no collision error", () => {
-    const policy = crearConvencionPolicy(
-      cfgLibre({
-        camposFrontmatter: { type: "clasificacion", module: "modulo", status: "clasificacion" },
+    const policy = createConventionPolicy(
+      cfgLoose({
+        frontmatterFields: { type: "clasificacion", module: "modulo", status: "clasificacion" },
       }),
     );
     const result = policy.resolver({ ...BASE_INPUT, data: { clasificacion: "guia-vigente" } });
@@ -232,29 +232,29 @@ describe("crearConvencionPolicy — camposFrontmatter", () => {
   });
 });
 
-describe("crearComparadorIndice", () => {
+describe("createIndexComparator", () => {
   function entry(path: string, type: string): IndexEntry {
     return { path, title: "t", summary: "r", type: type as never, status: "vigente" as never };
   }
 
   it("defaults to alphabetical order by path", () => {
-    const comparar = crearComparadorIndice(cfgLibre());
+    const compare = createIndexComparator(cfgLoose());
     const entries = [entry("b.md", "guia"), entry("a.md", "guia")];
-    const sorted = [...entries].sort(comparar);
+    const sorted = [...entries].sort(compare);
     expect(sorted.map((e) => e.path)).toEqual(["a.md", "b.md"]);
   });
 
-  it("under estricto with declared types, sorts by declared order then alphabetically by path", () => {
-    const comparar = crearComparadorIndice(cfgEstricto({ types: ["guia", "adr"] }));
+  it("under strict with declared types, sorts by declared order then alphabetically by path", () => {
+    const compare = createIndexComparator(cfgStrict({ types: ["guia", "adr"] }));
     const entries = [entry("z.md", "adr"), entry("b.md", "guia"), entry("a.md", "guia")];
-    const sorted = [...entries].sort(comparar);
+    const sorted = [...entries].sort(compare);
     expect(sorted.map((e) => e.path)).toEqual(["a.md", "b.md", "z.md"]);
   });
 
-  it("falls back to alphabetical order when estricto has no declared types", () => {
-    const comparar = crearComparadorIndice(cfgEstricto());
+  it("falls back to alphabetical order when strict has no declared types", () => {
+    const compare = createIndexComparator(cfgStrict());
     const entries = [entry("b.md", "guia"), entry("a.md", "adr")];
-    const sorted = [...entries].sort(comparar);
+    const sorted = [...entries].sort(compare);
     expect(sorted.map((e) => e.path)).toEqual(["a.md", "b.md"]);
   });
 });

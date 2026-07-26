@@ -1,7 +1,7 @@
 {
   "docsDir": "docs",
-  "convencion": {
-    "modo": "estricto",
+  "convention": {
+    "mode": "strict",
     "types": ["funcional", "adr", "api", "qa", "guia"],
     "statuses": ["borrador", "vigente", "obsoleto"],
     "excludedStatuses": ["borrador", "obsoleto"]

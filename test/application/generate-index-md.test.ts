@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GenerateIndexMd } from "../../src/application/generate-index-md";
-import { crearComparadorIndice, crearConvencionPolicy, type ConvencionConfig } from "../../src/domain/convencion";
+import { createIndexComparator, createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
 import type {
   DiscoverResult,
   DocumentFile,
@@ -11,17 +11,17 @@ import type {
 } from "../../src/domain/ports";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 
-const LIBRE: ConvencionConfig = {
-  modo: "libre",
+const LOOSE: ConventionConfig = {
+  mode: "loose",
   excludedStatuses: [],
-  camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
+  frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
 };
 
-function cfgEstricto(overrides: Partial<ConvencionConfig> = {}): ConvencionConfig {
+function cfgStrict(overrides: Partial<ConventionConfig> = {}): ConventionConfig {
   return {
-    modo: "estricto",
+    mode: "strict",
     excludedStatuses: [],
-    camposFrontmatter: { type: "tipo", module: "modulo", status: "estado" },
+    frontmatterFields: { type: "tipo", module: "modulo", status: "estado" },
     ...overrides,
   };
 }
@@ -52,13 +52,13 @@ const VALID_DOC: DocumentFile = {
 
 function buildUseCase(
   source: DocumentSource,
-  convencion: ConvencionConfig = LIBRE,
+  convention: ConventionConfig = LOOSE,
 ): { useCase: GenerateIndexMd; writer: MemoryIndexWriter } {
   const writer = new MemoryIndexWriter();
-  const policy = crearConvencionPolicy(convencion);
-  const comparar = crearComparadorIndice(convencion);
+  const policy = createConventionPolicy(convention);
+  const compare = createIndexComparator(convention);
   return {
-    useCase: new GenerateIndexMd(source, new RemarkMarkdownParser(), writer, policy, comparar),
+    useCase: new GenerateIndexMd(source, new RemarkMarkdownParser(), writer, policy, compare),
     writer,
   };
 }
@@ -122,7 +122,7 @@ describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
         { path: "b.md", content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# B\n\nr\n" },
         { path: "a.md", content: "---\ntipo: guia\nmodulo: m\nestado: vigente\n---\n\n# A\n\nr\n" },
       ]),
-      cfgEstricto({ types: ["guia", "adr"] }),
+      cfgStrict({ types: ["guia", "adr"] }),
     );
     const report = await useCase.execute();
 
@@ -143,7 +143,7 @@ describe("GenerateIndexMd — estricto mode over inline fixtures", () => {
           content: "---\ntipo: no-declarado\nmodulo: m\nestado: vigente\n---\n\n# X\n\nr\n",
         },
       ]),
-      cfgEstricto({ types: ["guia"] }),
+      cfgStrict({ types: ["guia"] }),
     );
     const report = await useCase.execute();
 
@@ -171,13 +171,13 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
     expect(writer.content).toContain("guias/transversal-valida.md");
   });
 
-  it("skips and reports a document with malformed frontmatter under estricto too", async () => {
+  it("skips and reports a document with malformed frontmatter under strict too", async () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
         VALID_DOC,
         { path: "guias/frontmatter-roto.md", content: "---\ntipo: [sin-cerrar\n---\n\n# X\n" },
       ]),
-      cfgEstricto({ types: ["guia"] }),
+      cfgStrict({ types: ["guia"] }),
     );
     const report = await useCase.execute();
 

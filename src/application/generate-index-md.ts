@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ConvencionPolicy } from "../domain/convencion.js";
+import type { ConventionPolicy } from "../domain/convention.js";
 import { INDEX_FILE, renderIndexMd, type IndexEntry } from "../domain/index-markdown.js";
 import type { DocumentSource, IndexFileWriter, MarkdownParser } from "../domain/ports.js";
 import type { SkippedFileReport } from "./index-documents.js";
@@ -26,8 +26,8 @@ export class GenerateIndexMd {
     private readonly source: DocumentSource,
     private readonly parser: MarkdownParser,
     private readonly writer: IndexFileWriter,
-    private readonly policy: ConvencionPolicy,
-    private readonly comparar: (a: IndexEntry, b: IndexEntry) => number,
+    private readonly policy: ConventionPolicy,
+    private readonly compare: (a: IndexEntry, b: IndexEntry) => number,
   ) {}
 
   async execute(): Promise<IndexMdReport> {
@@ -63,7 +63,7 @@ export class GenerateIndexMd {
       entries.push(resolution.meta);
     }
 
-    const written = await this.writer.write(renderIndexMd(entries, this.comparar));
+    const written = await this.writer.write(renderIndexMd(entries, this.compare));
     return {
       path: written.path,
       changed: written.changed,

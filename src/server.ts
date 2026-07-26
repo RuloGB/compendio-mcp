@@ -63,11 +63,11 @@ export function createMcpServer(container: Container): McpServer {
         "Busqueda hibrida (lexica BM25 + semantica) en lenguaje natural sobre la documentacion " +
         "del proyecto, con filtros por metadatos. Devuelve fragmentos compactos (path, section, " +
         "excerpt); usa read_doc para leer una section completa. Si el proyecto declara " +
-        "convencion.estadosExcluidos, los documentos en esos estados quedan fuera salvo " +
+        "convention.estadosExcluidos, los documentos en esos estados quedan fuera salvo " +
         "incluir_no_vigentes; si no lo declara, no se excluye ningun documento por su estado.",
       inputSchema: {
         query: z.string().min(1).describe("Consulta en lenguaje natural"),
-        tipo: z.string().optional().describe("Filtra por tipo de documento (segun la convencion del proyecto)"),
+        tipo: z.string().optional().describe("Filtra por tipo de documento (segun la convention del proyecto)"),
         modulo: z.string().optional().describe("Filtra por modulo"),
         etiquetas: z.array(z.string()).optional().describe("Filtra por etiquetas (basta una)"),
         k: z.number().int().min(1).max(20).optional().describe("Numero de resultados (5 por defecto)"),
@@ -75,7 +75,7 @@ export function createMcpServer(container: Container): McpServer {
           .boolean()
           .optional()
           .describe(
-            "Incluye documentos cuyo estado figura en convencion.estadosExcluidos " +
+            "Incluye documentos cuyo estado figura en convention.estadosExcluidos " +
               "(sin efecto si el proyecto no declara exclusiones)",
           ),
       },
