@@ -25,7 +25,7 @@ export interface ContainerOptions {
   root: string;
   /** Overrides config.docsDir (CLI --dir). */
   docsDir?: string;
-  /** Disables embeddings entirely (CLI --lexico). */
+  /** Disables embeddings entirely (CLI --lexical). */
   forceLexical?: boolean;
 }
 

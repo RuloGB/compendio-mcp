@@ -5,7 +5,7 @@ import { createMcpServer, SERVER_VERSION } from "../src/server.js";
 
 /**
  * Smoke-level contract test: schema validation for the `search_docs` tool's
- * `tipo` parameter must accept any string (open, project-defined taxonomy),
+ * `type` parameter must accept any string (open, project-defined taxonomy),
  * not just values from the retired closed `TIPOS` list. `getOverview` /
  * `searchDocuments` / `readDocument` are never invoked by these assertions
  * (schema parsing happens independently of the tool handler), so a minimal
@@ -34,14 +34,14 @@ function getRegisteredTool(
   return tool;
 }
 
-describe("search_docs tool — open tipo schema", () => {
-  it("accepts a tipo value outside any closed taxonomy", () => {
+describe("search_docs tool — open type schema", () => {
+  it("accepts a type value outside any closed taxonomy", () => {
     const server = createMcpServer(fakeContainer());
     const tool = getRegisteredTool(server, "search_docs");
-    expect(() => tool.inputSchema?.parse({ query: "algo", tipo: "playbook" })).not.toThrow();
+    expect(() => tool.inputSchema?.parse({ query: "algo", type: "playbook" })).not.toThrow();
   });
 
-  it("still accepts a request with tipo entirely omitted", () => {
+  it("still accepts a request with type entirely omitted", () => {
     const server = createMcpServer(fakeContainer());
     const tool = getRegisteredTool(server, "search_docs");
     expect(() => tool.inputSchema?.parse({ query: "algo" })).not.toThrow();
@@ -50,7 +50,7 @@ describe("search_docs tool — open tipo schema", () => {
   it("rejects a request missing the required query field", () => {
     const server = createMcpServer(fakeContainer());
     const tool = getRegisteredTool(server, "search_docs");
-    expect(() => tool.inputSchema?.parse({ tipo: "playbook" })).toThrow();
+    expect(() => tool.inputSchema?.parse({ type: "playbook" })).toThrow();
   });
 });
 
@@ -109,7 +109,7 @@ describe("read_doc tool — incremental sync trigger", () => {
     const server = createMcpServer(fakeContainerWithScheduler(maybeSync));
     const tool = getRegisteredTool(server, "read_doc");
 
-    await tool.handler({ ruta: "algo.md" });
+    await tool.handler({ path: "algo.md" });
 
     expect(maybeSync).toHaveBeenCalledTimes(1);
   });

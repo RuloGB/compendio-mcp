@@ -107,7 +107,7 @@ export class IndexDocuments {
   /** Returns a warning message when embeddings could not be generated. */
   private async embedPending(pending: { chunkId: number; text: string }[]): Promise<string | null> {
     if (this.embeddings === null) {
-      return "indexado sin embeddings (proveedor no disponible): busqueda en mode lexico";
+      return "indexed without embeddings (provider unavailable): search runs in lexical mode";
     }
     const batchSize = this.options.embeddingBatchSize ?? DEFAULT_BATCH_SIZE;
     try {
@@ -121,7 +121,7 @@ export class IndexDocuments {
       }
       return null;
     } catch (error) {
-      return `embeddings no disponibles (${describeError(error)}): busqueda en mode lexico`;
+      return `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
     }
   }
 

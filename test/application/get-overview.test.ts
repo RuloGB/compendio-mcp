@@ -31,7 +31,7 @@ function seed(store: SqliteIndexStore, overrides: Partial<DocumentMeta> & { path
 }
 
 describe("GetOverview — empty taxonomy omission", () => {
-  it("omits the 'Por tipo:' and 'Por modulo:' lines when no document defines them", () => {
+  it("omits the 'By type:' and 'By module:' lines when no document defines them", () => {
     const store = new SqliteIndexStore(":memory:");
     seed(store, { path: "a.md" });
     seed(store, { path: "b.md" });
@@ -41,8 +41,8 @@ describe("GetOverview — empty taxonomy omission", () => {
     expect(overview.byModule).toEqual({});
 
     const salida = formatOverview(overview);
-    expect(salida).not.toContain("Por tipo:");
-    expect(salida).not.toContain("Por modulo:");
+    expect(salida).not.toContain("By type:");
+    expect(salida).not.toContain("By module:");
     store.close();
   });
 });
@@ -58,7 +58,7 @@ describe("GetOverview — partial type coverage", () => {
     expect(overview.totalDocuments).toBe(2);
 
     const salida = formatOverview(overview);
-    expect(salida).toContain("Por tipo: guia (1)");
+    expect(salida).toContain("By type: guia (1)");
     expect(salida).not.toContain("undefined");
     store.close();
   });
@@ -123,10 +123,10 @@ describe("toSyncInfo — content-based omission", () => {
   });
 
   it("surfaces embeddingsWarning when the most recent pass degraded to lexical-only", () => {
-    const report = fakeReport({ embeddingsWarning: "embeddings no disponibles: busqueda en mode lexico" });
+    const report = fakeReport({ embeddingsWarning: "embeddings unavailable: search runs in lexical mode" });
     expect(toSyncInfo(report)).toEqual({
       skipped: [],
-      embeddingsWarning: "embeddings no disponibles: busqueda en mode lexico",
+      embeddingsWarning: "embeddings unavailable: search runs in lexical mode",
     });
   });
 });
@@ -137,9 +137,9 @@ describe("formatOverview — sync block", () => {
     seed(store, { path: "a.md" });
     const overview = new GetOverview(store).execute();
 
-    expect(formatOverview(overview)).not.toContain("Sincronizacion");
-    expect(formatOverview(overview, null)).not.toContain("Sincronizacion");
-    expect(formatOverview(overview, undefined)).not.toContain("Sincronizacion");
+    expect(formatOverview(overview)).not.toContain("Sync");
+    expect(formatOverview(overview, null)).not.toContain("Sync");
+    expect(formatOverview(overview, undefined)).not.toContain("Sync");
     store.close();
   });
 
@@ -150,13 +150,13 @@ describe("formatOverview — sync block", () => {
 
     const salida = formatOverview(overview, {
       skipped: [{ path: "roto.md", errors: ["permiso denegado"] }],
-      embeddingsWarning: "embeddings no disponibles: busqueda en mode lexico",
+      embeddingsWarning: "embeddings unavailable: search runs in lexical mode",
     });
 
-    expect(salida).toContain("Sincronizacion");
+    expect(salida).toContain("Sync");
     expect(salida).toContain("roto.md");
     expect(salida).toContain("permiso denegado");
-    expect(salida).toContain("embeddings no disponibles: busqueda en mode lexico");
+    expect(salida).toContain("embeddings unavailable: search runs in lexical mode");
     store.close();
   });
 });

@@ -76,18 +76,18 @@ export function formatOverview(
   sync?: SyncInfo | null,
 ): string {
   const lines: string[] = [];
-  lines.push(`Documentos indexados: ${overview.totalDocuments}`);
+  lines.push(`Indexed documents: ${overview.totalDocuments}`);
   const byTypeLine = formatCounts(overview.byType);
-  if (byTypeLine !== null) lines.push(`Por tipo: ${byTypeLine}`);
+  if (byTypeLine !== null) lines.push(`By type: ${byTypeLine}`);
   const byModuleLine = formatCounts(overview.byModule);
-  if (byModuleLine !== null) lines.push(`Por modulo: ${byModuleLine}`);
+  if (byModuleLine !== null) lines.push(`By module: ${byModuleLine}`);
   lines.push("");
   for (const doc of overview.documents) {
     lines.push(formatDocLine({ type: doc.type, path: doc.path, summary: doc.summary, status: doc.status }));
   }
   if (sync !== null && sync !== undefined) {
     lines.push("");
-    lines.push("Sincronizacion:");
+    lines.push("Sync:");
     for (const skippedItem of sync.skipped) {
       lines.push(`WARNING ${skippedItem.path}: ${skippedItem.errors.join("; ")}`);
     }

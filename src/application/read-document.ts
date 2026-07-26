@@ -90,17 +90,17 @@ function headingsIn(markdown: string): string[] {
 
 /**
  * Renders the frontmatter of a document as a YAML block. Each of
- * `tipo`/`modulo`/`estado` is rendered only when present on the document —
+ * `type`/`module`/`status` is rendered only when present on the document —
  * an absent field is omitted entirely, never shown as empty/placeholder.
  */
 export function formatFrontmatter(meta: DocumentMeta): string {
   const lines = ["---"];
-  if (meta.type !== undefined) lines.push(`tipo: ${meta.type}`);
-  if (meta.module !== undefined) lines.push(`modulo: ${meta.module}`);
-  if (meta.status !== undefined) lines.push(`estado: ${meta.status}`);
-  if (meta.owner !== undefined) lines.push(`propietario: ${meta.owner}`);
-  if (meta.tags.length > 0) lines.push(`etiquetas: [${meta.tags.join(", ")}]`);
-  if (meta.updated !== undefined) lines.push(`actualizado: ${meta.updated}`);
+  if (meta.type !== undefined) lines.push(`type: ${meta.type}`);
+  if (meta.module !== undefined) lines.push(`module: ${meta.module}`);
+  if (meta.status !== undefined) lines.push(`status: ${meta.status}`);
+  if (meta.owner !== undefined) lines.push(`owner: ${meta.owner}`);
+  if (meta.tags.length > 0) lines.push(`tags: [${meta.tags.join(", ")}]`);
+  if (meta.updated !== undefined) lines.push(`updated: ${meta.updated}`);
   lines.push("---");
   return lines.join("\n");
 }

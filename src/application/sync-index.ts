@@ -124,13 +124,13 @@ export class SyncIndex {
       const { meta, chunks } = result;
       let chunkEmbeddings: Float32Array[] | null = null;
       if (this.embeddings === null) {
-        state.embeddingsWarning = "indexado sin embeddings (proveedor no disponible): busqueda en mode lexico";
+        state.embeddingsWarning = "indexed without embeddings (provider unavailable): search runs in lexical mode";
       } else {
         try {
           const texts = chunks.map((c) => `passage: ${c.heading}\n${c.content}`);
           chunkEmbeddings = await this.embeddings.embed(texts);
         } catch (error) {
-          state.embeddingsWarning = `embeddings no disponibles (${describeError(error)}): busqueda en mode lexico`;
+          state.embeddingsWarning = `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
         }
       }
 
@@ -177,7 +177,7 @@ export class SyncIndex {
           chunksMissing.map((c) => `passage: ${c.heading}\n${c.content}`),
         );
       } catch (error) {
-        state.embeddingsWarning = `embeddings no disponibles (${describeError(error)}): busqueda en mode lexico`;
+        state.embeddingsWarning = `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
         continue; // leave as-is (lexical-only), reconsidered on a future pass
       }
       try {

@@ -44,14 +44,14 @@ export function inferModule(path: string): string | undefined {
 /** Basename minus `.md`, `-`/`_` -> space, collapse+trim whitespace, sentence-case the first character. */
 export function humanizeFileName(path: string): string {
   const base = path.split("/").pop() ?? path;
-  const sinExtension = base.endsWith(".md") ? base.slice(0, -3) : base;
-  const colapsado = sinExtension.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
-  if (colapsado.length === 0) return colapsado;
-  return colapsado.charAt(0).toUpperCase() + colapsado.slice(1);
+  const withoutExtension = base.endsWith(".md") ? base.slice(0, -3) : base;
+  const collapsed = withoutExtension.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  if (collapsed.length === 0) return collapsed;
+  return collapsed.charAt(0).toUpperCase() + collapsed.slice(1);
 }
 
 /**
- * `loose` (default): infers `title`/`modulo`, never invents `tipo`/`estado`,
+ * `loose` (default): infers `title`/`module`, never invents `type`/`status`,
  * never hard-fails for metadata reasons.
  */
 function createLoosePolicy(cfg: ConventionConfig): ConventionPolicy {
@@ -98,25 +98,25 @@ function createStrictPolicy(cfg: ConventionConfig): ConventionPolicy {
 
       const type = readField(data, cfg.frontmatterFields.type);
       if (type === undefined) {
-        errors.push(`frontmatter sin campo obligatorio '${cfg.frontmatterFields.type}'`);
+        errors.push(`frontmatter is missing required field '${cfg.frontmatterFields.type}'`);
       } else if (cfg.types !== undefined && !cfg.types.includes(type)) {
-        errors.push(`'type' invalido: "${type}" (permitidos: ${cfg.types.join(", ")})`);
+        errors.push(`invalid 'type': "${type}" (allowed: ${cfg.types.join(", ")})`);
       }
 
       const module = readField(data, cfg.frontmatterFields.module);
       if (module === undefined) {
-        errors.push(`frontmatter sin campo obligatorio '${cfg.frontmatterFields.module}'`);
+        errors.push(`frontmatter is missing required field '${cfg.frontmatterFields.module}'`);
       }
 
       const status = readField(data, cfg.frontmatterFields.status);
       if (status === undefined) {
-        errors.push(`frontmatter sin campo obligatorio '${cfg.frontmatterFields.status}'`);
+        errors.push(`frontmatter is missing required field '${cfg.frontmatterFields.status}'`);
       } else if (cfg.statuses !== undefined && !cfg.statuses.includes(status)) {
-        errors.push(`'status' invalido: "${status}" (permitidos: ${cfg.statuses.join(", ")})`);
+        errors.push(`invalid 'status': "${status}" (allowed: ${cfg.statuses.join(", ")})`);
       }
 
       if (!isNonEmptyString(input.title)) {
-        errors.push("el documento no tiene titulo H1");
+        errors.push("the document has no H1 title");
       }
 
       const tagsResult = resolveTags(data);

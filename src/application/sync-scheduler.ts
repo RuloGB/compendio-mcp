@@ -69,7 +69,7 @@ export class SyncScheduler {
       try {
         this.currentReport = await this.syncer.execute();
       } catch (error) {
-        console.error(`fallo la sincronizacion incremental: ${describeError(error)}`);
+        console.error(`incremental sync failed: ${describeError(error)}`);
       } finally {
         this.lastRunAt = this.now();
         this.inFlight = null;

@@ -73,7 +73,7 @@ export function transformFile(
     : chunkOutline(parsed.outline, options.chunking);
 
   if (chunks.length === 0) {
-    return { ok: false, errors: ["el documento no tiene contenido indexable"] };
+    return { ok: false, errors: ["the document has no indexable content"] };
   }
 
   return { ok: true, meta: resolution.meta, chunks };

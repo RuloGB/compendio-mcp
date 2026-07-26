@@ -359,7 +359,7 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
     const report = await indexer.execute();
     expect(report.indexed).toEqual([]);
     expect(report.skipped).toEqual([
-      { path: "vacio.md", errors: ["el documento no tiene contenido indexable"] },
+      { path: "vacio.md", errors: ["the document has no indexable content"] },
     ]);
     store.close();
   });
