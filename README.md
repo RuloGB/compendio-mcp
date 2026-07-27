@@ -47,7 +47,9 @@ Compendio indexes your markdown documentation and gives any AI agent three tools
 
 ## Requirements
 
-- Node.js ≥ 20.
+- Node.js ≥ 22.12 (the active LTS line). On older versions the install fails
+  while compiling `better-sqlite3` from source, because no prebuilt binary
+  matches — a native toolchain error, not a Compendio one.
 - Nothing else.
 
 ## Quick start

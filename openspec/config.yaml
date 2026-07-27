@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  Stack: Node.js >=20, TypeScript, MCP server "Compendio". Hexagonal
+  Stack: Node.js >=22.12, TypeScript, MCP server "Compendio". Hexagonal
   architecture — pure src/domain/, use cases in src/application/, adapters
   in src/infrastructure/ (better-sqlite3+sqlite-vec, transformers.js,
   remark+gray-matter, fs). Seams in src/domain/ports.ts.
