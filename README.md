@@ -47,7 +47,7 @@ Compendio indexes your markdown documentation and gives any AI agent three tools
 
 ## Requirements
 
-- Node.js ≥ 20.
+- Node.js ≥ 22.12.
 - Nothing else.
 
 ## Quick start
