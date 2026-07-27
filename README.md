@@ -11,6 +11,7 @@
   <a href="https://www.npmjs.com/package/compendio-mcp"><img src="https://img.shields.io/npm/v/compendio-mcp.svg" alt="npm"></a>
   <a href="LICENSE"><img src="https://img.shields.io/npm/l/compendio-mcp.svg" alt="license"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/compendio-mcp.svg" alt="node"></a>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue" alt="platform: macOS | Linux | Windows">
 </p>
 
 <p align="center">
