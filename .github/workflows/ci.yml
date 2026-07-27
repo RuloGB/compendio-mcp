@@ -56,6 +56,24 @@ jobs:
       # step is where a platform claim actually gets tested.
       - name: Install dependencies
         run: npm ci
+        env:
+          # onnxruntime-node (via @huggingface/transformers) runs an install
+          # script whose requirements table is empty on every platform except
+          # linux/x64, where it downloads CUDA and TensorRT execution providers
+          # from a NuGet feed. That made ubuntu the only cell with a network
+          # dependency during `npm ci`, and the only one that could fail before
+          # running any project code -- which is exactly how it failed.
+          #
+          # Compendio runs embeddings on CPU and the suite never loads
+          # transformers.js at all (see test/helpers/fake-embeddings.ts), so
+          # those providers are downloaded here only to go unused. Skipping is
+          # scoped to CI: a user installing on Linux still gets them.
+          #
+          # The value is case-sensitive and fails open. parseInstallFlag matches
+          # 'skip' exactly; anything else (SKIP, Skip) falls through to
+          # undefined, which means "not specified" and downloads again. It does
+          # not raise, so a typo here reintroduces the flake silently.
+          ONNXRUNTIME_NODE_INSTALL: skip
 
       - name: Typecheck
         run: npm run typecheck

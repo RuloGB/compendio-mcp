@@ -36,6 +36,13 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          # Same reasoning as ci.yml, and it bites harder here: this job only
+          # ever runs on ubuntu-latest, the one platform whose onnxruntime-node
+          # install script reaches the network, so an upstream feed hiccup would
+          # block cutting a release rather than a pull request. The value is
+          # case-sensitive and fails open -- see the note in ci.yml.
+          ONNXRUNTIME_NODE_INSTALL: skip
 
       # Publishing to npm is done manually (the account enforces 2FA on writes,
       # which no unattended runner can satisfy). This job only validates the
