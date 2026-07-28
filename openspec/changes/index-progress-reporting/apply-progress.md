@@ -65,7 +65,7 @@ tasks artifact's Review Workload Forecast — no further decision gate applied.
 | 3.21-3.22 | `test/cli-subprocess.test.ts` — `runCli` env signature | Subprocess | mechanical (test-helper signature extension, not production code) | ✅ existing 8 tests kept passing via the default merge | — | — |
 | 3.23-3.24 | same — `none` mode | Subprocess | ✅ paired with 3.25 (see below); alone would have been vacuous | ✅ passed | — | — |
 | 3.25-3.26 | same — `plain` mode | Subprocess | ✅ genuinely failed (stderr had no "Indexing" line) — also surfaced that `--lexical` already emits a pre-existing `embeddingsWarning` on stderr, fixed the `none`-mode assertion accordingly | ✅ passed | — | — |
-| 3.27-3.28 | same — `bar` mode | Subprocess | see **Deviations** below | ✅ passed (genuinely, not skipped, on the reporting machine) | — | — |
+| 3.27-3.28 | same — `bar` mode | Subprocess | see **Deviations** below | ⚠️ withdrawn after review — see the RESOLVED note under Deviations | — | — |
 | 3.29-3.30 | same — stdout parity across modes | Subprocess | ✅ genuinely failed on literal byte equality (pre-existing `durationMs` varies run to run — unrelated to progress); fixed by normalizing the duration figure before comparing | ✅ passed for `none`/`plain`/`bar` | — | — |
 | 3.31 | verify | — | — | ✅ confirmed by reading `src/cli.ts`: `search`/`overview`/`eval`/`serve`/`index-md` `withContainer` calls unchanged | — | — |
 | 4.1-4.3 | full suite | — | — | ✅ 299/299 tests, 29/29 files, typecheck clean, zero `package.json`/`package-lock.json` diff | — | — |
@@ -148,6 +148,17 @@ occasional-skip behavior across CI hardware becomes a problem, the alternative i
 adding a testing-only override for `BAR_MIN_ELAPSED_MS` (e.g. an env var), which is a
 real design decision this agent did not make unilaterally, since it wasn't in
 `design.md`'s contracts.
+
+> **RESOLVED — the large-corpus test was removed.** Reviewed with the repository owner
+> after apply completed, and deleted: it cost ~9.6 s of a 17.5 s suite (measured before
+> and after — the suite now runs in 7.85 s), and on faster hardware its assertion would
+> degrade to a silent `ctx.skip()`. Coverage that can vanish unnoticed reads as green,
+> which is worse than declaring the gap. The threshold, first-frame-accumulated-state and
+> erase logic remain covered deterministically by `progress-sink.test.ts`'s fake-clock
+> tests; what is now knowingly unproven end to end is only that the wired sink writes to
+> the real stderr stream. Task 3.27 is therefore **not** satisfied end to end, by
+> decision rather than omission, and `test/cli-subprocess.test.ts` carries a comment
+> explaining why so the test is not reintroduced by reflex. Test count: 299 → 298.
 
 **2. `finish()`'s full implementation (task 2.10) was written in the same GREEN pass as
 task 2.8 (bar draw logic), ahead of task 2.9's dedicated RED test.**

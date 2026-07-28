@@ -214,7 +214,14 @@ No behavior change to any command yet — nothing wires this in until Commit 3.
       honest `ctx.skip(...)` fallback (same pattern already used elsewhere in this file
       for platform-dependent capabilities) if a given machine is fast enough to finish
       under 5 s. Verified genuinely green (not skipped) on the reporting machine.
-- [x] 3.28 GREEN — confirm `bar` is reachable end-to-end through the wiring from 3.24.
+      **WITHDRAWN after post-apply review:** that test cost ~9.6 s of a 17.5 s suite and
+      would silently skip on faster hardware, so it was deleted by owner decision. The
+      threshold and redraw logic stay covered deterministically by `progress-sink.test.ts`
+      (fake clock); the end-to-end `\r` proof is a knowingly accepted gap, documented in a
+      comment in `test/cli-subprocess.test.ts` so it is not reintroduced by reflex.
+- [ ] 3.28 GREEN — confirm `bar` is reachable end-to-end through the wiring from 3.24.
+      Not satisfied end to end, by decision — see 3.27. Mode selection reaching the CLI
+      *is* asserted; the real-stderr write is not.
 - [x] 3.29 RED — all three modes (`none`/`plain`/`bar`): stdout still matches
       `/Indexed 5 documents \(\d+ chunks\)/` and is **byte-for-byte identical** across
       modes; `--lexical` stays set throughout so no real download triggers (spec:

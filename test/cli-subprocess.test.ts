@@ -2,14 +2,12 @@ import { execFileSync, spawnSync, type SpawnSyncReturns } from "node:child_proce
 import {
   cpSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
   symlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -211,59 +209,22 @@ describe("CLI subprocess: index progress reporting", () => {
   });
 
   /**
-   * `bar` mode is additionally gated by `BAR_MIN_ELAPSED_MS` (5 s of real
-   * elapsed run time) — a deliberate anti-flash gate (design decision D3),
-   * not just a mode-selection concern. `COMPENDIO_PROGRESS=bar` makes the
-   * renderer reachable under a pipe (proposal's stated fix for the
-   * exploration's TTY-detection gap), but crossing the *time* gate is a
-   * property of real wall-clock duration, which this suite cannot control
-   * deterministically the way `test/infrastructure/progress-sink.test.ts`
-   * does with an injected fake clock (that file already covers this exact
-   * branch, deterministically, for every case: sub-threshold silence,
-   * first-frame-shows-accumulated-state, and the erase on `finish()`).
+   * There is deliberately NO subprocess test asserting that `\r` reaches real
+   * stderr. Drawing the bar requires crossing `BAR_MIN_ELAPSED_MS` (5 s of real
+   * elapsed time, design decision D3), and wall-clock duration is not something
+   * this suite can control: forcing it needs a synthetic corpus of thousands of
+   * files, costs ~13 s on every run, and still finishes under the threshold on
+   * fast hardware — turning the assertion into a silent skip. Coverage that can
+   * vanish without anyone noticing is worse than no coverage, because it reads
+   * as green.
    *
-   * This test still attempts a REAL, non-deterministic end-to-end
-   * confirmation: index a large synthetic corpus (many small files — file
-   * count, not content size, is what drives wall time here per the
-   * IndexDocuments per-file loop) and check whether the real run crossed the
-   * threshold. On a slow enough disk/CPU it does, and `\r` must appear. On
-   * an unusually fast machine the run may finish under 5 s despite ~4 000
-   * files, in which case the environment cannot exercise this path at all —
-   * exactly the pattern this suite already uses for symlink-unavailable
-   * platforms below (`ctx.skip(...)`), not a false pass.
+   * The same branch is covered deterministically with an injected fake clock in
+   * `test/infrastructure/progress-sink.test.ts`: sub-threshold silence, the
+   * first frame showing accumulated state rather than zero, and the erase on
+   * `finish()`. What stays unproven end to end is only that the wired sink
+   * writes to the real stderr stream — one line in `cli.ts`, and the mode
+   * selection reaching the CLI is already asserted above.
    */
-  it("COMPENDIO_PROGRESS=bar: stderr contains \\r once a real run crosses the 5 s threshold", (ctx) => {
-    const bigDir = mkdtempSync(join(tmpdir(), "compendio-bar-corpus-"));
-    const bigDocs = join(bigDir, "docs");
-    mkdirSync(bigDocs, { recursive: true });
-    const FILE_COUNT = 4_000;
-    for (let i = 0; i < FILE_COUNT; i++) {
-      writeFileSync(
-        join(bigDocs, `doc${i}.md`),
-        `# Doc ${i}\n\nSynthetic body text for document number ${i}, sized only to force real ` +
-          `per-file indexing work across enough files to cross the anti-flash threshold.\n`,
-      );
-    }
-
-    try {
-      const run = runCli(["--root", bigDir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "bar" });
-      expect(run.status).toBe(0);
-      const durationMatch = /in (\d+) ms/.exec(run.stdout);
-      const durationMs = durationMatch !== null ? Number(durationMatch[1]) : 0;
-      if (durationMs < 5_000) {
-        ctx.skip(
-          `this machine indexed ${FILE_COUNT} files in ${durationMs} ms, under the 5 000 ms ` +
-            "anti-flash threshold -- too fast on this environment to exercise the bar redraw " +
-            "end-to-end. The exact same code path is covered deterministically with a fake " +
-            "clock in test/infrastructure/progress-sink.test.ts.",
-        );
-        return;
-      }
-      expect(run.stderr).toContain("\r");
-    } finally {
-      rmSync(bigDir, { recursive: true, force: true });
-    }
-  }, 30_000);
 });
 
 /**
