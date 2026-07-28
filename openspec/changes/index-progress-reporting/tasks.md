@@ -83,29 +83,29 @@ No behavior change to any command. Nothing imports this module yet.
 
 No behavior change to any command yet — nothing wires this in until Commit 3.
 
-- [ ] 2.1 RED — `test/infrastructure/progress-sink.test.ts`: `mode: "none"` writes
+- [x] 2.1 RED — `test/infrastructure/progress-sink.test.ts`: `mode: "none"` writes
       nothing to a fake `{ write, columns }` stream across a full event sequence.
-- [ ] 2.2 GREEN — implement `createProgressSink(mode, stream, now?)` skeleton returning
+- [x] 2.2 GREEN — implement `createProgressSink(mode, stream, now?)` skeleton returning
       `{ onProgress, finish }`; `none` branch is a no-op.
-- [ ] 2.3 RED — `mode: "plain"` appends newline-terminated lines, no `\r`, using a fake
+- [x] 2.3 RED — `mode: "plain"` appends newline-terminated lines, no `\r`, using a fake
       `now`.
-- [ ] 2.4 GREEN — implement the `plain` branch: `formatPlainLine(event)` + `"\n"`,
+- [x] 2.4 GREEN — implement the `plain` branch: `formatPlainLine(event)` + `"\n"`,
       download events gated by `createDownloadThrottle(DOWNLOAD_STEP_PERCENT_PLAIN)`.
-- [ ] 2.5 RED — `mode: "bar"`: a run whose fake `now` never exceeds `BAR_MIN_ELAPSED_MS`
+- [x] 2.5 RED — `mode: "bar"`: a run whose fake `now` never exceeds `BAR_MIN_ELAPSED_MS`
       writes nothing.
-- [ ] 2.6 GREEN — implement the 5-second gate using `BAR_MIN_ELAPSED_MS`.
-- [ ] 2.7 RED — `mode: "bar"`: the first frame after crossing 5 s shows the accumulated
+- [x] 2.6 GREEN — implement the 5-second gate using `BAR_MIN_ELAPSED_MS`.
+- [x] 2.7 RED — `mode: "bar"`: the first frame after crossing 5 s shows the accumulated
       state (not zero), is `\r`-prefixed, contains no `\n`, and is padded to erase the
       previous frame's length; width derives from the injected `stream.columns` capped
       at `BAR_MAX_WIDTH`.
-- [ ] 2.8 GREEN — implement the `bar` branch: `advanceProgress` + `shouldDrawBar` +
+- [x] 2.8 GREEN — implement the `bar` branch: `advanceProgress` + `shouldDrawBar` +
       `renderBar(state, width)`; capture `stream.columns` once at construction as
       `Math.min(columns - 1, BAR_MAX_WIDTH)`.
-- [ ] 2.9 RED — `finish()` is idempotent (a second call does not throw or double-write)
+- [x] 2.9 RED — `finish()` is idempotent (a second call does not throw or double-write)
       and a no-op in `plain`/`none`; in `bar` mode with an active frame it writes an
       erase (`\r` + spaces(lastLineLength) + `\r`), never a trailing newline.
-- [ ] 2.10 GREEN — implement `finish()`.
-- [ ] 2.11 Verify: `npx vitest run test/infrastructure/progress-sink.test.ts` all green;
+- [x] 2.10 GREEN — implement `finish()`.
+- [x] 2.11 Verify: `npx vitest run test/infrastructure/progress-sink.test.ts` all green;
       confirm the module writes only to its injected `stream`, never directly to
       `process.stdout`/`process.stderr` (spec: Progress Goes to stderr; stdout Is
       Unchanged).
