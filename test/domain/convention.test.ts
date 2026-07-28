@@ -37,7 +37,7 @@ const BASE_INPUT = {
 
 describe("humanizeFileName", () => {
   it("strips .md, replaces separators, collapses whitespace, sentence-cases the first letter", () => {
-    expect(humanizeFileName("docs/mi-guia_de-uso.md")).toBe("Mi guia de uso");
+    expect(humanizeFileName("docs/getting-started_with-search.md")).toBe("Getting started with search");
   });
 
   it("handles a root-level filename with no directory segment", () => {
@@ -193,6 +193,9 @@ describe("createConventionPolicy — strict", () => {
   });
 });
 
+// es-frozen: the Spanish source keys/values below (modulo/estado/vigente/
+// clasificacion) are the feature under test — convention.frontmatterFields
+// mapping non-English frontmatter keys — not a leftover translation.
 describe("createConventionPolicy — frontmatterFields", () => {
   it("resolves type from a custom mapped field name", () => {
     const policy = createConventionPolicy(

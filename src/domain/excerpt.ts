@@ -13,6 +13,8 @@ export const LEAD_EXCERPT_CHARS = 1400;
  */
 export const SUPPORTING_EXCERPT_CHARS = 120;
 
+// es-frozen: cites the real `ejemplos/` corpus name and its measured eval
+// score, not a leftover translation.
 /**
  * Excerpt budget by 0-based result rank.
  *

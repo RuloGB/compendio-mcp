@@ -10,8 +10,8 @@ import {
 function entry(overrides: Partial<IndexEntry>): IndexEntry {
   return {
     path: "auth/doc.md",
-    title: "Documento",
-    summary: "Resumen breve",
+    title: "Document",
+    summary: "Short summary",
     type: "guia",
     status: "vigente",
     ...overrides,

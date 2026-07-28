@@ -73,7 +73,7 @@ program
 program
   .command("search")
   .description("Searches the indexed documentation and prints the result as JSON")
-  .argument("<query>", "consulta en lenguaje natural")
+  .argument("<query>", "natural language query")
   .option("-k, --k <n>", "number of results", parsePositiveInt)
   .option("--type <type>", "filter by document type (per the project's convention)")
   .option("--module <module>", "filter by module")
@@ -145,7 +145,7 @@ program
     // gated on it via maybeSync() awaiting that same in-flight promise.
     container.syncScheduler.startup();
     // stdout belongs to the MCP protocol: all logging goes to stderr.
-    console.error(`compendio-mcp v${SERVER_VERSION}: servidor MCP iniciado (stdio)`);
+    console.error(`compendio-mcp v${SERVER_VERSION}: MCP server started (stdio)`);
     await server.connect(new StdioServerTransport());
   });
 
@@ -168,7 +168,7 @@ async function withContainer(
 function parsePositiveInt(value: string): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error(`valor invalido: "${value}" (se espera un entero positivo)`);
+    throw new Error(`invalid value: "${value}" (expected a positive integer)`);
   }
   return parsed;
 }

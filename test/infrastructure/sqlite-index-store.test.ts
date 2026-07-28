@@ -5,8 +5,8 @@ import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-s
 function meta(overrides: Partial<DocumentMeta> = {}): DocumentMeta {
   return {
     path: "funcional/doc.md",
-    title: "Documento",
-    summary: "Resumen.",
+    title: "Document",
+    summary: "Summary.",
     type: "funcional",
     module: "leadsviewer",
     status: "vigente",
@@ -52,8 +52,8 @@ describe("SqliteIndexStore", () => {
   });
 
   it("never breaks on FTS5 metacharacters in the query", () => {
-    store.saveDocument(meta({}), [{ heading: "A", content: "texto normal", position: 0 }]);
-    expect(() => store.searchLexical('"(texto AND OR NEAR)*', {}, 10)).not.toThrow();
+    store.saveDocument(meta({}), [{ heading: "A", content: "plain text", position: 0 }]);
+    expect(() => store.searchLexical('"(sample AND OR NEAR)*', {}, 10)).not.toThrow();
     expect(store.searchLexical("¿?¡!", {}, 10)).toEqual([]);
   });
 

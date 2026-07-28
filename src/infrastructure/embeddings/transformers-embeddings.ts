@@ -31,7 +31,7 @@ export class TransformersEmbeddings implements EmbeddingsProvider {
     const output = await this.extractor(texts, { pooling: "mean", normalize: true });
     const [rows, dim] = [output.dims[0] ?? 0, output.dims[output.dims.length - 1] ?? 0];
     if (rows !== texts.length || dim === 0) {
-      throw new Error(`salida de embeddings inesperada (dims: ${output.dims.join("x")})`);
+      throw new Error(`unexpected embeddings output (dims: ${output.dims.join("x")})`);
     }
     const data =
       output.data instanceof Float32Array ? output.data : Float32Array.from(output.data);

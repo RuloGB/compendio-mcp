@@ -707,26 +707,81 @@ query strings against the frozen corpus may survive in the test suite, and each 
 marker turns "is this hit OK?" from a judgement call at review time into a claim the author had to make
 explicitly at edit time.
 
-#### Allow-list (seed — corpus references, measured on the current tree)
+#### Allow-list — final (measured on the tree at Sweep A/B closure, `chore/close-english-contract`)
 
-| File | Root | Occurrences | Reason |
+This supersedes the seed table above (kept below only as the historical starting point). It was produced
+by running Sweep A's exact command, triaging every one of its raw hits into one of four buckets (rename
+miss / frozen-corpus reference / feature under test / substring false positive), fixing every rename miss
+found, and enumerating everything that remained. Line numbers are as of this closure pass and will drift
+with future edits — the acceptance criterion is the *content* of each row, not the line number.
+
+**Bucket (b) — frozen-corpus references** (`// es-frozen:` marker present on the line or immediately
+above, in every `.ts`/`.md` location below except where markdown cannot carry the comment):
+
+| File | Root | Reason |
+|---|---|---|
+| `src/cli.ts:196-197,202-203,204-205` | `pregunta`, `esperado` | Index into `ejemplos/goldenset.yaml`'s real (frozen) keys |
+| `src/infrastructure/config.ts:41-43` | `glosario` | `NO_CHUNKING = ["glosario.md"]` — a frozen `ejemplos/` filename |
+| `src/domain/excerpt.ts:15-16` (marker) / `:27` (cite) | `ejemplos` | Comment cites the real corpus name and its measured eval score (MRR 0.943) |
+| `src/domain/fusion.ts` | — | See bucket (d) below — `documentOf` is a false positive, not a citation |
+| `test/helpers/build.ts:13,15` | `ejemplos` | `EXAMPLES_DOCS`'s path literal `"../../ejemplos/docs"` |
+| `test/helpers/build.ts:18-23` | `ejemplos` | JSDoc explaining `EXAMPLES_CONVENTION` cites the real corpus by name |
+| `test/helpers/build.ts:30-35` | `ejemplos` | JSDoc explaining `STRICT_FIXTURE_DOCS` cites the real corpus by name |
+| `test/helpers/build.ts:73-75` | `glosario` | Harness `noChunking: ["glosario.md"]`, mirroring the production default |
+| `test/domain/excerpt.test.ts:16-20` | `glosario` | Asserts an excerpt does not leak the real corpus filename |
+| `test/application/index-and-search.test.ts:25` | `ejemplos` | Describe title names the real corpus |
+| `test/application/index-and-search.test.ts:45-47` | `glosario` | Looks up the real corpus document by its real path |
+| `test/application/index-and-search.test.ts:51` | `ejemplos` | `it` title names the real corpus |
+| `test/application/index-and-search.test.ts:137,154` | `ejemplos` | Comments cite the real corpus's declared frontmatter shape |
+| `test/application/index-and-search.test.ts:217` | `ejemplos` | Comment cites the real corpus's pre-migration history |
+| `test/application/read-document.test.ts:8` | `ejemplos` | Describe title names the real corpus |
+| `test/application/read-document.test.ts:33,36` | `glosario` | Reads the real corpus document by its real path and its real (frozen) H1 text (`# Glosario`) |
+
+**Bucket (c) — the feature under test** (non-English frontmatter/config keys are what the test proves
+works; translating them would delete the coverage):
+
+| File | Reason |
+|---|---|
+| `test/infrastructure/config.test.ts:66-82` | Exercises `convention.frontmatterFields` mapping a non-English source key (`{ type: "tipo" }`) — this is the documented path for a non-English corpus (`README.md:157`) |
+| `test/domain/convention.test.ts:196-229` | Same feature, exercised directly against `createConventionPolicy`'s resolver (`modulo`/`estado`/`vigente`/`clasificacion` are the non-English keys/values under test) |
+| `openspec/specs/configuration/spec.md:63-73` (Sweep B) | The spec's own worked example for the same feature — deliberately uses a non-identity mapping (`{ "type": "tipo" }`) so the scenario demonstrates a real remap, not a no-op |
+
+**Bucket (d) — substring false positives** (correct English identifiers that happen to contain a listed
+Spanish root as a substring; **do NOT add `// es-frozen:` to these** — that marker asserts the text was
+once Spanish, which would be false here. Enumeration in this table is the only correct treatment):
+
+| File | Identifier | Colliding root | Why it's English |
 |---|---|---|---|
-| `src/cli.ts` | `pregunta`, `esperado` | 3 lines (`:201`, `:202`, and the goldenset error message at `:196`) | They index into `ejemplos/goldenset.yaml`'s real keys, which are frozen |
-| `src/infrastructure/config.ts:43` | `glosario` | 1 | `NO_CHUNKING = ["glosario.md"]` — a frozen `ejemplos/` filename |
-| `test/helpers/build.ts:13` | `ejemplos` | 1 | `EXAMPLES_DOCS`'s path literal `"../../ejemplos/docs"` |
-| `test/helpers/build.ts:69` | `glosario` | 1 | harness `noChunking: ["glosario.md"]`, mirroring the production default |
-| `test/domain/excerpt.test.ts:13` | `glosario` | 1 | asserts an excerpt does not contain the corpus filename |
-| `test/application/index-and-search.test.ts:44` | `glosario` | 1 (plus the local variable named after it) | looks up the corpus document by its real path |
-| `test/application/read-document.test.ts:30` | `glosario` | 1 | reads the corpus document by its real path |
-| `test/helpers/fake-embeddings.ts` | — | 0 | `CONCEPT_STEMS` contains no listed root; marked for the reader only |
+| `src/infrastructure/markdown/remark-markdown-parser.ts:40,52,120,125` | `textOf` | `texto` | "text" + "Of" (camelCase), a text-extraction helper name |
+| `src/domain/fusion.ts:38,44` | `documentOf` | `documento` | "document" + "Of" (camelCase), an id-to-document lookup parameter |
+| `src/infrastructure/fs/file-index-writer.ts:25` | `modulo` (in "same content modulo EOL") | `modulo` | Mathematical/idiomatic English "modulo" ("except for"), not the Spanish word |
+| `src/infrastructure/embeddings/transformers-embeddings.ts:3,15,19,22,24,26,31` | `extractor`/`FeatureExtractor` | `extracto` | Standard English ML vocabulary (a feature-extraction pipeline), unrelated to "excerpt" |
 
-**`"glosario.md"` appears 5 times across `src` and `test`, not 2** — measured, not assumed. All five are
-legitimate references to the real frozen corpus filename. A **sixth** occurrence, or the disappearance
-of any of these five, is a defect: the value must never be translated (invariant I6), while the
-identifiers around it (`SIN_CHUNKING`, `sinChunking`, `report.indexados`, `d.ruta`) all rename in
-commits 2, 5 and 6 with the literal staying put. Stating the count exactly is the point — a check whose
-expected output is wrong cannot distinguish "these are fine" from "one of them is a mistranslation",
-which is the ambiguity a positive check exists to eliminate.
+**Bucket (b), Sweep B (contract prose)** — `openspec/specs`, `docs/`, `README.md`, `CLAUDE.md` cannot carry
+`// es-frozen:` code comments, so every remaining Sweep B hit is enumerated here instead:
+
+| File | Reason |
+|---|---|
+| `CLAUDE.md:26-28` | Literal `compendio` CLI invocations against the real `ejemplos/` corpus, including its real (frozen) Spanish query text |
+| `CLAUDE.md:64` | Cites the genuinely-retired `Tipo`/`Estado`/`TIPOS`/`ESTADOS` identifiers by their real historical names, as archaeological rationale for why the current fields are open strings |
+| `CLAUDE.md:67` | Same class: "no legacy `TIPOS.indexOf` compatibility path" cites a real retired identifier to state what was deliberately not kept |
+| `CLAUDE.md:77,79,84,87` | Cite the real `ejemplos/` corpus name and its measured eval numbers |
+| `CLAUDE.md:84` | The frozen-boundary declaration itself — necessarily names `ejemplos/`/`goldenset.yaml` |
+| `CLAUDE.md:86` | `{ "status": "estado" }` — the canonical worked example of `frontmatterFields` mapping a non-English key |
+| `README.md:157,234` | Same canonical `{ "status": "estado" }` mapping example |
+| `README.md:238,242,281,286,287,290` | Cite the real `ejemplos/` corpus name, including a literal CLI example using its real (frozen) Spanish query text |
+| `docs/documentation-convention.md:40` | Cites the real `ejemplos/` corpus as the alternative (by-module) layout example |
+| `docs/documentation-convention.md:121` | States the project's language policy, which necessarily names the `ejemplos/` exception |
+
+**`"glosario.md"` (the filename literal) appears 5 times across `src` and `test`**, and `"# Glosario"`
+(its real, frozen H1 text) appears once more at `read-document.test.ts:36` — measured, not assumed. A
+**sixth** `"glosario.md"` occurrence, the disappearance of any of these five, or a translated `"Glosario"`
+heading match is a defect: the value must never be translated (invariant I6), while the identifiers
+around it (`NO_CHUNKING`, `isNoChunking`, `report.indexed`, `d.path`) all renamed in commits 2, 5, 6 and 8
+with the literal staying put. A sixth, unrelated `"glosario.md"` string briefly existed in
+`file-index-writer.test.ts` (an arbitrary EOL-normalization fixture that happened to reuse the filename
+as example content, coincidentally, not a real lookup) and was translated away during Sweep A closure —
+its removal is correct, not a regression, since it was never a real reference to the corpus.
 
 ---
 

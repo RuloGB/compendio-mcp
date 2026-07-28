@@ -49,11 +49,11 @@ describe("dropImpossibleFilters", () => {
     // Answerable request: the caller gets zero plus the real values and can
     // correct itself. Dropping this would hide a legitimate no-match.
     const { filters, droppedFields } = dropImpossibleFilters(
-      { type: "inexistente" },
+      { type: "nonexistent" },
       { ...NO_FACETS, types: ["adr"] },
     );
     expect(droppedFields).toEqual([]);
-    expect(filters.type).toBe("inexistente");
+    expect(filters.type).toBe("nonexistent");
   });
 
   it("never touches the status deny-list, which is config and not a request", () => {

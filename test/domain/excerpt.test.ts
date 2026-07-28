@@ -12,6 +12,8 @@ describe("buildExcerpt", () => {
     expect(excerpt).toBe("Un lead se considera duplicado.");
   });
 
+  // es-frozen: "glosario.md" is the real frozen `ejemplos/` corpus filename;
+  // this asserts the excerpt never leaks it, not a leftover translation.
   it("keeps link text and drops the URL", () => {
     const excerpt = buildExcerpt("Ver [el glosario](../glosario.md) del proyecto.");
     expect(excerpt).toContain("el glosario");
@@ -28,9 +30,9 @@ describe("buildExcerpt", () => {
     // A templates/examples section is all code. An empty excerpt would spend
     // the rank's budget on silence and, carrying no "…", would tell the agent
     // the result is complete.
-    const excerpt = buildExcerpt("## Templates\n\n```markdown\ntipo: funcional\n```");
+    const excerpt = buildExcerpt("## Templates\n\n```markdown\ntype: functional\n```");
     expect(excerpt.length).toBeGreaterThan(0);
-    expect(excerpt).toContain("tipo: funcional");
+    expect(excerpt).toContain("type: functional");
   });
 
   it("still prefers prose over fenced content when both are present", () => {

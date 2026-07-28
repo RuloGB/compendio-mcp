@@ -45,9 +45,9 @@ class StaticSource implements DocumentSource {
 }
 
 const VALID_DOC: DocumentFile = {
-  path: "guias/transversal-valida.md",
+  path: "guides/transversal-valid.md",
   content:
-    "---\ntype: guia\nmodule: transversal\nstatus: vigente\n---\n\n# Guía válida\n\nResumen de la guía.\n",
+    "---\ntype: guide\nmodule: transversal\nstatus: current\n---\n\n# Valid guide\n\nSummary of the guide.\n",
 };
 
 function buildUseCase(
@@ -63,12 +63,12 @@ function buildUseCase(
   };
 }
 
-describe("GenerateIndexMd — libre mode over inline fixtures", () => {
+describe("GenerateIndexMd — loose mode over inline fixtures", () => {
   it("lists a frontmatter-less document, ordered alphabetically by path", async () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
-        { path: "b.md", content: "# Documento B\n\nResumen B.\n" },
-        { path: "a.md", content: "# Documento A\n\nResumen A.\n" },
+        { path: "b.md", content: "# Document B\n\nSummary B.\n" },
+        { path: "a.md", content: "# Document A\n\nSummary A.\n" },
       ]),
     );
     const report = await useCase.execute();
@@ -76,12 +76,12 @@ describe("GenerateIndexMd — libre mode over inline fixtures", () => {
     expect(report.documents).toBe(2);
     expect(report.skipped).toEqual([]);
     const lineas = writer.content!.split("\n").filter((l) => l.startsWith("- "));
-    expect(lineas).toEqual(["- a.md — Resumen A.", "- b.md — Resumen B."]);
+    expect(lineas).toEqual(["- a.md — Summary A.", "- b.md — Summary B."]);
   });
 
   it("never lists INDEX.md itself, even when the source yields it", async () => {
     const { useCase, writer } = buildUseCase(
-      new StaticSource([{ path: "INDEX.md", content: "# Índice viejo\n" }, VALID_DOC]),
+      new StaticSource([{ path: "INDEX.md", content: "# Old index\n" }, VALID_DOC]),
     );
     const report = await useCase.execute();
 
@@ -103,14 +103,14 @@ describe("GenerateIndexMd — libre mode over inline fixtures", () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
         {
-          path: "guias/transversal-sin-resumen.md",
-          content: "# Solo título\n\n## Pasos\n\n- paso uno\n- paso dos\n",
+          path: "guides/transversal-no-summary.md",
+          content: "# Only title\n\n## Steps\n\n- step one\n- step two\n",
         },
       ]),
     );
     await useCase.execute();
 
-    expect(writer.content).toContain("— Solo título");
+    expect(writer.content).toContain("— Only title");
   });
 });
 
@@ -118,11 +118,11 @@ describe("GenerateIndexMd — strict mode over inline fixtures", () => {
   it("orders entries by declared types, tie-broken alphabetically by path", async () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
-        { path: "z.md", content: "---\ntype: adr\nmodule: m\nstatus: vigente\n---\n\n# Z\n\nr\n" },
-        { path: "b.md", content: "---\ntype: guia\nmodule: m\nstatus: vigente\n---\n\n# B\n\nr\n" },
-        { path: "a.md", content: "---\ntype: guia\nmodule: m\nstatus: vigente\n---\n\n# A\n\nr\n" },
+        { path: "z.md", content: "---\ntype: adr\nmodule: m\nstatus: current\n---\n\n# Z\n\nr\n" },
+        { path: "b.md", content: "---\ntype: guide\nmodule: m\nstatus: current\n---\n\n# B\n\nr\n" },
+        { path: "a.md", content: "---\ntype: guide\nmodule: m\nstatus: current\n---\n\n# A\n\nr\n" },
       ]),
-      cfgStrict({ types: ["guia", "adr"] }),
+      cfgStrict({ types: ["guide", "adr"] }),
     );
     const report = await useCase.execute();
 
@@ -139,18 +139,18 @@ describe("GenerateIndexMd — strict mode over inline fixtures", () => {
       new StaticSource([
         VALID_DOC,
         {
-          path: "guias/type-invalido.md",
-          content: "---\ntype: no-declarado\nmodule: m\nstatus: vigente\n---\n\n# X\n\nr\n",
+          path: "guides/type-invalid.md",
+          content: "---\ntype: not-declared\nmodule: m\nstatus: current\n---\n\n# X\n\nr\n",
         },
       ]),
-      cfgStrict({ types: ["guia"] }),
+      cfgStrict({ types: ["guide"] }),
     );
     const report = await useCase.execute();
 
     expect(report.documents).toBe(1);
     expect(report.skipped).toHaveLength(1);
-    expect(report.skipped[0]!.path).toBe("guias/type-invalido.md");
-    expect(writer.content).toContain("guias/transversal-valida.md");
+    expect(report.skipped[0]!.path).toBe("guides/type-invalid.md");
+    expect(writer.content).toContain("guides/transversal-valid.md");
   });
 });
 
@@ -159,41 +159,41 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
         VALID_DOC,
-        { path: "guias/frontmatter-roto.md", content: "---\ntype: [sin-cerrar\n---\n\n# X\n" },
+        { path: "guides/frontmatter-broken.md", content: "---\ntype: [unclosed\n---\n\n# X\n" },
       ]),
     );
     const report = await useCase.execute();
 
     expect(report.documents).toBe(1);
     expect(report.skipped).toHaveLength(1);
-    expect(report.skipped[0]!.path).toBe("guias/frontmatter-roto.md");
+    expect(report.skipped[0]!.path).toBe("guides/frontmatter-broken.md");
     expect(report.skipped[0]!.errors[0]!.length).toBeGreaterThan(0);
-    expect(writer.content).toContain("guias/transversal-valida.md");
+    expect(writer.content).toContain("guides/transversal-valid.md");
   });
 
   it("skips and reports a document with malformed frontmatter under strict too", async () => {
     const { useCase, writer } = buildUseCase(
       new StaticSource([
         VALID_DOC,
-        { path: "guias/frontmatter-roto.md", content: "---\ntype: [sin-cerrar\n---\n\n# X\n" },
+        { path: "guides/frontmatter-broken.md", content: "---\ntype: [unclosed\n---\n\n# X\n" },
       ]),
-      cfgStrict({ types: ["guia"] }),
+      cfgStrict({ types: ["guide"] }),
     );
     const report = await useCase.execute();
 
     expect(report.skipped).toHaveLength(1);
-    expect(report.skipped[0]!.path).toBe("guias/frontmatter-roto.md");
-    expect(writer.content).toContain("guias/transversal-valida.md");
+    expect(report.skipped[0]!.path).toBe("guides/frontmatter-broken.md");
+    expect(writer.content).toContain("guides/transversal-valid.md");
   });
 
   it("folds an unreadable file (readErrors) into skipped and continues", async () => {
     const { useCase, writer } = buildUseCase(
-      new StaticSource([VALID_DOC], [{ path: "guias/ilegible.md", error: "permiso denegado" }]),
+      new StaticSource([VALID_DOC], [{ path: "guides/unreadable.md", error: "permission denied" }]),
     );
     const report = await useCase.execute();
 
     expect(report.documents).toBe(1);
-    expect(report.skipped).toEqual([{ path: "guias/ilegible.md", errors: ["permiso denegado"] }]);
-    expect(writer.content).toContain("guias/transversal-valida.md");
+    expect(report.skipped).toEqual([{ path: "guides/unreadable.md", errors: ["permission denied"] }]);
+    expect(writer.content).toContain("guides/transversal-valid.md");
   });
 });

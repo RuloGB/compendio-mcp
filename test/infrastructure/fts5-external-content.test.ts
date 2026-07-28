@@ -36,8 +36,8 @@ describe("FTS5 external-content probe: bare `content` column vs `content=` optio
     const insertDoc = db.prepare(
       `INSERT INTO documents (id, path, title, summary, hash) VALUES (?, ?, ?, ?, ?)`,
     );
-    insertDoc.run(100, "a.md", "A", "resumen", "h1");
-    insertDoc.run(200, "b.md", "B", "resumen", "h2");
+    insertDoc.run(100, "a.md", "A", "summary", "h1");
+    insertDoc.run(200, "b.md", "B", "summary", "h2");
   });
 
   afterEach(() => {

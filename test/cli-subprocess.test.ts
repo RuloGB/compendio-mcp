@@ -122,35 +122,35 @@ describe("CLI subprocess: corpus commands", () => {
   });
 
   it("search exits 0 and writes parseable JSON to stdout", () => {
-    const run = runCli(["--root", workdir, "search", "onboarding de un servicio", "--lexical"]);
+    const run = runCli(["--root", workdir, "search", "onboarding a new service", "--lexical"]);
     expect(run.status).toBe(0);
     const payload = JSON.parse(run.stdout) as { mode: string; results: { path: string }[] };
     expect(payload.mode).toBe("lexical");
     expect(payload.results.length).toBeGreaterThan(0);
-    expect(payload.results.map((r) => r.path)).toContain("guia-onboarding.md");
+    expect(payload.results.map((r) => r.path)).toContain("guide-service-onboarding.md");
   });
 
   it("excludedStatuses deny-list: a draft document is hidden by default and surfaced with --all", () => {
     // The fixture declares excludedStatuses: ["draft", "deprecated"] and
-    // ships plan-pruebas-alertas.md in status draft specifically to
-    // exercise this deny-list. "plan de pruebas" is unique to that document
+    // ships test-plan-inventory-alerts.md in status draft specifically to
+    // exercise this deny-list. "test plan" is unique to that document
     // within the fixture (checked against the other 4 docs' prose).
-    const denied = runCli(["--root", workdir, "search", "plan de pruebas alertas", "--lexical"]);
+    const denied = runCli(["--root", workdir, "search", "inventory alerts test plan", "--lexical"]);
     expect(denied.status).toBe(0);
     const deniedPayload = JSON.parse(denied.stdout) as { results: { path: string }[] };
-    expect(deniedPayload.results.map((r) => r.path)).not.toContain("plan-pruebas-alertas.md");
+    expect(deniedPayload.results.map((r) => r.path)).not.toContain("test-plan-inventory-alerts.md");
 
     const allowed = runCli([
       "--root",
       workdir,
       "search",
-      "plan de pruebas alertas",
+      "inventory alerts test plan",
       "--lexical",
       "--all",
     ]);
     expect(allowed.status).toBe(0);
     const allowedPayload = JSON.parse(allowed.stdout) as { results: { path: string }[] };
-    expect(allowedPayload.results.map((r) => r.path)).toContain("plan-pruebas-alertas.md");
+    expect(allowedPayload.results.map((r) => r.path)).toContain("test-plan-inventory-alerts.md");
   });
 });
 
@@ -191,7 +191,7 @@ describe("CLI subprocess: invoked through a link (npx / global install)", () => 
       return;
     }
 
-    const run = runCli(["--root", workdir, "search", "onboarding de un servicio", "--lexical"], link.cli);
+    const run = runCli(["--root", workdir, "search", "onboarding a new service", "--lexical"], link.cli);
 
     // Asserting the exit code alone would NOT catch the regression: with the
     // broken guard the process exits 0 too. The tell is empty stdout — the
@@ -199,7 +199,7 @@ describe("CLI subprocess: invoked through a link (npx / global install)", () => 
     expect(run.status).toBe(0);
     expect(run.stdout.trim().length).toBeGreaterThan(0);
     const payload = JSON.parse(run.stdout) as { results: { path: string }[] };
-    expect(payload.results.map((r) => r.path)).toContain("guia-onboarding.md");
+    expect(payload.results.map((r) => r.path)).toContain("guide-service-onboarding.md");
   });
 
   it("reports --version through the link too", (ctx) => {

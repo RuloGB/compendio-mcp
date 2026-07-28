@@ -1,8 +1,25 @@
 # Apply Progress: English Contract
 
-Branch: `refactor/english-contract`. Mode: **Strict TDD** (behavior-preserving rename; the existing
-suite is the specification — RED/GREEN applies to the two genuinely new tests in commit 1 and the
-active-proof tasks; all other commits are gated by keep-green-throughout, not new-test-first).
+Branch: `refactor/english-contract` (original 11-commit implementation, merged to `main` at `50d9138`);
+closure work below landed on `chore/close-english-contract`. Mode: **Strict TDD** for the original
+11-commit implementation (behavior-preserving rename; the existing suite is the specification — RED/GREEN
+applies to the two genuinely new tests in commit 1 and the active-proof tasks; all other commits are
+gated by keep-green-throughout, not new-test-first). The 2026-07-27 closure session is itself a
+behavior-preserving rename/translation over an already-green suite, so it followed
+**keep-green-throughout** exclusively, per the session's own explicit scoping — no new tests were written
+for the additional renames/translations it found and fixed; `npm test` was run after every logical group
+of edits and never left red.
+
+## STATUS: Closed (2026-07-27)
+
+All 11 commits' tasks, and § Final Verification (12.1–12.13), are genuinely `[x]` in `tasks.md`, verified
+directly in this session — not carried over from the original (partially inaccurate) completion claim.
+See "## Closure session (2026-07-27)" below for the full account, including two significant gaps found in
+what the original session had already marked done (the strict fixture, commit 10; the specs, commit 11)
+and a contract amendment to `design.md`'s Sweep A acceptance criterion (bucket-(d) substring false
+positives). Sweep A: 63 raw / 43 post-marker hits, all enumerated. Sweep B: 23 hits, all enumerated. Eval
+baseline reproduced byte-for-byte (V0–V4). This change is ready for `sdd-verify`; archival is a separate,
+not-yet-run phase.
 
 ## TDD Cycle Evidence
 
@@ -396,3 +413,100 @@ inline JSON in `config.test.ts` — then re-run commit 1's deny-list subprocess 
 Frozen, mark in this commit: `NO_CHUNKING = ["glosario.md"]` value unchanged; `EXAMPLES_DOCS`'s path
 literal `"../../ejemplos/docs"` unchanged — add `// es-frozen:` markers to both (invariant I6 depends
 on the first never moving).
+
+---
+
+## Closure session (2026-07-27)
+
+The original 11-commit implementation landed on `refactor/english-contract` and merged to `main`, but
+§ Final Verification was never run and commits 6–12 were left unchecked. This session ran the sweeps for
+real and closed them. Gate re-runs and the eval baseline reproduction were completed 2026-07-28 after the
+pass was interrupted mid-write.
+
+### What the sweeps actually found
+
+Sweep A started at 63 raw hits. Every one was triaged into exactly one of four buckets, and the resulting
+enumeration lives in `design.md` § "Allow-list — final".
+
+| Bucket | Treatment | Outcome |
+|---|---|---|
+| (a) Rename miss | Fix it | All fixed — mostly synthetic Spanish fixture prose and identifiers across the test suite that the original pass never touched |
+| (b) Frozen-corpus reference | `// es-frozen:` marker + allow-list row | Enumerated |
+| (c) The feature under test | Marker + allow-list row | Enumerated — see below, this bucket did not exist in the original design |
+| (d) Substring false positive | Allow-list row **only**, deliberately no marker | Enumerated — see the contract amendment below |
+
+Final state: Sweep A 43 hits, Sweep B 23 hits, every one enumerated in `design.md`. Zero unmarked,
+un-enumerated hits, which is the criterion as written.
+
+### Two gaps inside work the original session had already marked done
+
+- **Commit 10 (strict fixture)** was marked complete, but the five fixture documents still carried their
+  Spanish filenames (`contrato-api-pagos.md`, `decision-cache-redis.md`, `especificacion-alertas.md`,
+  `guia-onboarding.md`, `plan-pruebas-alertas.md`). Task 10.3 explicitly required filenames, not just
+  content. Renamed via `git mv`, with `test/fixtures/strict/docs/INDEX.md` and the coupled assertions in
+  `index-and-search.test.ts` and `cli-subprocess.test.ts` updated with them.
+- **Commit 11 (contract prose)** was marked complete, but `README.md:200` still documented a `--lexico`
+  flag that does not exist — the real flag has been `--lexical` since commit 9. Anyone copying that line
+  got an error. This is the class of defect a sweep exists to catch.
+
+Four Spanish runtime strings also survived in production source, all user-visible: `cli.ts`'s server
+startup line and its `parsePositiveInt` error, `transformers-embeddings.ts`'s `unexpected embeddings
+output` throw, and `get-overview.ts`'s `AVISO` prefix. The third is the most consequential — that error
+is caught by `IndexDocuments.embedPending` and interpolated into `embeddingsWarning`, a documented
+English field of the MCP contract, so a Spanish sentence was leaking through a contract surface. The
+fourth surfaced through the `docs_overview` tool while `cli.ts` already said `WARNING` for the same
+concept.
+
+### Contract amendment — bucket (d), substring false positives
+
+`design.md`'s acceptance criterion offered exactly two outcomes for a sweep hit: rename miss (fix it) or
+frozen literal (add `// es-frozen:`). Neither fits a correct English identifier that merely *contains* a
+Spanish root as a substring, and the crude, deliberately un-anchored ROOTS list produces several:
+`textOf` ⊃ "texto", `documentOf` ⊃ "documento", `extractor`/`FeatureExtractor` ⊃ "extracto", and the
+idiomatic English "modulo" in `file-index-writer.ts`'s comment.
+
+Marking these `// es-frozen:` was rejected: that marker asserts "this text is a deliberately preserved
+Spanish literal", which would be a false claim recorded in production source to satisfy a grep. They are
+enumerated in the allow-list table instead. The requirement — *zero unmarked, un-enumerated hits* — is met
+honestly by enumeration; only the mechanical shortcut (`| rg -v 'es-frozen'` returning near-nothing) does
+not survive, and that shortcut was never the criterion.
+
+### Deliberate exception to the archive rule
+
+`openspec/config.yaml`'s archive rule requires `openspec/specs/` to carry no residual Spanish contract
+vocabulary "except where it quotes the `ejemplos/` corpus". Three hits remain, all in
+`openspec/specs/configuration/spec.md:65,71,73`, and none of them quotes `ejemplos/` — they are the
+spec's worked example of `convention.frontmatterFields` mapping `{ "type": "tipo" }`. The Spanish there
+is *example data demonstrating the remap feature*, not contract vocabulary: writing it as
+`{ "type": "type" }` would make it an identity mapping that demonstrates nothing. Recorded here so the
+archive phase treats it as a known, justified exception rather than a blocker.
+
+### Verification results
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | Pass (`tsc --noEmit` + `tsc -p tsconfig.test.json`) |
+| `npm test` | Pass — 25 files, 247 tests, 0 failures |
+| `npm run build` | Pass |
+| V0 — index reports hybrid mode | **hybrid** ✅ |
+| V1 — corpus size | **11 documents (27 chunks)** ✅ |
+| V2 — hybrid row | **recall@5 1.00, MRR 0.943, failures 0** ✅ |
+| V3 — lexical row | **recall@5 0.95, MRR 0.857, failures 1** ✅ |
+| V4 — the single lexical failure | **`"¿Qué endpoint hay que llamar para crear un lead?"` → `leadsviewer/alta-leads.md`, position 9** ✅ |
+
+Zero deviation from the baseline in `eval-baseline.md`. The attribution ladder was not needed.
+
+**One deviation from 12.10's literal procedure, and why it does not weaken the result:** `rm -rf
+ejemplos/.compendio` failed with `Device or resource busy` because a live `compendio serve` process
+(this repo's own `.mcp.json`) held the SQLite file open. Rather than kill it or index around the lock —
+which CLAUDE.md declares an unsupported concurrent-reader scenario — the corpus was copied to a scratch
+directory and the full `index` + `eval` sequence was run there against a genuinely absent database. That
+is a stricter starting condition than `rm -rf` on the working copy, not a weaker one: no residual
+`.compendio` state of any kind could have survived into the run.
+
+Useful measurement obtained in passing, relevant to the `index-progress-reporting` change: indexing the
+11-document / 27-chunk corpus with a **warm** model cache took **4.2 s** end to end. That places
+steady-state embedding throughput far below the 5-minute report from a fresh machine, which points at the
+one-time ~129 MB model download as the dominant cost there — the opposite of that exploration's
+provisional headline finding, which was explicitly flagged as an estimate awaiting exactly this
+measurement.
