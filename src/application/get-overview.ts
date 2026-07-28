@@ -92,7 +92,7 @@ export function formatOverview(
       lines.push(`WARNING ${skippedItem.path}: ${skippedItem.errors.join("; ")}`);
     }
     if (sync.embeddingsWarning !== undefined) {
-      lines.push(`AVISO ${sync.embeddingsWarning}`);
+      lines.push(`WARNING ${sync.embeddingsWarning}`);
     }
   }
   return lines.join("\n");
