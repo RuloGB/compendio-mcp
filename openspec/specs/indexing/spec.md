@@ -317,3 +317,20 @@ This is explicitly NOT a pass-level snapshot. A sync pass awaits the embeddings 
 - GIVEN `serve` is running with in-process incremental sync active
 - WHEN a user separately runs `compendio index` from another OS process
 - THEN the existing external-process non-goal (transient empty results/errors during that run's `reset()` transaction) still applies unchanged
+
+### Requirement: English Contract Preserves the `ejemplos/` Multilingual Retrieval Baseline
+
+The `ejemplos/` reference corpus MUST retain its Spanish prose, its Spanish frontmatter VALUES, and an untouched `goldenset.yaml`; only its three frontmatter KEYS translate to their English equivalents (`status:`, `tags:`), matching the renamed default `frontmatterFields` identity mapping. Because frontmatter keys are stripped from the document before chunking/embedding (only `content` reaches the index) and `EvaluateSearch` passes no metadata filters to `search`, this key-only rename MUST NOT change the goldenset's ranking behavior. The captured baseline — hybrid recall@5 = 1.00 and MRR = 0.943 — MUST hold exactly after the rename; any deviation is a defect in the rename, not a new baseline to accept.
+
+#### Scenario: Frontmatter key rename does not move the eval metrics
+
+- GIVEN the `ejemplos/` corpus with `status:`/`tags:` replacing `estado:`/`etiquetas:` in its 3 frontmatter-bearing files
+- WHEN `compendio eval` runs against it in hybrid mode
+- THEN recall@5 = 1.00 and MRR = 0.943, unchanged from the pre-rename baseline
+
+#### Scenario: Corpus prose and goldenset stay untouched
+
+- GIVEN the renamed codebase
+- WHEN `ejemplos/docs/**` prose, frontmatter values, and `ejemplos/goldenset.yaml` are diffed against their pre-rename versions
+- THEN no byte differs, other than the 3 renamed frontmatter key lines
+

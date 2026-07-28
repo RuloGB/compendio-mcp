@@ -103,3 +103,30 @@ The `docs_overview` MCP tool response MUST include a `sync` field surfacing the 
 - GIVEN the embeddings provider fails during an incremental sync pass, forcing lexical-only mode
 - WHEN `docs_overview` is called afterward
 - THEN its `sync` field surfaces the resulting `embeddingsWarning`, matching how the CLI already reports `embeddingsWarning` for `compendio index`
+
+### Requirement: Renamed MCP Tool Signatures And Response Field Names
+
+The `search_docs` tool MUST accept `{ query, type?, module?, tags?, k?, include_excluded? }`. The `read_doc` tool MUST accept `{ path, section? }`. The `docs_overview` tool MUST accept no parameters. Every param and response field this domain's other requirements reference (`path`, `title`, `section`, `excerpt`, `status`, `score`, `mode: "hybrid" | "lexical"`, `indexed`, `skipped`, `deleted`, `embeddingsWarning`, `byType`, `byModule`, `syncStatus`) MUST use its English form; the three tool names (`docs_overview`, `search_docs`, `read_doc`) are already English and unchanged. No retired Spanish param or field name (`tipo`, `modulo`, `etiquetas`, `ruta`, `seccion`, `incluir_no_vigentes`, `omitidos`, `indexados`, `avisoEmbeddings`) MUST remain reachable through any tool call or response.
+
+#### Scenario: Full call with renamed params succeeds
+
+- GIVEN a running MCP server
+- WHEN `search_docs` is called with `{ query: "auth", type: "guide", module: "identity", tags: ["security"], k: 5, include_excluded: false }`
+- THEN the call succeeds and every field is interpreted under its English name, with ranking behavior identical to the pre-rename contract
+
+#### Scenario: Retired Spanish param names are not recognized
+
+- GIVEN a running MCP server
+- WHEN `search_docs` is called with a payload using `tipo`/`modulo`/`etiquetas`/`incluir_no_vigentes` instead of their English equivalents
+- THEN those keys are not recognized as filters — the call behaves as if no such filter were supplied, since the retired Zod keys no longer exist on the schema
+
+### Requirement: Unknown `path` Suggests the 3 Closest Matches
+
+When `read_doc` is called with a `path` that does not match any indexed document, the system MUST respond with the 3 closest matching paths instead of raising an error. This behavior predates this change and is unaffected by the rename — it is stated here because the suggestion payload now carries `path` fields under their English name.
+
+#### Scenario: Unknown path returns closest matches instead of an error
+
+- GIVEN a corpus with no document at `docs/authh/login.md`
+- WHEN `read_doc` is called with `path: "docs/authh/login.md"`
+- THEN the response returns the 3 closest matching `path` values rather than throwing an error
+
