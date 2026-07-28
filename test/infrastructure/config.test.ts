@@ -63,6 +63,8 @@ describe("loadConfig", () => {
     await rm(projectDir, { recursive: true, force: true });
   });
 
+  // es-frozen: "tipo" is the feature under test (convention.frontmatterFields
+  // mapping a non-English source key), not a leftover translation.
   it("merges a partial frontmatterFields object per key, not wholesale", async () => {
     // Declares a Spanish source key for one field only: this is the documented
     // path for a non-English corpus, and it must not wipe the sibling defaults.
@@ -97,7 +99,7 @@ describe("loadConfig", () => {
     const store = new SqliteIndexStore(":memory:");
     store.saveDocument(
       { path: "a.md", title: "A", summary: "r", status: "borrador", tags: [], hash: "h" },
-      [{ heading: "A", content: "contenido de prueba unico irrepetible", position: 0 }],
+      [{ heading: "A", content: "unique unrepeatable test content marker", position: 0 }],
     );
     // Mirrors composition.ts's wiring: SearchDefaults comes from
     // config.convention.excludedStatuses (default []), never config.search.
@@ -105,7 +107,7 @@ describe("loadConfig", () => {
       k: config.search.k,
       excludedStatuses: config.convention.excludedStatuses,
     });
-    const response = await search.execute({ query: "contenido de prueba unico irrepetible" });
+    const response = await search.execute({ query: "unique unrepeatable test content marker" });
     expect(response.results.map((r) => r.path)).toContain("a.md");
 
     store.close();

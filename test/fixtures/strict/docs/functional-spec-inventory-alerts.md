@@ -4,6 +4,6 @@ module: demo
 status: current
 ---
 
-# Especificación funcional: alertas de inventario
+# Functional specification: inventory alerts
 
-Documento sintético del fixture `estricto`, usado para reproducir la convención completa (taxonomía cerrada de `tipo`/`estado`) que `ejemplos/` empleaba antes de convertirse en el corpus zero-config. Describe una funcionalidad ficticia de alertas de inventario bajo stock mínimo.
+Synthetic document from the `strict` fixture, used to reproduce the full convention (closed `type`/`status` taxonomy) that `ejemplos/` used before becoming the zero-config corpus. Describes a fictional low-stock inventory alert feature.

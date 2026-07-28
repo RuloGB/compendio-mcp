@@ -4,6 +4,6 @@ module: demo
 status: current
 ---
 
-# ADR sintético: caché con Redis
+# Synthetic ADR: Redis cache
 
-Documento sintético del fixture `estricto`. Registra, con fines de prueba, una decisión de arquitectura ficticia: adoptar Redis como caché de sesión para reducir la carga de la base de datos principal.
+Synthetic document from the `strict` fixture. Records, for test purposes, a fictional architecture decision: adopt Redis as a session cache to reduce load on the primary database.

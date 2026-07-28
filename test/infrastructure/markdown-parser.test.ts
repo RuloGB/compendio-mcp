@@ -2,43 +2,43 @@ import { describe, expect, it } from "vitest";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 
 const SAMPLE = `---
-type: funcional
+type: functional
 module: leadsviewer
-status: vigente
-tags: [lead, validacion]
+status: current
+tags: [lead, validation]
 ---
 
-# Validación del formulario
+# Form validation
 
-Resumen del documento en un párrafo que se sostiene solo.
+Summary of the document in a paragraph that stands on its own.
 
-Texto adicional de introducción.
+Additional introductory text.
 
-## Contexto y objetivo
+## Context and objective
 
-Contexto de la funcionalidad.
+Context of the feature.
 
-## Reglas de negocio
+## Business rules
 
-Intro de las reglas.
+Intro to the rules.
 
-### Campos
+### Fields
 
-| Campo | Regla |
+| Field | Rule |
 |---|---|
-| Email | obligatorio |
+| Email | required |
 
-#### Detalle anidado
+#### Nested detail
 
-Texto bajo un H4 que no abre sección nueva.
+Text under an H4 that does not open a new section.
 
-### Duplicidad
+### Duplicates
 
-Un lead se considera duplicado por email.
+A lead is considered a duplicate by email.
 
-## Referencias
+## References
 
-Enlaces.
+Links.
 `;
 
 describe("RemarkMarkdownParser", () => {
@@ -46,46 +46,46 @@ describe("RemarkMarkdownParser", () => {
 
   it("extracts frontmatter, H1 title and summary paragraph", () => {
     const parsed = parser.parse(SAMPLE);
-    expect(parsed.data["type"]).toBe("funcional");
-    expect(parsed.data["tags"]).toEqual(["lead", "validacion"]);
-    expect(parsed.outline.title).toBe("Validación del formulario");
-    expect(parsed.outline.summary).toBe("Resumen del documento en un párrafo que se sostiene solo.");
+    expect(parsed.data["type"]).toBe("functional");
+    expect(parsed.data["tags"]).toEqual(["lead", "validation"]);
+    expect(parsed.outline.title).toBe("Form validation");
+    expect(parsed.outline.summary).toBe("Summary of the document in a paragraph that stands on its own.");
   });
 
   it("captures the intro between the H1 and the first H2, without the H1 line", () => {
     const { outline } = parser.parse(SAMPLE);
-    expect(outline.intro).toContain("Resumen del documento");
-    expect(outline.intro).toContain("Texto adicional");
-    expect(outline.intro).not.toContain("# Validación");
-    expect(outline.intro).not.toContain("## Contexto");
+    expect(outline.intro).toContain("Summary of the document");
+    expect(outline.intro).toContain("Additional introductory");
+    expect(outline.intro).not.toContain("# Form validation");
+    expect(outline.intro).not.toContain("## Context");
   });
 
   it("builds H2 sections with their H3 children, slices including heading lines", () => {
     const { outline } = parser.parse(SAMPLE);
     expect(outline.sections.map((s) => s.title)).toEqual([
-      "Contexto y objetivo",
-      "Reglas de negocio",
-      "Referencias",
+      "Context and objective",
+      "Business rules",
+      "References",
     ]);
-    const reglas = outline.sections[1]!;
-    expect(reglas.text.startsWith("## Reglas de negocio")).toBe(true);
-    expect(reglas.text).toContain("Intro de las reglas.");
-    expect(reglas.text).not.toContain("### Campos");
-    expect(reglas.children.map((c) => c.title)).toEqual(["Campos", "Duplicidad"]);
-    expect(reglas.children[0]!.text.startsWith("### Campos")).toBe(true);
+    const rules = outline.sections[1]!;
+    expect(rules.text.startsWith("## Business rules")).toBe(true);
+    expect(rules.text).toContain("Intro to the rules.");
+    expect(rules.text).not.toContain("### Fields");
+    expect(rules.children.map((c) => c.title)).toEqual(["Fields", "Duplicates"]);
+    expect(rules.children[0]!.text.startsWith("### Fields")).toBe(true);
   });
 
   it("keeps H4+ headings inline inside their enclosing section", () => {
     const { outline } = parser.parse(SAMPLE);
-    const campos = outline.sections[1]!.children[0]!;
-    expect(campos.text).toContain("#### Detalle anidado");
-    expect(campos.text).toContain("| Email | obligatorio |");
+    const fields = outline.sections[1]!.children[0]!;
+    expect(fields.text).toContain("#### Nested detail");
+    expect(fields.text).toContain("| Email | required |");
   });
 
   it("handles a document without sections", () => {
-    const { outline } = parser.parse("# Solo título\n\nUn único párrafo.\n");
-    expect(outline.title).toBe("Solo título");
+    const { outline } = parser.parse("# Only title\n\nA single paragraph.\n");
+    expect(outline.title).toBe("Only title");
     expect(outline.sections).toEqual([]);
-    expect(outline.intro).toBe("Un único párrafo.");
+    expect(outline.intro).toBe("A single paragraph.");
   });
 });

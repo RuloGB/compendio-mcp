@@ -6,7 +6,7 @@ import { createMcpServer, SERVER_VERSION } from "../src/server.js";
 /**
  * Smoke-level contract test: schema validation for the `search_docs` tool's
  * `type` parameter must accept any string (open, project-defined taxonomy),
- * not just values from the retired closed `TIPOS` list. `getOverview` /
+ * not just values from a closed, fixed list. `getOverview` /
  * `searchDocuments` / `readDocument` are never invoked by these assertions
  * (schema parsing happens independently of the tool handler), so a minimal
  * fake container is sufficient.

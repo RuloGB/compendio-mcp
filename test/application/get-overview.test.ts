@@ -20,14 +20,14 @@ function seed(store: SqliteIndexStore, overrides: Partial<DocumentMeta> & { path
   const meta: DocumentMeta = {
     path: overrides.path,
     title: overrides.title ?? overrides.path,
-    summary: overrides.summary ?? "contenido",
+    summary: overrides.summary ?? "content",
     tags: overrides.tags ?? [],
     hash: overrides.hash ?? overrides.path,
     ...(overrides.type !== undefined ? { type: overrides.type } : {}),
     ...(overrides.module !== undefined ? { module: overrides.module } : {}),
     ...(overrides.status !== undefined ? { status: overrides.status } : {}),
   };
-  store.saveDocument(meta, [{ heading: "H", content: "contenido", position: 0 }]);
+  store.saveDocument(meta, [{ heading: "H", content: "content", position: 0 }]);
 }
 
 describe("GetOverview — empty taxonomy omission", () => {
@@ -76,9 +76,9 @@ describe("GetOverview — per-document line ordering and segment omission", () =
 
     const salida = formatOverview(overview);
     const lineas = salida.split("\n").filter((l) => l.startsWith("- "));
-    expect(lineas[0]).toBe("- a.md — contenido");
-    expect(lineas[1]).toBe("- [adr] m.md — contenido");
-    expect(lineas[2]).toBe("- [guia] z.md — contenido (vigente)");
+    expect(lineas[0]).toBe("- a.md — content");
+    expect(lineas[1]).toBe("- [adr] m.md — content");
+    expect(lineas[2]).toBe("- [guia] z.md — content (vigente)");
     store.close();
   });
 });
@@ -87,8 +87,8 @@ describe("GetOverview summary fallback", () => {
   it("shows the title when the document has no intro paragraph", () => {
     const store = new SqliteIndexStore(":memory:");
     const meta: DocumentMeta = {
-      path: "guias/transversal-sin-resumen.md",
-      title: "Guía sin resumen",
+      path: "guias/transversal-no-summary.md",
+      title: "Guide with no summary",
       summary: "",
       type: "guia",
       module: "transversal",
@@ -96,12 +96,12 @@ describe("GetOverview summary fallback", () => {
       tags: [],
       hash: "abc",
     };
-    store.saveDocument(meta, [{ heading: "Sección", content: "## Sección\n\nTexto.", position: 0 }]);
+    store.saveDocument(meta, [{ heading: "Section", content: "## Section\n\nText.", position: 0 }]);
 
     const overview = new GetOverview(store).execute();
-    expect(overview.documents[0]!.summary).toBe("Guía sin resumen");
+    expect(overview.documents[0]!.summary).toBe("Guide with no summary");
     expect(formatOverview(overview)).toContain(
-      "- [guia] guias/transversal-sin-resumen.md — Guía sin resumen (vigente)",
+      "- [guia] guias/transversal-no-summary.md — Guide with no summary (vigente)",
     );
 
     store.close();

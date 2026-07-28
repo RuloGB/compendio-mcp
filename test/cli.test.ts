@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { parseType } from "../src/cli.js";
 
 /**
- * Smoke-level contract test for the CLI's `--tipo` open-string passthrough.
- * `parseType` used to validate against the closed `TIPOS` list and call
- * `process.exit(2)` on a mismatch; it is now a plain passthrough (type is a
- * project-defined, config-driven, open string — no closed list to validate
- * against at the CLI layer per the hexagonal boundary).
+ * Smoke-level contract test for the CLI's `--type` open-string passthrough.
+ * `parseType` used to validate against a closed, fixed list of allowed types
+ * and call `process.exit(2)` on a mismatch; it is now a plain passthrough
+ * (type is a project-defined, config-driven, open string — no closed list
+ * to validate against at the CLI layer per the hexagonal boundary).
  */
 describe("parseType", () => {
   it("passes through a value outside any closed taxonomy unchanged", () => {

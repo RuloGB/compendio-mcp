@@ -4,6 +4,7 @@ import type { DocumentMeta } from "../../src/domain/model";
 import { buildHarness, type TestHarness } from "../helpers/build";
 import { FakeEmbeddings } from "../helpers/fake-embeddings";
 
+// es-frozen: cites the real `ejemplos/` corpus name, not a leftover translation.
 describe("ReadDocument over the ejemplos corpus", () => {
   let harness: TestHarness;
 
@@ -26,6 +27,8 @@ describe("ReadDocument over the ejemplos corpus", () => {
     expect(result.meta.module).toBe("leadsviewer");
   });
 
+  // es-frozen: "glosario.md"/"Glosario" are the real frozen `ejemplos/` corpus
+  // filename and its real H1, not a leftover translation.
   it("does not duplicate the H1 of documents indexed as a single chunk", () => {
     const result = harness.read.execute({ path: "glosario.md" });
     expect(result.type).toBe("document");
@@ -77,7 +80,7 @@ describe("ReadDocument over the ejemplos corpus", () => {
   it("lists available sections when the requested one does not exist", () => {
     const result = harness.read.execute({
       path: "leadsviewer/validacion-formulario.md",
-      section: "seccion inventada",
+      section: "made-up section",
     });
     expect(result.type).toBe("section-not-found");
     if (result.type !== "section-not-found") return;

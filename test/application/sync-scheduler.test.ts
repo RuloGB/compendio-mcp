@@ -92,7 +92,7 @@ describe("SyncScheduler — failure recovery", () => {
     let clock = 0;
     const execute = vi
       .fn()
-      .mockRejectedValueOnce(new Error("fallo simulado de sincronizacion"))
+      .mockRejectedValueOnce(new Error("simulated sync failure"))
       .mockResolvedValue(fakeReport());
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const scheduler = new SyncScheduler(fakeSyncer(execute), 1000, () => clock);

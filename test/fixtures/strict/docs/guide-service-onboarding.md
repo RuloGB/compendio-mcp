@@ -4,6 +4,6 @@ module: demo
 status: current
 ---
 
-# Guía sintética: onboarding de un nuevo servicio
+# Synthetic guide: onboarding a new service
 
-Documento sintético del fixture `estricto`. Pasos ficticios, con fines de prueba, para dar de alta un nuevo microservicio en el pipeline de despliegue interno.
+Synthetic document from the `strict` fixture. Fictional steps, for test purposes, to onboard a new service into the internal deployment pipeline.

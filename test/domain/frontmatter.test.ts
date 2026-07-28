@@ -51,7 +51,7 @@ describe("applyOptionalFields", () => {
     return { path: "a.md", title: "A", summary: "R", tags: [], hash: "h" };
   }
 
-  it("attaches a trimmed propietario when present", () => {
+  it("attaches a trimmed owner when present", () => {
     const meta = baseMeta();
     applyOptionalFields(meta, { owner: " BA " });
     expect(meta.owner).toBe("BA");
@@ -63,7 +63,7 @@ describe("applyOptionalFields", () => {
     expect(meta.updated).toBe("2026-07-19");
   });
 
-  it("keeps a string actualizado trimmed as-is", () => {
+  it("keeps a string updated value trimmed as-is", () => {
     const meta = baseMeta();
     applyOptionalFields(meta, { updated: " 2026-07-19 " });
     expect(meta.updated).toBe("2026-07-19");

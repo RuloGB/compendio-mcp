@@ -4,6 +4,6 @@ module: demo
 status: current
 ---
 
-# API sintética: contrato de pagos
+# Synthetic API: payments contract
 
-Documento sintético del fixture `estricto`. Describe, con fines de prueba, un endpoint ficticio `POST /pagos` para registrar un cobro y su respuesta con el identificador de la transacción.
+Synthetic document from the `strict` fixture. Describes, for test purposes, a fictional `POST /payments` endpoint to record a charge and return its transaction identifier.

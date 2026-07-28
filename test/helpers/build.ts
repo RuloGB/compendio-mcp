@@ -14,6 +14,7 @@ import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-s
 // Spanish as the retrieval regression suite.
 export const EXAMPLES_DOCS = fileURLToPath(new URL("../../ejemplos/docs", import.meta.url));
 
+// es-frozen: cites the real `ejemplos/` corpus name, not a leftover translation.
 /**
  * ejemplos/ is the product's zero-config pitch corpus (post-D1 migration):
  * no declared taxonomy, folder-as-module inference, mostly frontmatter-free.
@@ -27,10 +28,11 @@ export const EXAMPLES_CONVENTION: ConventionConfig = {
   frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
+// es-frozen: cites the real `ejemplos/` corpus name, not a leftover translation.
 /**
  * Secondary synthetic fixture (D1.3) reproducing the full-convention
  * behavior `ejemplos/` used to demonstrate before the zero-config migration:
- * declared `types`/`statuses` matching the retired `TIPOS`/`ESTADOS`
+ * declared `types`/`statuses` matching the retired closed-taxonomy
  * constants, and the same `excludedStatuses` deny-list.
  */
 export const STRICT_FIXTURE_DOCS = fileURLToPath(
@@ -68,6 +70,8 @@ export function buildHarness(
     store,
     embeddings,
     policy,
+    // es-frozen: "glosario.md" is the real frozen `ejemplos/` corpus filename,
+    // mirroring the production default — not a leftover translation.
     { chunking: { minTokens: 100, maxTokens: 800 }, noChunking: ["glosario.md"] },
   );
   const search = new SearchDocuments(store, embeddings, {

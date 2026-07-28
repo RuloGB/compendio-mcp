@@ -37,7 +37,7 @@ describe("FileIndexWriter", () => {
   });
 
   it("treats a CRLF copy of the same content as up to date (git autocrlf checkout)", async () => {
-    const contentLf = "# Índice\n\n- [guia] glosario.md — Términos (vigente)\n";
+    const contentLf = "# Index\n\n- [guide] doc.md — Terms (current)\n";
     await writeFile(join(dir, "INDEX.md"), contentLf.replaceAll("\n", "\r\n"), "utf8");
 
     const writer = new FileIndexWriter(dir, "INDEX.md");
