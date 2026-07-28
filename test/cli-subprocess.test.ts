@@ -2,12 +2,14 @@ import { execFileSync, spawnSync, type SpawnSyncReturns } from "node:child_proce
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -60,8 +62,19 @@ function ensureBuilt(): void {
   });
 }
 
-function runCli(args: string[], entry: string = CLI): SpawnSyncReturns<string> {
-  return spawnSync(process.execPath, [entry, ...args], { encoding: "utf8" });
+/**
+ * `env` merges ON TOP of `process.env` (never replaces it) — a bare
+ * `{ COMPENDIO_PROGRESS }` would drop `PATH` and break the spawn on Windows.
+ */
+function runCli(
+  args: string[],
+  entry: string = CLI,
+  env?: Record<string, string | undefined>,
+): SpawnSyncReturns<string> {
+  return spawnSync(process.execPath, [entry, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+  });
 }
 
 let workdir: string;
@@ -152,6 +165,105 @@ describe("CLI subprocess: corpus commands", () => {
     const allowedPayload = JSON.parse(allowed.stdout) as { results: { path: string }[] };
     expect(allowedPayload.results.map((r) => r.path)).toContain("test-plan-inventory-alerts.md");
   });
+});
+
+describe("CLI subprocess: index progress reporting", () => {
+  // `spawnSync` gives the child no TTY (stdio defaults to "pipe"), so
+  // COMPENDIO_PROGRESS is what makes every mode reachable under a pipe.
+  it("COMPENDIO_PROGRESS=none: stderr carries no progress output", () => {
+    const run = runCli(["--root", workdir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "none" });
+    expect(run.status).toBe(0);
+    // --lexical still emits the pre-existing embeddingsWarning on stderr —
+    // that WARNING line is unrelated to progress reporting. What "none"
+    // guarantees is the ABSENCE of progress-shaped text.
+    expect(run.stderr).not.toContain("Indexing");
+    expect(run.stderr).not.toMatch(/\[\d+\/\d+\]/);
+    expect(run.stderr).not.toContain("\r");
+  });
+
+  it("COMPENDIO_PROGRESS=plain: stderr shows 'Indexing N documents' and [i/N]-shaped ticks, no \\r", () => {
+    const run = runCli(["--root", workdir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "plain" });
+    expect(run.status).toBe(0);
+    expect(run.stderr).toContain("Indexing 5 documents");
+    expect(run.stderr).toMatch(/\[1\/5\]/);
+    expect(run.stderr).not.toContain("\r");
+  });
+
+  it("stdout is identical across none/plain/bar modes, modulo the pre-existing real duration figure", () => {
+    const none = runCli(["--root", workdir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "none" });
+    const plain = runCli(["--root", workdir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "plain" });
+    const bar = runCli(["--root", workdir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "bar" });
+    expect(none.status).toBe(0);
+    expect(plain.status).toBe(0);
+    expect(bar.status).toBe(0);
+    expect(none.stdout).toMatch(/Indexed 5 documents \(\d+ chunks\)/);
+    // `report.durationMs` is a real wall-clock measurement, not a progress
+    // concern: it already varied between separate runs before this change.
+    // Normalize it out so this test asserts what "stdout is byte-for-byte
+    // identical across modes" actually means: the reporting mode changes
+    // nothing about stdout's shape or content. This tiny 5-document fixture
+    // never crosses the bar's 5 s anti-flash threshold, so bar mode never
+    // draws here either -- irrelevant to this assertion, since stdout is
+    // never touched by the sink regardless of whether it draws.
+    const normalize = (stdout: string): string => stdout.replace(/in \d+ ms/, "in N ms");
+    expect(normalize(plain.stdout)).toBe(normalize(none.stdout));
+    expect(normalize(bar.stdout)).toBe(normalize(none.stdout));
+  });
+
+  /**
+   * `bar` mode is additionally gated by `BAR_MIN_ELAPSED_MS` (5 s of real
+   * elapsed run time) — a deliberate anti-flash gate (design decision D3),
+   * not just a mode-selection concern. `COMPENDIO_PROGRESS=bar` makes the
+   * renderer reachable under a pipe (proposal's stated fix for the
+   * exploration's TTY-detection gap), but crossing the *time* gate is a
+   * property of real wall-clock duration, which this suite cannot control
+   * deterministically the way `test/infrastructure/progress-sink.test.ts`
+   * does with an injected fake clock (that file already covers this exact
+   * branch, deterministically, for every case: sub-threshold silence,
+   * first-frame-shows-accumulated-state, and the erase on `finish()`).
+   *
+   * This test still attempts a REAL, non-deterministic end-to-end
+   * confirmation: index a large synthetic corpus (many small files — file
+   * count, not content size, is what drives wall time here per the
+   * IndexDocuments per-file loop) and check whether the real run crossed the
+   * threshold. On a slow enough disk/CPU it does, and `\r` must appear. On
+   * an unusually fast machine the run may finish under 5 s despite ~4 000
+   * files, in which case the environment cannot exercise this path at all —
+   * exactly the pattern this suite already uses for symlink-unavailable
+   * platforms below (`ctx.skip(...)`), not a false pass.
+   */
+  it("COMPENDIO_PROGRESS=bar: stderr contains \\r once a real run crosses the 5 s threshold", (ctx) => {
+    const bigDir = mkdtempSync(join(tmpdir(), "compendio-bar-corpus-"));
+    const bigDocs = join(bigDir, "docs");
+    mkdirSync(bigDocs, { recursive: true });
+    const FILE_COUNT = 4_000;
+    for (let i = 0; i < FILE_COUNT; i++) {
+      writeFileSync(
+        join(bigDocs, `doc${i}.md`),
+        `# Doc ${i}\n\nSynthetic body text for document number ${i}, sized only to force real ` +
+          `per-file indexing work across enough files to cross the anti-flash threshold.\n`,
+      );
+    }
+
+    try {
+      const run = runCli(["--root", bigDir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "bar" });
+      expect(run.status).toBe(0);
+      const durationMatch = /in (\d+) ms/.exec(run.stdout);
+      const durationMs = durationMatch !== null ? Number(durationMatch[1]) : 0;
+      if (durationMs < 5_000) {
+        ctx.skip(
+          `this machine indexed ${FILE_COUNT} files in ${durationMs} ms, under the 5 000 ms ` +
+            "anti-flash threshold -- too fast on this environment to exercise the bar redraw " +
+            "end-to-end. The exact same code path is covered deterministically with a fake " +
+            "clock in test/infrastructure/progress-sink.test.ts.",
+        );
+        return;
+      }
+      expect(run.stderr).toContain("\r");
+    } finally {
+      rmSync(bigDir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
 
 /**

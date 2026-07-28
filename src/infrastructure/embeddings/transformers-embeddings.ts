@@ -5,6 +5,25 @@ type FeatureExtractor = (
   options: { pooling: "mean"; normalize: boolean },
 ) => Promise<{ data: Float32Array | number[]; dims: number[] }>;
 
+/** Aggregate download progress across every file the model needs. */
+export interface DownloadProgress {
+  loaded: number;
+  total: number;
+}
+
+export interface TransformersEmbeddingsOptions {
+  /** Called on each aggregate `progress_total` update. Never called for
+   * per-file `progress`, `initiate`, `done`, or `ready` status updates. */
+  onDownloadProgress?: (progress: DownloadProgress) => void;
+}
+
+/** Shape `transformers.js`'s `DefaultProgressCallback` invokes its callback with. */
+interface TransformersProgressInfo {
+  status: string;
+  loaded?: number;
+  total?: number;
+}
+
 /**
  * Local embeddings via transformers.js (ONNX on CPU). The model is downloaded
  * on first use and cached on disk by the library; after that, operation is
@@ -14,14 +33,40 @@ type FeatureExtractor = (
 export class TransformersEmbeddings implements EmbeddingsProvider {
   private constructor(private readonly extractor: FeatureExtractor) {}
 
-  static async create(model: string): Promise<TransformersEmbeddings> {
+  static async create(
+    model: string,
+    options?: TransformersEmbeddingsOptions,
+  ): Promise<TransformersEmbeddings> {
     const { pipeline } = await import("@huggingface/transformers");
+    const onDownloadProgress = options?.onDownloadProgress;
+    // `pipeline()` issues a `get_file_metadata` request per model file only
+    // when `progress_callback` is truthy — gating on `undefined` (never
+    // spreading) keeps every call path with no `onProgress` byte-identical
+    // to today (Trap 1). Built once so the exact same function reference is
+    // reused on the fallback call (Trap 2).
+    const progressCallback =
+      onDownloadProgress === undefined
+        ? undefined
+        : (info: TransformersProgressInfo) => {
+            if (info.status !== "progress_total") return;
+            onDownloadProgress({ loaded: info.loaded ?? 0, total: info.total ?? 0 });
+          };
+
     let extractor: unknown;
     try {
       // q8 weights: ~4x smaller download, near-identical retrieval quality.
-      extractor = await pipeline("feature-extraction", model, { dtype: "q8" });
+      extractor =
+        progressCallback === undefined
+          ? await pipeline("feature-extraction", model, { dtype: "q8" })
+          : await pipeline("feature-extraction", model, { dtype: "q8", progress_callback: progressCallback });
     } catch {
-      extractor = await pipeline("feature-extraction", model);
+      // The fallback needs the same progress_callback — it is a full second
+      // download attempt, not a cheap retry (Trap 2: easy to miss because
+      // this call took no options object at all before this change).
+      extractor =
+        progressCallback === undefined
+          ? await pipeline("feature-extraction", model)
+          : await pipeline("feature-extraction", model, { progress_callback: progressCallback });
     }
     return new TransformersEmbeddings(extractor as FeatureExtractor);
   }

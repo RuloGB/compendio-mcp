@@ -7,6 +7,7 @@ import type {
   IndexStore,
   MarkdownParser,
 } from "../domain/ports.js";
+import type { ProgressEvent, ProgressReporter } from "../domain/progress.js";
 import { computeHash, describeError, transformFile } from "./index-pipeline.js";
 
 export interface IndexedFileReport {
@@ -36,6 +37,8 @@ export interface IndexDocumentsOptions {
    * without heading-based chunking. The glossary is the canonical case. */
   noChunking: string[];
   embeddingBatchSize?: number;
+  /** Optional progress observability hook; a no-op by default. */
+  onProgress?: ProgressReporter;
 }
 
 const DEFAULT_BATCH_SIZE = 16;
@@ -60,6 +63,7 @@ export class IndexDocuments {
 
   async execute(): Promise<IndexReport> {
     const start = Date.now();
+    this.report({ phase: "discovery", kind: "start" });
     const { files, readErrors } = await this.source.discover();
 
     const indexed: IndexedFileReport[] = [];
@@ -70,8 +74,10 @@ export class IndexDocuments {
     const pending: { chunkId: number; text: string }[] = [];
 
     this.store.reset();
+    this.report({ phase: "files", kind: "start", total: files.length });
 
-    for (const file of files) {
+    for (const [i, file] of files.entries()) {
+      this.report({ phase: "files", kind: "tick", current: i + 1, total: files.length, path: file.path });
       const hash = computeHash(file.content);
       const result = transformFile(this.parser, this.policy, this.options, file, hash);
 
@@ -110,19 +116,29 @@ export class IndexDocuments {
       return "indexed without embeddings (provider unavailable): search runs in lexical mode";
     }
     const batchSize = this.options.embeddingBatchSize ?? DEFAULT_BATCH_SIZE;
+    const batches = Math.ceil(pending.length / batchSize);
+    this.report({ phase: "embedding", kind: "start", batches, chunks: pending.length });
     try {
+      let batchIndex = 0;
       for (let i = 0; i < pending.length; i += batchSize) {
         const batch = pending.slice(i, i + batchSize);
+        this.report({ phase: "embedding", kind: "tick", current: batchIndex + 1, total: batches });
         // "passage: " prefix is required by the E5 embedding family.
         const vectors = await this.embeddings.embed(batch.map((p) => `passage: ${p.text}`));
         this.store.saveEmbeddings(
           batch.map((p, j) => ({ chunkId: p.chunkId, embedding: vectors[j]! })),
         );
+        batchIndex += 1;
       }
       return null;
     } catch (error) {
-      return `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
+      const reason = describeError(error);
+      this.report({ phase: "embedding", kind: "failed", reason });
+      return `embeddings unavailable (${reason}): search runs in lexical mode`;
     }
   }
 
+  private report(event: ProgressEvent): void {
+    this.options.onProgress?.(event);
+  }
 }

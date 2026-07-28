@@ -28,6 +28,22 @@ node dist/cli.js --root ejemplos eval
 node dist/cli.js --root ejemplos search "¿cuándo se considera duplicado un lead?"
 ```
 
+Manual smoke test for `index` progress reporting (not automatable in CI: a real cold
+download is ~129 MB). Clear the transformers.js model cache, then in an interactive
+terminal:
+
+```bash
+node dist/cli.js --root ejemplos index                    # bar: appears once the run
+                                                            # exceeds ~5s, tracks the
+                                                            # download live, clears
+                                                            # before the final summary
+node dist/cli.js --root ejemplos index                     # warm cache: bar is silent
+                                                            # below the anti-flash
+                                                            # threshold (~3-4s runs)
+COMPENDIO_PROGRESS=none node dist/cli.js --root ejemplos index   # stdout unchanged,
+                                                                   # stderr silent
+```
+
 `prepublishOnly` runs `build` then `test` — publishing fails if either fails.
 
 Tests use `pool: "forks"` (vitest.config.ts) because `better-sqlite3` is a native addon loaded once per worker; don't switch this to threads. `CI=true` turns on `forbidOnly` so a stray `it.only` can't silently slim down the suite outside CI.
