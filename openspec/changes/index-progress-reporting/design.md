@@ -38,25 +38,103 @@ emits an aggregate `progress_total` *and* forwards the per-file `progress`. We c
 `progress_total` **only** — one monotonic 0-100 over all files, pre-seeded with every file's size,
 so no per-file bookkeeping and no double counting.
 
-### D2 — Bar refresh: 100 ms minimum between redraws, as a coalescer not an animator
+### D2 — Bar refresh: a 100 ms coalescer **and** a 200 ms repaint heartbeat *(revised)*
 
-**Choice**: `shouldDrawBar(startedMs, nowMs, lastDrawMs)` refuses a redraw within 100 ms of the last.
+**Original choice**: `shouldDrawBar(startedMs, nowMs, lastDrawMs)` refuses a redraw within 100 ms of
+the last. **Rejected at the time**: `setInterval` animation — "an extra timer to unref and tear down,
+for a display whose underlying number is static for seconds at a time."
 
-**Rationale**: during the dominant phase nothing changes faster than that — 1% download events
-arrive every ~2.8 s, batches every ~1.4 s — so the gate never fires there. Its only real work is
-the two bursts: the per-file phase (36 files in 0.06 s, up to ~600 events/s) and a fast link
-(100 Mbps ⇒ 1% events every ~0.1 s). **Rejected**: `setInterval` animation — an extra timer to
-unref and tear down, for a display whose underlying number is static for seconds at a time.
+**Why it was revised.** That rationale measured how *often* events arrive and never asked what
+happens when **none** arrive. Observed by running the built CLI against this repo's own `docs/`:
+stderr came back **0 bytes** on a 2 911 ms run, well past the elapsed threshold. The cause is in
+`index-documents.ts:125` — `embedding/tick` is emitted *before* `await embed()`, so a one-batch warm
+run emits every event inside the first ~25 ms and then blocks silently for ~2.9 s (≈0.85 s model
+load + ≈1.4 s inference). With no event to react to, an event-driven renderer draws nothing. The
+20-document forced run had already shown this and was misread: it drew exactly **one** frame.
 
-### D3 — Bar threshold: 5 000 ms elapsed
+The rejected rationale also had the argument backwards. "The number is static for seconds at a time"
+is not a reason to skip the animator — it is the reason to *have* one. The original complaint was
+"looks hung", not "I don't know how much is left"; liveness is the primary signal.
 
-**Choice**: `BAR_MIN_ELAPSED_MS = 5000`.
+**Revised choice**: keep `shouldDrawBar` as a 100 ms **floor** (it still absorbs the per-file burst
+of ~600 events/s), and add a repaint heartbeat on top:
 
-**Rationale**: the slowest measured warm run on this project's own corpus is 3.94 s, so 5 s clears
-it by ~27%. Any run crossing 5 s is, by the same measurement, either a cold download (~285 s) or a
-corpus ≥3× denser than `ejemplos/` (~28 s+) — the bar then stays on screen for tens of seconds,
-never a flash. **Rejected**: 2 s (leaves a 1.8 s flash on a warm `ejemplos/` run); 10 s (suppresses
-the bar for a 36-doc warm run that genuinely takes ~10 s).
+- `BAR_REPAINT_MS = 200` — while a phase is active and the elapsed threshold has been crossed, the
+  sink repaints on a timer regardless of event arrival. 200 ms sits above the 100 ms floor, so the
+  two never fight, and gives 5 visible updates per second.
+- `renderBar` gains an **elapsed-time indicator** rendered to one decimal (e.g. `3.2s`). A repainted
+  byte-identical frame communicates nothing; the advancing number is what separates "working" from
+  "hung", and unlike a spinner it is also information.
+- The timer is **`unref()`'d** so it can never hold the process open, is **armed at sink
+  construction** (bar mode only) so it can detect the threshold crossing even with zero events after
+  it — see "Implementation correction" below — is cleared by `finish()`, and is never created in
+  `plain` or `none` mode. Every tick still funnels through `shouldDrawBar`, so nothing is written
+  before the threshold regardless of how early the timer object exists.
+
+**Rejected**: moving `embedding/tick` to *after* each batch — with a single batch the silence is
+still inside the `await`, so the user's own corpus would remain blank; it treats a symptom.
+
+**Implementation correction (discovered during apply, verified empirically).** The original text
+above read "created only on the first draw (never before the threshold)" — i.e., the timer would be
+armed lazily, inside the draw routine, only after a successful event-driven draw. That is
+insufficient: it cannot fix the exact bug this decision exists to fix. If literally every event
+fires before the threshold and *none* arrives afterward (the one-batch scenario this section already
+describes), no event ever calls the draw routine after crossing, so a lazily-armed timer never gets
+armed at all — the bug persists unchanged. Fixed by arming the timer unconditionally at sink
+construction (bar mode only, still unref()'d, still cleared by `finish()`); confirmed by a dedicated
+unit test that reproduces the exact event shape (every event at `clock = 0`, then only the fake timer
+advances) and by an isolated real-timer integration test.
+
+**Known residual limitation (measured, not fixed by this decision).** Even with the timer armed
+correctly, three independent instrumented runs against the real `TransformersEmbeddings` pipeline
+(an unrelated `setInterval` alongside the real indexing run; a fake-stream-instrumented sink against
+the real run; both against this repo's own `docs/` and against `ejemplos/`) show the Node event loop
+essentially starved for the run's dominant cost: over one ~4 s run, an independent 50 ms timer fired
+only 2 times; over one ~5.4 s two-batch run, only 4 times, clustered in gaps *between* batches, with
+zero fires during either batch's own inference window. The cause is outside this decision's scope:
+`onnxruntime-node`'s CPU inference call blocks the JS main thread synchronously for its full
+duration, so no JS-level timer — regardless of when it is armed — can fire while it runs, because
+Node is single-threaded and a synchronous native call yields to nothing. Consequence, observed: for a
+corpus small enough that its *entire* duration is one blocking `create()`+`embed()` call (e.g. this
+repo's current `docs/`, now down to a single indexable file), stderr can still be empty end to end,
+even past the threshold. For a corpus with more than one batch or a genuinely slow *network* download
+(non-blocking socket I/O, unlike a warm local cache read), the heartbeat does fire — observed directly
+against `ejemplos/`: two real frames drawn near the tail of model loading, with the elapsed indicator
+advancing `3.7s` → `3.8s`. Fixing the residual gap would mean moving embedding inference off the main
+thread (`worker_threads` or similar) — a materially larger change, out of scope here, and a decision
+this agent did not make unilaterally. Flagged for the repository owner.
+
+### D3 — Bar threshold: 1 500 ms elapsed *(revised — originally 5 000 ms)*
+
+**Choice**: `BAR_MIN_ELAPSED_MS = 1500`.
+
+**Original rationale (5 000 ms)**: the slowest measured warm run on this project's own corpus is
+3.94 s, so 5 s clears it by ~27%. Any run crossing 5 s is either a cold download (~285 s) or a
+corpus ≥3× denser than `ejemplos/`.
+
+**Why it was revised.** That reasoning optimised against the flash and never asked what it cost.
+Post-apply, the repository owner ran an index and saw no bar — correctly, since this repo's own
+`docs/` indexes in 3.24 s warm, below the gate. The consequence nobody weighed at decision time:
+**5 s hid the bar from every ordinary invocation.** The only runs that showed it were a cold 129 MB
+download or a synthetic corpus built to be slow — which also made the feature impossible to
+validate on demand. A gate that suppresses its own feature in the common case is tuned wrong.
+
+**Revised rationale (1 500 ms)**, against measured warm-cache durations:
+
+| Run | Duration | Bar visible at 1 500 ms |
+|---|---|---|
+| 5-document subprocess fixture (`--lexical`) | ~0.63 s | no — subprocess tests unaffected |
+| This repo's own `docs/` | 3.24 s | ~1.7 s |
+| `ejemplos/` (slowest warm run measured) | 3.94 s | ~2.4 s |
+
+A genuine flash is under ~0.5 s and that band stays suppressed; 1.7-2.4 s is comfortably readable.
+**Rejected**: keeping 5 s (hides the bar from real use, as observed); removing the gate entirely
+(restores the sub-second flash on trivial runs); making an explicit `COMPENDIO_PROGRESS=bar` bypass
+the gate (a second behavioral branch, added only to keep one badly-tuned constant).
+
+**Test coupling.** The threshold's dependent tests were rewritten to derive from
+`BAR_MIN_ELAPSED_MS` and `BAR_REDRAW_MIN_MS` instead of hardcoding `5_000`/`5_100`. They assert the
+gate's *behavior*, not today's number, so retuning either constant no longer turns them red.
 
 **Carrying accumulated progress** (spec: "not a restart from zero") falls out of the shape: the
 sink advances `ProgressState` on **every** event whether or not it draws, and `renderBar` is a
@@ -104,14 +182,17 @@ export function resolveProgressMode(raw: string | undefined, isTTY: boolean): Pr
 export function initialProgressState(): ProgressState;
 export function advanceProgress(state: ProgressState, event: ProgressEvent): ProgressState;
 export function formatPlainLine(event: ProgressEvent): string;            // no \r, no ANSI
-export function renderBar(state: ProgressState, width: number): string;   // no \r, no \n, no ANSI, length <= width
+export function renderBar(state: ProgressState, width: number, elapsedMs: number): string;
+  // no \r, no \n, no ANSI, length <= width; elapsedMs renders as one-decimal
+  // seconds (e.g. "3.2s") — the repaint heartbeat's liveness signal
 export function createDownloadThrottle(
   stepPercent: number,
 ): (loaded: number, total: number, lastReported: number) => boolean;      // false when total <= 0
 export function shouldDrawBar(startedMs: number, nowMs: number, lastDrawMs: number | null): boolean;
 
-export const BAR_MIN_ELAPSED_MS = 5_000;
+export const BAR_MIN_ELAPSED_MS = 1_500;
 export const BAR_REDRAW_MIN_MS = 100;
+export const BAR_REPAINT_MS = 200;
 export const DOWNLOAD_STEP_PERCENT_BAR = 1;
 export const DOWNLOAD_STEP_PERCENT_PLAIN = 5;
 export const BAR_MAX_WIDTH = 80;
@@ -246,11 +327,11 @@ pipeline() progress_total ──────────┘        │          
 |---|---|---|
 | Unit | `resolveProgressMode` | All 6 spec scenarios: `auto`+TTY→`bar`, `auto`−TTY→`plain`, forced `bar`/`plain` ignore `isTTY`, `none` both ways, `undefined` and `"verbose"` ≡ `auto` |
 | Unit | `formatPlainLine` | One case per event kind; output carries no `\r` and no ANSI escape; `total === 0` renders no `0/0` |
-| Unit | `renderBar` | Length ≤ width for widths 20/40/80/200; no `\r`, no `\n`, no ANSI; `total === 0` renders no ratio; download state shows MB, not counts |
+| Unit | `renderBar` | Length ≤ width for widths 20/40/80/200 (including with the elapsed indicator present); no `\r`, no `\n`, no ANSI; `total === 0` renders no ratio; download state shows MB, not counts; elapsed renders to one decimal (e.g. `3.2s`) and two different `elapsedMs` values produce different frames |
 | Unit | `advanceProgress` | Accumulates without drawing; `download` updates while `phase` stays `"embedding"` |
 | Unit | `createDownloadThrottle` | Below step ⇒ `false`; crossing ⇒ `true` once; non-monotonic `loaded` ⇒ `false`; `total <= 0` ⇒ `false`; 1% vs 5% report counts over a synthetic 0→129 MB stream |
-| Unit | `shouldDrawBar` | `< 5 000 ms` ⇒ `false`; first call after crossing ⇒ `true`; second call `< 100 ms` later ⇒ `false` |
-| Unit | `createProgressSink` | Fake `{ write, columns }` + fake `now`. `none` writes nothing; `plain` appends newline-terminated lines with no `\r`; `bar` writes `\r`-prefixed, newline-free frames padded to erase; a sub-5 s run writes nothing; the first frame after 5 s shows accumulated state, not zero; `finish()` idempotent and a no-op in `plain`/`none` |
+| Unit | `shouldDrawBar` | Below `BAR_MIN_ELAPSED_MS` ⇒ `false`; first call after crossing ⇒ `true`; second call less than `BAR_REDRAW_MIN_MS` later ⇒ `false`. Derived from the exported constants, not hardcoded, so retuning either does not turn the tests red |
+| Unit | `createProgressSink` | Fake `{ write, columns }` + fake `now`, `vi.useFakeTimers()` advanced in lockstep with the fake clock for the repaint heartbeat. `none` writes nothing; `plain` appends newline-terminated lines with no `\r`; `bar` writes `\r`-prefixed, newline-free frames padded to erase; a run below `BAR_MIN_ELAPSED_MS` writes nothing; the first frame after crossing it shows accumulated state, not zero; with no further event, the repaint timer fires at `BAR_REPAINT_MS` and consecutive frames differ in elapsed; `finish()` stops the timer (no further frame after it fires) and is idempotent and a no-op in `plain`/`none`; `plain`/`none` never create a timer even across a repaint-interval-sized gap (`vi.getTimerCount() === 0`) |
 | Unit | `TransformersEmbeddings.create` | `vi.mock("@huggingface/transformers")` capturing `pipeline` args. Assert `progress_callback` is a function on the q8 call; make that call reject to assert it is present on the fallback too; invoke the captured callback with a synthetic `progress_total` and assert the mapped `{ loaded, total }`; assert `progress`/`initiate`/`done`/`ready` are ignored; assert `progress_callback` is **absent** when no option is passed. No network |
 | Integration | `IndexDocuments` emission | `vi.fn()` as `onProgress` with `FakeEmbeddings` against `ejemplos/`. Assert order; `files/start.total === files.length` before the first tick; `embedding/start.batches === ceil(chunks / batchSize)`; skipped files still tick. With `embeddings: null`: zero `phase === "embedding"` events. With `BrokenEmbeddings`: exactly one `embedding/failed`, report still `mode: "lexical"`. `fake-embeddings.ts` is not modified |
 | Subprocess | End-to-end mode selection | `runCli` gains `env: { ...process.env, COMPENDIO_PROGRESS }` (the spread is required — dropping `PATH` breaks Windows). `spawnSync` gives the child no TTY, so the variable is what makes `bar` reachable. `none` ⇒ no progress on stderr; `plain` ⇒ `Indexing 5 documents` plus `[1/5]`-shaped lines and no `\r`; `bar` ⇒ stderr contains `\r`. All three ⇒ stdout still matches `/Indexed 5 documents \(\d+ chunks\)/`. Stays `--lexical`, so no download |

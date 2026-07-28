@@ -1,7 +1,9 @@
 # Apply Progress: Index Progress Reporting
 
 **Mode**: Strict TDD
-**Batch**: first and only batch — all 62 tasks attempted in one session.
+**Batch**: first and only batch — all 62 tasks attempted in one session. See
+"Follow-up batch: D2 repaint heartbeat" below for a second batch that revised D2/D3 and
+added the repaint-on-a-timer capability.
 
 ## Status
 
@@ -196,6 +198,203 @@ any Safety Net checkpoint.
   ~840 lines); the 3-commit structure is the reviewability mechanism inside the single
   PR, as agreed.
 
-## Status
+## Status (batch 1)
 
 62/62 tasks complete. Ready for `sdd-verify`.
+
+---
+
+## Follow-up batch: D2 repaint heartbeat (bar repaints during long silences)
+
+**Mode**: Strict TDD. **Artifact store**: openspec (Engram not connected — no `mem_*` calls made).
+**Branch**: `feat/index-progress-reporting` (same branch, no new branch created). Continues directly
+from batch 1's 4 existing commits; this batch adds one more commit.
+
+### Context inherited (already present, uncommitted, before this batch started)
+
+D3's revision (`BAR_MIN_ELAPSED_MS` 5 000 → 1 500 ms) had already been applied to
+`src/domain/progress.ts` and its dependent tests (deriving from the exported constants instead of
+hardcoding `5_000`/`5_100`) by a prior design-revision pass, uncommitted in the working tree at the
+start of this batch. Verified via `npm test`/`npm run typecheck` as the safety-net baseline before
+starting (298/298 passing, typecheck clean) and left untouched by this batch except where this
+batch's own edits intersect the same files.
+
+### What this batch implemented (design D2, revised)
+
+1. `BAR_REPAINT_MS = 200` exported from `src/domain/progress.ts`, structural constant with a
+   doc comment explaining the rationale (Task-equivalent: structural, triangulation skipped per
+   strict-tdd rules for a no-branching constant addition).
+2. `renderBar` gained a required third parameter, `elapsedMs: number`, rendered as a one-decimal
+   seconds indicator (e.g. `3.2s`), positioned right after the percent segment. Included in the
+   width-overhead calculation so the `length <= width` invariant still holds with the indicator
+   present.
+3. `src/infrastructure/progress-sink.ts`'s `bar` branch: a `setInterval(draw, BAR_REPAINT_MS)`,
+   `unref()`'d, cleared by `finish()`, never created in `plain`/`none` mode (only the `bar` branch
+   constructs it at all). Both event-driven draws and timer-driven repaints call the same `draw()`
+   function, which is the one place `shouldDrawBar` is consulted — the 100 ms coalescing floor and
+   the elapsed-threshold gate both still apply uniformly.
+
+### TDD Cycle Evidence
+
+| Task | Test file | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| `BAR_REPAINT_MS` constant | `src/domain/progress.ts` | Structural | ✅ 298/298 (baseline) | N/A (structural, no branching) | N/A | Triangulation skipped: purely structural, single possible output | N/A |
+| `renderBar` elapsed indicator | `test/domain/progress.test.ts` | Unit | ✅ 298/298 (baseline) | ✅ 2/2 new tests genuinely failed (`toContain("3.2s")` against the un-implemented 2-arg `renderBar`; `not.toBe` between two elapsed values) | ✅ 33/33 passed after implementing `formatElapsed` + widening `overhead` | ✅ two different elapsed values produce different strings; width cap re-verified across widths 20/40/80/200 with the indicator present; existing 2-arg call sites updated to pass `0` (mechanical, not new behavior) | ➖ none needed — the change composes cleanly with the existing `overhead`/`detail`/`.slice(0,width)` structure |
+| Sink repaint timer (event-lazy, first attempt) | `test/infrastructure/progress-sink.test.ts` | Unit | ✅ 298/298 (baseline) | ✅ 1/2 genuinely failed ("repaints on a timer..." failed for real; "finish() stops the repaint timer..." passed *vacuously* — no timer existed yet under the still-lazy implementation, so nothing to stop — flagged per Assertion Quality Rules, not treated as a real GREEN signal) | ✅ 13/13 passed after implementing lazy timer arming inside `draw()` | Deferred — see next row: this implementation was found insufficient before triangulating further | — |
+| Sink repaint timer (construction-eager, corrected) | same, plus a new dedicated test reproducing the exact production bug shape | Unit | ✅ 13/13 (from the row above) | ✅ new test genuinely failed (`toHaveLength(1)` vs actual `0` — proving the event-lazy implementation could not detect a threshold crossing with zero events afterward) | ✅ 14/14 passed after re-arming the timer unconditionally at sink construction (bar mode only) | ✅ triangulated against: sub-threshold silence (now also advancing the fake timer in lockstep, not just the injected clock, to prove the *timer itself* stays silent, not merely unexercised); first-event-driven draw; timer-only repaint with no further event (3 consecutive frames, elapsed strictly increasing); `finish()` genuinely stopping a *real* armed timer (re-verified — no longer vacuous); zero timer in `plain`/`none` via `vi.getTimerCount() === 0` | ✅ removed the now-dead `repaintTimer === null` branch and the null-guard in `finish()`, since the timer always exists once constructed in `bar` mode |
+| Full suite / typecheck | — | — | — | — | ✅ 306/306 (`npm test`), typecheck clean (`npm run typecheck`) | — | — |
+
+### Test Summary
+
+- **Total tests written this batch**: 3 in `test/domain/progress.test.ts` (30 → 33) + 5 in
+  `test/infrastructure/progress-sink.test.ts` (9 → 14) = **8 new tests**.
+- **Total tests passing**: 306/306 (up from the 298/298 baseline at the start of this batch).
+- **Layers used**: Unit (8).
+- **Pure functions changed**: `renderBar` (signature + one new private helper, `formatElapsed`).
+- **A genuinely important finding from triangulation**: the *first* implementation of the sink
+  timer (armed lazily inside `draw()`, matching the literal text of D2 as originally written —
+  "created only on the first draw, never before the threshold") passed all its own unit tests but
+  was empirically proven, against the real built CLI, to **not fix the bug it exists to fix**. See
+  "Deviation from design" below — this is the single most important result of this batch and is
+  documented in full there and in `design.md`.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|---|---|---|
+| `src/domain/progress.ts` | Modified | Added `BAR_REPAINT_MS = 200` (with rationale doc comment); `renderBar` gained a required `elapsedMs: number` third parameter, rendered as a one-decimal-seconds indicator, factored into the width-overhead calculation. |
+| `src/infrastructure/progress-sink.ts` | Modified | `bar` branch: `setInterval(draw, BAR_REPAINT_MS)` armed unconditionally at sink construction (not lazily on first draw — see Deviations), `unref()`'d, cleared unconditionally by `finish()`. `draw()` extracted as the single function called by both event-driven progress and the timer, so `shouldDrawBar` is consulted from exactly one place. |
+| `test/domain/progress.test.ts` | Modified | Updated all pre-existing 2-arg `renderBar` calls to pass an explicit `elapsedMs` (usually `0`, not semantically meaningful for those pre-existing assertions); added 3 new tests for the elapsed indicator (renders to one decimal; two different elapsed values differ; width cap holds with the indicator present). |
+| `test/infrastructure/progress-sink.test.ts` | Modified | Added `beforeEach`/`afterEach` fake-timer setup around the `bar`-mode describe block (`vi.useFakeTimers()`/`vi.useRealTimers()`), advanced in lockstep with the already-injected `now()` clock per test — the subtle part the task called out explicitly. Strengthened the sub-threshold test to also advance the fake timer, not just the clock. Added: a test reproducing the exact production bug shape (all events at `clock=0`, only the timer advances afterward — this is the test that caught the event-lazy implementation's defect); a test for 3+ consecutive timer-only repaints with strictly-advancing elapsed text; a test that `finish()` genuinely stops a real armed timer (`vi.getTimerCount() === 0` plus no further writes on advance); a new describe block asserting zero pending timers in `plain`/`none` mode across a repaint-interval-sized gap. |
+| `openspec/changes/index-progress-reporting/design.md` | Modified | Synced the stale "Contracts" code block (`renderBar` signature, `BAR_MIN_ELAPSED_MS` value, added `BAR_REPAINT_MS`) and the "Testing strategy" table rows for `renderBar`/`shouldDrawBar`/`createProgressSink` to the current implementation. Added an "Implementation correction" note under D2 documenting the event-lazy → construction-eager timer-arming fix, and a "Known residual limitation" note documenting the event-loop-starvation finding (see Deviations below) with the concrete measurements. |
+| `openspec/changes/index-progress-reporting/specs/index-progress/spec.md` | **Unchanged this batch** | Already carried the 3 new scenarios for this requirement from the prior design-revision pass; all 3 are satisfied by this batch's tests (see "Spec scenario coverage" below). Left as-is: the normative "MUST NOT start before the elapsed-time threshold is crossed" wording is satisfied under the reading "must not repaint/write a frame before crossing" — the reading this batch's tests enforce — so no correction was needed there, only in `design.md`'s more implementation-level prose. |
+| `src/server.ts`, `src/application/sync-index.ts`, `src/application/sync-scheduler.ts`, `src/application/index-documents.ts`, `test/helpers/fake-embeddings.ts`, `package.json` | **Unchanged** | Confirmed via `git diff --stat` — none of these appear in the diff. |
+
+### Spec scenario coverage ("The Bar Repaints During Long Silences")
+
+- **"The bar advances while no event arrives"** — covered by
+  `test/infrastructure/progress-sink.test.ts`'s "repaints on a timer while no new event arrives, and
+  consecutive frames differ in elapsed" (3 frames, strictly different) and by the new "draws its
+  first frame purely from the repaint timer..." test (the stricter form: *zero* events after the
+  burst, not just no *new* events).
+- **"The repeat timer never outlives the run"** — covered by "finish() stops the repaint timer: no
+  further frame is written after it fires", asserting both `vi.getTimerCount() === 0` after
+  `finish()` and no further writes on a subsequent timer advance.
+- **"No repaint timer in plain or none mode"** — covered by the new
+  `describe("createProgressSink — no repaint timer outside bar mode")` block, asserting
+  `vi.getTimerCount() === 0` in both `plain` and `none` across a repaint-interval-sized gap.
+
+### Deviations from Design
+
+**1. (Load-bearing) The literal "created only on the first draw" arming strategy does not fix the
+reported bug — corrected to construction-eager arming, discovered via TDD triangulation and confirmed
+against the real built CLI.**
+
+D2's revised text (both as written in `design.md` before this batch, and as restated verbatim in the
+task prompt) says the repaint timer is "created only on the first actual draw (never before the
+elapsed threshold is crossed)." The first implementation followed this literally: `draw()` armed
+`setInterval` only after its own first successful write. All 13 sink tests passed under this
+implementation — but one of them ("finish() stops the repaint timer...") passed **vacuously**: no
+timer had ever been created in that test's flow, so there was nothing for `finish()` to actually stop.
+Per the strict-TDD Assertion Quality Rules, a vacuous pass is not evidence, so this was not treated as
+done. A dedicated test was written to reproduce the *exact* production event shape named in D2's own
+prose — every event fires while `clock === 0` (before the threshold), then *no further event ever
+arrives*, only the fake timer advances — and it genuinely failed: `stream.writes` stayed empty, because
+an event-lazy timer that is only armed *by* a draw can never detect a *time-based* threshold crossing
+when there is no later event to trigger that draw in the first place. This is not a hypothetical edge
+case; it is restated verbatim in D2's own root-cause paragraph as the motivating bug.
+
+This was then verified against the real, built CLI before accepting it as a defect (not just a unit
+test artifact): running `COMPENDIO_PROGRESS=bar node dist/cli.js --root <this repo's docs/> index
+2>frames.txt` under the event-lazy implementation produced **0 bytes**, identical to the pre-D2
+baseline — proving the fix, as literally specified, does not fix the bug it exists to fix.
+
+Fixed by arming the `setInterval` unconditionally at sink construction (`bar` mode only), still
+`unref()`'d, still cleared by `finish()`. Every tick — whether from an event or from the timer —
+still funnels through the same `draw()` → `shouldDrawBar` gate, so the *observable* guarantee ("no
+frame written before the threshold") still holds; only the underlying timer *object's* existence
+moved earlier. `design.md`'s D2 section now carries an "Implementation correction" paragraph
+documenting this precisely, since the original text was normative-sounding but insufficient.
+
+**2. (Informational, not fixed — flagged for the repository owner) A residual event-loop-starvation
+gap remains for corpora small enough that their entire duration is one blocking `embed()` call.**
+
+After the correction above, re-running the same verification command against this repo's own current
+`docs/` (now down to a single indexable file — `INDEX.md` is excluded by default `config.exclude`)
+still produced **0 bytes**. This was not accepted at face value; it was investigated with three
+independent instrumented tests before writing this up:
+
+- An **unrelated** `setInterval(50ms)`, running alongside the real `IndexDocuments.execute()` (no
+  progress sink involved at all), fired only **2 times** over a ~4 s run, and only **4 times** over a
+  ~5.4 s two-batch run against `ejemplos/` — with a visible gap of **zero** fires during either
+  batch's own inference window, and a handful of fires clustered only in the brief windows between
+  batches and during model-file loading.
+- A **fake-stream-instrumented real sink** (the actual production sink, wired into the actual
+  `createContainer`, only the destination stream swapped for a logging fake) against the same corpus:
+  **0 write attempts**, confirming this is not an I/O/flushing artifact — the write call itself never
+  happens, because the timer callback never gets a turn.
+- The **exact same real sink, writing to real `process.stderr`**, redirected to a file, run against
+  `ejemplos/` (11 documents, 27 chunks, 2 batches — large enough that model loading and the first
+  batch's inference don't consume the *entire* run): produced 241 bytes, 3 distinct frames, including
+  two real frames with the elapsed indicator advancing `3.7s` → `3.8s` — direct, positive proof the
+  mechanism works correctly whenever the event loop gets any turn at all.
+
+Root cause: `onnxruntime-node`'s CPU inference call (used internally by `@huggingface/transformers`)
+blocks the JS main thread synchronously for its full duration — it does not yield to the event loop
+at any point while running, regardless of how it is wrapped in a `Promise`/`await` at the JS level.
+Node is single-threaded; no JS-level timer, however it is armed, can run while a synchronous native
+call occupies that one thread. This is a genuine, previously-undocumented characteristic of the
+embeddings pipeline, not a defect in this batch's implementation — the same construction-eager timer
+was proven, moments earlier against `ejemplos/`, to work exactly as designed the instant the event
+loop has any opportunity to run.
+
+**Not fixed in this batch, and not fixed unilaterally**, because the only real fix (moving embedding
+inference off the main thread, e.g. `worker_threads`) is a materially larger architectural change,
+outside D2's scope, and outside the file list this task authorized
+(`src/domain/progress.ts` + `src/infrastructure/progress-sink.ts`). Documented in `design.md` under
+D2 as a "Known residual limitation," and flagged here for the repository owner to prioritize
+separately if desired. This does not invalidate the fix for the class of run D2's own text describes
+as *the reported bug* on a **realistically sized** corpus (`ejemplos/`, multi-batch) — only for the
+degenerate case where an entire run is a single blocking native call from start to finish, which this
+repository's current `docs/` (1 indexable file) happens to be.
+
+### Verification actually run
+
+```
+npm run build            # tsc, clean
+COMPENDIO_PROGRESS=bar node dist/cli.js --root <temp copy of this repo's docs/> index 2>frames.txt
+```
+
+- **Byte count of `frames.txt`**: **0 bytes.** Confirmed empty, not fudged. See Deviation #2 above
+  for the full root-cause investigation and evidence that the mechanism itself is correct.
+- **Supporting run** (same build, same sink, `--root ejemplos`, not `--lexical`): **241 bytes**, 3
+  distinct frames (2 real content frames + 1 blank erase frame from `finish()`), with the elapsed
+  indicator visibly advancing between the two content frames (`3.7s` → `3.8s`). This is direct,
+  positive evidence that the repaint-timer fix is functioning as designed; the 0-byte result on this
+  repo's own thin `docs/` is a corpus-size edge case, not a broken implementation.
+
+### Issues Found
+
+The one substantive issue found is documented in full under "Deviations" above (both the corrected
+defect and the residual, unfixed limitation). No other pre-existing test failures were encountered at
+any Safety Net checkpoint in this batch.
+
+### Workload / PR Boundary
+
+- Mode: continues the existing single PR (`size:exception`, already accepted) — this batch is a
+  follow-up fix inside the same PR/branch, not a new PR.
+- This batch: 1 additional commit (`fix(progress): repaint the bar on a timer during long
+  silences`), on top of the 4 pre-existing commits.
+- Estimated review budget impact: small relative to the original ~840-line estimate — this batch's
+  diff is ~410 changed lines total (design.md/spec.md docs + source + tests), most of it test
+  coverage and design-doc corrections; the production code change itself is under 100 lines across
+  the two source files.
+
+## Status (overall, after this follow-up batch)
+
+Both batches complete. `npm test`: 306/306. `npm run typecheck`: clean. `npm run build`: clean. The
+repaint-heartbeat capability is implemented, unit-tested (including a test that reproduces and would
+catch a regression to the exact reported production bug), and verified end to end against a real
+corpus (`ejemplos/`) with a positive, non-empty result. One residual, previously-unknown limitation
+(event-loop starvation during synchronous ONNX inference on corpora whose entire run is one blocking
+call) is documented and flagged, not silently hidden or fixed unilaterally. Ready for `sdd-verify`.

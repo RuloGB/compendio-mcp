@@ -28,10 +28,35 @@ export interface ProgressState {
   download: { loaded: number; total: number } | null;
 }
 
-/** Minimum elapsed run time, in ms, before `bar` mode draws anything. */
-export const BAR_MIN_ELAPSED_MS = 5_000;
+/**
+ * Minimum elapsed run time, in ms, before `bar` mode draws anything.
+ *
+ * Anti-flash gate: a bar that appears and vanishes is noise, not information.
+ * The value trades two failure modes against each other, and was lowered from
+ * an initial 5 000 ms once real runs showed 5 s hid the bar from every ordinary
+ * invocation. Measured warm-cache durations: ~0.63 s for the 5-document
+ * subprocess fixture, 3.24 s for this repo's own `docs/`, 3.94 s for
+ * `ejemplos/`. At 1 500 ms the fixture still draws nothing (so subprocess tests
+ * are unaffected) while both real corpora show a readable 1.7-2.4 s of bar.
+ * A genuine flash is under ~0.5 s; that band stays suppressed.
+ */
+export const BAR_MIN_ELAPSED_MS = 1_500;
 /** Minimum gap, in ms, between two bar redraws. */
 export const BAR_REDRAW_MIN_MS = 100;
+/**
+ * Repaint interval, in ms, for `bar` mode while a phase is active — fires
+ * independently of whether any event has arrived.
+ *
+ * A purely event-driven renderer draws nothing across a long silent `await`
+ * (e.g. model load + a single embedding batch: `embedding/tick` is emitted
+ * *before* the await, so a one-batch warm run emits every event within
+ * ~25 ms and then blocks for seconds with nothing to report). That silence
+ * is exactly the "looks hung" state this capability exists to eliminate.
+ * 200 ms sits above `BAR_REDRAW_MIN_MS` so the heartbeat and the
+ * event-driven coalescer never fight, and gives 5 visible updates per
+ * second.
+ */
+export const BAR_REPAINT_MS = 200;
 /** Download-progress report cadence for `bar` mode, in percent of `total`. */
 export const DOWNLOAD_STEP_PERCENT_BAR = 1;
 /** Download-progress report cadence for `plain` mode, in percent of `total`. */
@@ -153,16 +178,31 @@ function renderDetail(state: ProgressState): string {
 }
 
 /**
+ * Elapsed-time indicator segment, rendered to one decimal (e.g. ` 3.2s`).
+ * Always present, independent of whether `state` has a renderable ratio —
+ * it is the liveness signal for the repaint heartbeat, not a progress metric.
+ */
+function formatElapsed(elapsedMs: number): string {
+  return ` ${(elapsedMs / 1000).toFixed(1)}s`;
+}
+
+/**
  * Renders one `bar`-mode frame, ASCII only (`=`/`-`, never box-drawing — the
  * reporting machine's terminal can be a non-UTF-8 code page). Contains no
  * `\r`, `\n`, or ANSI escape: the sink owns the redraw byte and the erase
  * padding. Width is clamped without touching the terminal; the caller passes
  * `Math.min(columns - 1, BAR_MAX_WIDTH)`.
+ *
+ * `elapsedMs` renders as a one-decimal seconds indicator (e.g. `3.2s`) —
+ * the signal the repaint heartbeat exists to deliver. A repainted
+ * byte-identical frame communicates nothing; the advancing number is what
+ * separates "working" from "hung".
  */
-export function renderBar(state: ProgressState, width: number): string {
+export function renderBar(state: ProgressState, width: number, elapsedMs: number): string {
   const ratio = progressRatio(state);
   const percent = ratio !== null ? ` ${Math.round(ratio * 100)}%` : "";
-  const overhead = 2 + percent.length; // "[" + "]" + percent
+  const elapsed = formatElapsed(elapsedMs);
+  const overhead = 2 + percent.length + elapsed.length; // "[" + "]" + percent + elapsed
   const maxDetailLen = Math.max(width - overhead, 0);
   const detail = renderDetail(state).slice(0, maxDetailLen);
 
@@ -171,8 +211,8 @@ export function renderBar(state: ProgressState, width: number): string {
   const bar = "=".repeat(filled) + "-".repeat(barLen - filled);
 
   // Safety cap: guarantees the invariant even at pathological widths where
-  // brackets + percent alone would exceed it.
-  return `[${bar}]${percent}${detail}`.slice(0, width);
+  // brackets + percent + elapsed alone would exceed it.
+  return `[${bar}]${percent}${elapsed}${detail}`.slice(0, width);
 }
 
 /**

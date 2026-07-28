@@ -208,6 +208,40 @@ would cost the exact visibility that mode exists to provide.
 - WHEN the run finishes
 - THEN its progress lines were appended from the first event, with no threshold applied
 
+### Requirement: The Bar Repaints During Long Silences
+
+Progress events are not evenly spaced. `IndexDocuments` emits an `embedding/tick` **before** awaiting
+each batch, and a warm-cache run of a one-batch corpus therefore emits every event within the first
+~25 ms and then blocks for seconds — ~0.85 s loading the model, ~1.4 s per batch — with nothing to
+report. A purely event-driven renderer draws nothing across that gap, which is precisely the "looks
+hung" state this capability exists to eliminate.
+
+In `bar` mode the bar MUST therefore repaint on a timer while a phase is active, independently of
+whether any event has arrived, and each repainted frame MUST contain an elapsed-time indicator that
+visibly advances between frames. Repainting a byte-identical frame communicates nothing; the changing
+value is what distinguishes "working" from "hung". The repaint timer MUST NOT keep the process alive
+(it is unreferenced), MUST NOT start before the elapsed-time threshold is crossed, MUST be stopped by
+`finish()`, and MUST NOT exist at all in `plain` or `none` mode. The concrete repaint interval is a
+design-time decision and is not fixed by this requirement.
+
+#### Scenario: The bar advances while no event arrives
+
+- GIVEN mode `bar`, a crossed elapsed-time threshold, and a phase that emits no further events
+- WHEN the repaint interval elapses more than once
+- THEN more than one frame is written, and consecutive frames differ in their elapsed-time indicator
+
+#### Scenario: The repaint timer never outlives the run
+
+- GIVEN mode `bar` and a run that has drawn at least one frame
+- WHEN `finish()` is called
+- THEN the repaint timer is stopped and no further frame is written
+
+#### Scenario: No repaint timer in plain or none mode
+
+- GIVEN mode `plain` or `none`
+- WHEN a phase stays active with no events for longer than the repaint interval
+- THEN nothing additional is written, because no repaint timer was ever created
+
 ### Requirement: Download-Progress Throttling Is a Pure Predicate
 
 Model-download `progress` events MUST be throttled by a pure predicate of `(loaded, total, lastReported)` before being reported — never by a fixed timer or sleep — so a high-frequency stream of download events does not spam the `plain` renderer with one line per event. The concrete throttle cadence is a design-time decision and is not fixed by this requirement.

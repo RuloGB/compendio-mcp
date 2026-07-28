@@ -200,7 +200,8 @@ describe("CLI subprocess: index progress reporting", () => {
     // Normalize it out so this test asserts what "stdout is byte-for-byte
     // identical across modes" actually means: the reporting mode changes
     // nothing about stdout's shape or content. This tiny 5-document fixture
-    // never crosses the bar's 5 s anti-flash threshold, so bar mode never
+    // never crosses the bar's anti-flash threshold (~0.63 s of wall time
+    // against BAR_MIN_ELAPSED_MS), so bar mode never
     // draws here either -- irrelevant to this assertion, since stdout is
     // never touched by the sink regardless of whether it draws.
     const normalize = (stdout: string): string => stdout.replace(/in \d+ ms/, "in N ms");
@@ -210,7 +211,7 @@ describe("CLI subprocess: index progress reporting", () => {
 
   /**
    * There is deliberately NO subprocess test asserting that `\r` reaches real
-   * stderr. Drawing the bar requires crossing `BAR_MIN_ELAPSED_MS` (5 s of real
+   * stderr. Drawing the bar requires crossing `BAR_MIN_ELAPSED_MS` (real
    * elapsed time, design decision D3), and wall-clock duration is not something
    * this suite can control: forcing it needs a synthetic corpus of thousands of
    * files, costs ~13 s on every run, and still finishes under the threshold on

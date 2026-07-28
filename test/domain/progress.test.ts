@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   advanceProgress,
+  BAR_MIN_ELAPSED_MS,
+  BAR_REDRAW_MIN_MS,
   createDownloadThrottle,
   formatPlainLine,
   initialProgressState,
@@ -206,15 +208,15 @@ describe("renderBar", () => {
 
   it("never exceeds the given width", () => {
     for (const width of [20, 40, 80, 200]) {
-      expect(renderBar(filesState, width).length).toBeLessThanOrEqual(width);
-      expect(renderBar(downloadState, width).length).toBeLessThanOrEqual(width);
-      expect(renderBar(zeroState, width).length).toBeLessThanOrEqual(width);
+      expect(renderBar(filesState, width, 0).length).toBeLessThanOrEqual(width);
+      expect(renderBar(downloadState, width, 0).length).toBeLessThanOrEqual(width);
+      expect(renderBar(zeroState, width, 0).length).toBeLessThanOrEqual(width);
     }
   });
 
   it("never contains a carriage return, newline, or ANSI escape", () => {
     for (const state of [filesState, downloadState, zeroState]) {
-      const line = renderBar(state, 80);
+      const line = renderBar(state, 80, 0);
       expect(line).not.toContain("\r");
       expect(line).not.toContain("\n");
       expect(line).not.toContain("\x1b");
@@ -222,12 +224,33 @@ describe("renderBar", () => {
   });
 
   it("total === 0 renders no ratio", () => {
-    expect(renderBar(zeroState, 80)).not.toMatch(/%/);
+    expect(renderBar(zeroState, 80, 0)).not.toMatch(/%/);
   });
 
   it("a download state shows MB, not chunk counts", () => {
-    const line = renderBar(downloadState, 80);
+    const line = renderBar(downloadState, 80, 0);
     expect(line).toMatch(/MB/);
+  });
+
+  it("renders the elapsed time to one decimal, e.g. '3.2s'", () => {
+    const line = renderBar(filesState, 80, 3_200);
+    expect(line).toContain("3.2s");
+  });
+
+  it("two different elapsed values produce different frames", () => {
+    const first = renderBar(filesState, 80, 1_600);
+    const second = renderBar(filesState, 80, 1_800);
+    expect(first).not.toBe(second);
+    expect(first).toContain("1.6s");
+    expect(second).toContain("1.8s");
+  });
+
+  it("the elapsed indicator does not push the frame past the given width", () => {
+    for (const width of [20, 40, 80, 200]) {
+      expect(renderBar(filesState, width, 12_345).length).toBeLessThanOrEqual(width);
+      expect(renderBar(downloadState, width, 12_345).length).toBeLessThanOrEqual(width);
+      expect(renderBar(zeroState, width, 12_345).length).toBeLessThanOrEqual(width);
+    }
   });
 });
 
@@ -290,19 +313,24 @@ describe("createDownloadThrottle", () => {
 });
 
 describe("shouldDrawBar", () => {
+  // Derived from the constants, never hardcoded: these tests are about the
+  // gate's behavior, not about today's chosen values. Retuning either constant
+  // must not turn them red.
   it("refuses to draw below the elapsed-time threshold", () => {
-    expect(shouldDrawBar(0, 4_999, null)).toBe(false);
+    expect(shouldDrawBar(0, BAR_MIN_ELAPSED_MS - 1, null)).toBe(false);
   });
 
   it("draws on the first call after crossing the threshold", () => {
-    expect(shouldDrawBar(0, 5_000, null)).toBe(true);
+    expect(shouldDrawBar(0, BAR_MIN_ELAPSED_MS, null)).toBe(true);
   });
 
   it("refuses a second redraw less than the minimum gap after the last one", () => {
-    expect(shouldDrawBar(0, 5_050, 5_000)).toBe(false);
+    const firstDraw = BAR_MIN_ELAPSED_MS;
+    expect(shouldDrawBar(0, firstDraw + BAR_REDRAW_MIN_MS - 1, firstDraw)).toBe(false);
   });
 
   it("allows a redraw once the minimum gap has passed", () => {
-    expect(shouldDrawBar(0, 5_150, 5_000)).toBe(true);
+    const firstDraw = BAR_MIN_ELAPSED_MS;
+    expect(shouldDrawBar(0, firstDraw + BAR_REDRAW_MIN_MS, firstDraw)).toBe(true);
   });
 });
