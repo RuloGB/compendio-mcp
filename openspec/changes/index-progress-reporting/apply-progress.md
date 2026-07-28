@@ -80,7 +80,7 @@ tasks artifact's Review Workload Forecast — no further decision gate applied.
   (`cli-subprocess.test.ts`, on top of the pre-existing 8) = **52 new tests**.
 - **Total tests passing**: 299/299 in the full suite (up from a pre-change baseline of
   295 — the safety-net runs at each stage never showed a pre-existing failure).
-- **Layers used**: Unit (48), Integration (4), Subprocess (12 total in the file, 4 new).
+- **Layers used**: Unit (48), Integration (4), Subprocess (11 total in the file, 3 new after the task 3.27 withdrawal).
 - **Pure functions created**: `resolveProgressMode`, `initialProgressState`,
   `advanceProgress`, `formatPlainLine`, `renderBar`, `createDownloadThrottle`,
   `shouldDrawBar` — all 7 in `src/domain/progress.ts`, zero fs/SQLite/`@huggingface`/

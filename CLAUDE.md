@@ -28,21 +28,30 @@ node dist/cli.js --root ejemplos eval
 node dist/cli.js --root ejemplos search "¿cuándo se considera duplicado un lead?"
 ```
 
-Manual smoke test for `index` progress reporting (not automatable in CI: a real cold
-download is ~129 MB). Clear the transformers.js model cache, then in an interactive
-terminal:
+Manual smoke test for `index` progress reporting (not automatable in CI: a real cold download is
+~129 MB). **Run `node dist/cli.js`, not `compendio`** — the bare name resolves to whatever is
+installed globally from npm, which is how a change like this gets reported as "not working" while
+being perfectly fine in `dist/`. Clear the transformers.js model cache
+(`node_modules/@huggingface/transformers/.cache`, ~130 MB), then in an interactive terminal:
 
 ```bash
-node dist/cli.js --root ejemplos index                    # bar: appears once the run
-                                                            # exceeds ~5s, tracks the
-                                                            # download live, clears
-                                                            # before the final summary
-node dist/cli.js --root ejemplos index                     # warm cache: bar is silent
-                                                            # below the anti-flash
-                                                            # threshold (~3-4s runs)
-COMPENDIO_PROGRESS=none node dist/cli.js --root ejemplos index   # stdout unchanged,
-                                                                   # stderr silent
+node dist/cli.js --root ejemplos index
+COMPENDIO_PROGRESS=bar node dist/cli.js --root ejemplos index 2>frames.txt
+COMPENDIO_PROGRESS=none node dist/cli.js --root ejemplos index
 ```
+
+What to expect (measured, not assumed — see `timing-measurement.md`'s addendum in the archived
+change):
+
+- **Cold cache**: the bar tracks the download live, climbing 4% → 100% with the elapsed counter
+  advancing. This is the case the feature exists for. Observed: 20 frames, 1 681 bytes on stderr.
+- **Warm cache**: the run still crosses `BAR_MIN_ELAPSED_MS` (1 500 ms) and draws, but **few
+  frames** — `onnxruntime-node` blocks Node's main thread for the whole of each inference call, so
+  the repaint heartbeat only fires during network download and in the gaps between batches, never
+  during inference itself. A near-empty `frames.txt` on a warm one-batch corpus is expected, not a
+  regression.
+- **`COMPENDIO_PROGRESS=none`**: stderr carries no progress output. `stdout` is byte-identical in
+  every mode apart from the run-duration figure.
 
 `prepublishOnly` runs `build` then `test` — publishing fails if either fails.
 
