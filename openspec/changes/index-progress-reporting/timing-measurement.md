@@ -85,3 +85,57 @@ metered connection, or CDN throttling.
 - The download itself was **not** timed (the cache is warm and deliberately was not purged). Its
   duration is inferred by subtraction from the user's report, not observed. Timing a genuine cold
   start would require clearing the transformers.js cache and re-downloading 129 MB.
+
+---
+
+## Addendum — two measurements taken after apply (2026-07-28)
+
+Both close gaps this document originally listed under "Limitations".
+
+### A. Does ONNX inference block Node's event loop?
+
+Probe: a `setInterval(50 ms)` counter running alongside a real `create()` + `embed()`, comparing
+observed fires against `elapsed / 50`.
+
+| Window | Duration | Timer fires | % of expected |
+|---|---|---|---|
+| Control (`await` a 1 s timer) | 1 011 ms | 16 / 20 | 80% — loop free |
+| `create()` (model load + session init) | 1 828 ms | 2 / 36 | **6%** |
+| `embed()` (16 texts) | 1 132 ms | **0 / 22** | **0%** |
+
+**`onnxruntime-node` blocks the JS main thread for the full duration of inference.** No JS-level
+timer can fire while it runs, whenever it is armed. This is a pre-existing property of the
+embeddings pipeline, not of progress reporting, and it bounds what any main-thread renderer can do:
+the repaint heartbeat animates during network download (async socket I/O) and in the gaps between
+batches, never *during* an inference call. Removing that bound means moving inference to
+`worker_threads` — a separate change, deliberately not attempted here.
+
+### B. The cold-download run, finally observed rather than inferred
+
+The 129 MB cache was moved aside and `compendio index` run against `ejemplos/` in `bar` mode.
+Result: **1 681 bytes on stderr, 20 frames**, the download ratio climbing 4% → **100%** with the
+elapsed indicator advancing throughout.
+
+```
+[==------------------------------------]   4% 2.0s downloading model   5.2/129.1 MB
+[=================-------------------]  47% 3.2s downloading model  60.8/129.1 MB
+[==================================-]  97% 4.0s downloading model 125.0/129.1 MB
+[==================================] 100% 4.4s downloading model 128.9/129.1 MB
+```
+
+Three findings:
+
+1. **The bar works for the case that motivated the change.** Previously argued from "socket I/O is
+   async"; now observed.
+2. **The ratio does reach 100% on a fully cold cache.** The earlier stall at 125.9/129.1 MB was the
+   *partially* warm case, exactly as design residual (b) predicted.
+3. **Finding A is visible in the frame timestamps**: a 1.5 s gap between the `4.4s` and `5.9s`
+   frames, with no frame in between — the blocking inference window. The frames on either side are
+   the heartbeat, advancing the clock while the progress number stays still.
+
+**One correction to §Findings 4 above.** That section inferred ~0.44-0.51 MB/s (~3.5-4 Mbps) by
+subtracting from the user's 5-minute report. On *this* machine the same 129 MB downloaded in ~4 s
+(~32 MB/s). The subtraction arithmetic still holds for the machine that produced the 5-minute
+report, but that machine's bandwidth was never measured and is not this one's. The download-dominates
+conclusion is unaffected — it rests on embedding compute being far too cheap to explain 300 s, which
+finding 3 establishes independently of any bandwidth figure.
