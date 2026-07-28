@@ -2,87 +2,87 @@
 
 ## ADDED Requirements
 
-### Requirement: Optional `convencion` Configuration Block
+### Requirement: Optional `convention` Configuration Block
 
-The system MUST accept an optional `convencion` block in `compendio.config.json`. When the block (or the whole config file) is absent, the system MUST default `convencion.modo` to `"libre"`.
+The system MUST accept an optional `convention` block in `compendio.config.json`. When the block (or the whole config file) is absent, the system MUST default `convention.mode` to `"loose"`.
 
 #### Scenario: No config file at all
 
 - GIVEN a project directory with `.md` files and no `compendio.config.json`
 - WHEN `compendio index` runs
-- THEN every readable `.md` file is indexed under `libre` behavior
+- THEN every readable `.md` file is indexed under `loose` behavior
 
 #### Scenario: `docsDir`-only config
 
 - GIVEN a `compendio.config.json` containing only `{ "docsDir": "documentation" }`
 - WHEN `compendio index` runs
-- THEN `convencion.modo` defaults to `"libre"` and no file is skipped for metadata reasons
+- THEN `convention.mode` defaults to `"loose"` and no file is skipped for metadata reasons
 
-#### Scenario: Partial `convencion` block merges with defaults
+#### Scenario: Partial `convention` block merges with defaults
 
-- GIVEN a `compendio.config.json` containing only `{ "convencion": { "modo": "estricto" } }`
+- GIVEN a `compendio.config.json` containing only `{ "convention": { "mode": "strict" } }`
 - WHEN the config is loaded
-- THEN `convencion.estadosExcluidos` defaults to `[]`, `convencion.camposFrontmatter` defaults to the identity mapping, and no `tipos`/`estados` taxonomy is declared — declaring the `convencion` block does not wipe the defaults of its sibling fields
+- THEN `convention.excludedStatuses` defaults to `[]`, `convention.frontmatterFields` defaults to the identity mapping, and no `types`/`statuses` taxonomy is declared — declaring the `convention` block does not wipe the defaults of its sibling fields
 
-### Requirement: `convencion.modo` Toggle
+### Requirement: `convention.mode` Toggle
 
-The system MUST support `convencion.modo: "estricto" | "libre"` as the single switch selecting the validation policy applied during indexing and index-md generation.
+The system MUST support `convention.mode: "strict" | "loose"` as the single switch selecting the validation policy applied during indexing and index-md generation.
 
-#### Scenario: Explicit `libre` declared
+#### Scenario: Explicit `loose` declared
 
-- GIVEN `convencion.modo: "libre"` in config
+- GIVEN `convention.mode: "loose"` in config
 - WHEN indexing runs
-- THEN the libre inference policy applies (see Indexing spec)
+- THEN the loose inference policy applies (see Indexing spec)
 
-#### Scenario: Explicit `estricto` declared
+#### Scenario: Explicit `strict` declared
 
-- GIVEN `convencion.modo: "estricto"` in config
+- GIVEN `convention.mode: "strict"` in config
 - WHEN indexing runs
-- THEN the estricto validation policy applies (see Indexing spec)
+- THEN the strict validation policy applies (see Indexing spec)
 
-### Requirement: `estadosExcluidos` Lives Under `convencion`
+### Requirement: `excludedStatuses` Lives Under `convention`
 
-The system MUST read the search-exclusion list from `convencion.estadosExcluidos`. The system MUST NOT read a `search.estadosExcluidos` key — that key is retired without a compatibility shim.
+The system MUST read the search-exclusion list from `convention.excludedStatuses`. The system MUST NOT read a `search.excludedStatuses` key — that key is retired without a compatibility shim.
 
 #### Scenario: Legacy key has no effect
 
-- GIVEN a config with `search.estadosExcluidos: ["borrador"]` and no `convencion.estadosExcluidos`
+- GIVEN a config with `search.excludedStatuses: ["draft"]` and no `convention.excludedStatuses`
 - WHEN search runs
-- THEN no `estado` is excluded from results
+- THEN no `status` is excluded from results
 
-#### Scenario: Legacy key emits a deprecation notice and is not honored
+#### Scenario: Legacy key is silently dropped, not merged
 
-- GIVEN a config with `search.estadosExcluidos: ["borrador"]` present
+- GIVEN a config with `search.excludedStatuses: ["draft"]` present
 - WHEN the config is loaded
-- THEN the system emits a one-line deprecation notice to stderr naming `convencion.estadosExcluidos`, AND the legacy value is not honored (warn-and-ignore, not a compatibility shim)
+- THEN `mergeConfig` builds `search` from an explicit whitelist of recognized keys (currently only `k`), so the unrecognized `excludedStatuses` key under `search` never reaches the returned config and is not honored — no deprecation warning is emitted, and there is no compatibility shim
 
-### Requirement: `camposFrontmatter` Field Mapping
+### Requirement: `frontmatterFields` Field Mapping
 
-The system MUST support an optional `convencion.camposFrontmatter` mapping of `tipo`/`modulo`/`estado` to non-standard frontmatter field names. When a mapping is declared and the mapped field is present, its value MUST take precedence over any inferred value. Each of the three mappable fields (`tipo`/`modulo`/`estado`) independently reads its own declared source key; two fields mapping to the same source key is permitted, and both fields MUST read that key's value — there is no collision error or dedup machinery. A declared `camposFrontmatter` object MUST merge per key against the identity defaults (`{ "tipo": "tipo", "modulo": "modulo", "estado": "estado" }`) — declaring only some of the three keys MUST NOT wipe the defaults of the remaining keys; the object is never replaced wholesale.
+The system MUST support an optional `convention.frontmatterFields` mapping of `type`/`module`/`status` to non-standard frontmatter field names. When a mapping is declared and the mapped field is present, its value MUST take precedence over any inferred value. Each of the three mappable fields (`type`/`module`/`status`) independently reads its own declared source key; two fields mapping to the same source key is permitted, and both fields MUST read that key's value — there is no collision error or dedup machinery. A declared `frontmatterFields` object MUST merge per key against the identity defaults (`{ "type": "type", "module": "module", "status": "status" }`) — declaring only some of the three keys MUST NOT wipe the defaults of the remaining keys; the object is never replaced wholesale.
 
 #### Scenario: Custom field name mapped
 
-- GIVEN `convencion.camposFrontmatter: { "tipo": "type" }` and a document with frontmatter `type: "guide"`
+- GIVEN `convention.frontmatterFields: { "type": "tipo" }` and a document with frontmatter `tipo: "guide"`
 - WHEN the document is indexed
-- THEN `tipo` resolves to `"guide"`
+- THEN `type` resolves to `"guide"`
 
-#### Scenario: Partial `camposFrontmatter` merges per key with the identity defaults
+#### Scenario: Partial `frontmatterFields` merges per key with the identity defaults
 
-- GIVEN a `compendio.config.json` containing only `{ "convencion": { "camposFrontmatter": { "tipo": "type" } } }`
+- GIVEN a `compendio.config.json` containing only `{ "convention": { "frontmatterFields": { "type": "tipo" } } }`
 - WHEN the config is loaded
-- THEN `camposFrontmatter.tipo` resolves to `"type"`, while `camposFrontmatter.modulo` and `camposFrontmatter.estado` remain at their identity defaults (`"modulo"` and `"estado"`) — declaring one key never wipes the others
+- THEN `frontmatterFields.type` resolves to `"tipo"`, while `frontmatterFields.module` and `frontmatterFields.status` remain at their identity defaults (`"module"` and `"status"`) — declaring one key never wipes the others
 
 #### Scenario: No mapping declared
 
-- GIVEN no `convencion.camposFrontmatter` in config and a document with frontmatter `tipo: "guia"`
+- GIVEN no `convention.frontmatterFields` in config and a document with frontmatter `type: "guide"`
 - WHEN the document is indexed
-- THEN `tipo` resolves to `"guia"` read from the standard field name
+- THEN `type` resolves to `"guide"` read from the standard field name
 
 #### Scenario: Two fields mapped to the same source key
 
-- GIVEN `convencion.camposFrontmatter: { "tipo": "clasificacion", "estado": "clasificacion" }` and a document with frontmatter `clasificacion: "guia-vigente"`
+- GIVEN `convention.frontmatterFields: { "type": "classification", "status": "classification" }` and a document with frontmatter `classification: "guide-current"`
 - WHEN the document is indexed
-- THEN both `tipo` and `estado` resolve to `"guia-vigente"` — no error is raised for the shared source key
+- THEN both `type` and `status` resolve to `"guide-current"` — no error is raised for the shared source key
 
 ### Requirement: `sync` Configuration Section With a Per-Project Throttle Default
 
