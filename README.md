@@ -167,9 +167,9 @@ Two modes, selected by `convention.mode`:
 {
   "convention": {
     "mode": "strict",
-    "types": ["funcional", "adr", "api", "qa", "guia"],
-    "statuses": ["borrador", "vigente", "obsoleto"],
-    "excludedStatuses": ["borrador", "obsoleto"]
+    "types": ["functional", "adr", "api", "qa", "guide"],
+    "statuses": ["draft", "current", "deprecated"],
+    "excludedStatuses": ["draft", "deprecated"]
   }
 }
 ```
@@ -197,7 +197,7 @@ Designed as *progressive disclosure*: orient cheaply → search cheaply → read
 | `compendio index-md` | Generates or updates `docs/INDEX.md` — one line per document |
 | `compendio eval` | Measures retrieval quality against a goldenset |
 
-Global option `-C, --root <dir>`: project root. Add `--lexico` to `index` or `search` to skip embeddings entirely.
+Global option `-C, --root <dir>`: project root. Add `--lexical` to `index` or `search` to skip embeddings entirely.
 
 ## How it works
 
