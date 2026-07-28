@@ -8,7 +8,9 @@ import { parse as parseYaml } from "yaml";
 import { formatOverview } from "./application/get-overview.js";
 import type { SearchQuery } from "./application/search-documents.js";
 import type { EvalCase, EvalSummary } from "./domain/metrics.js";
-import { createContainer, type Container } from "./composition.js";
+import { resolveProgressMode } from "./domain/progress.js";
+import { createContainer, type Container, type ContainerOptions } from "./composition.js";
+import { createProgressSink } from "./infrastructure/progress-sink.js";
 import { createMcpServer, SERVER_VERSION } from "./server.js";
 
 interface GlobalOptions {
@@ -32,10 +34,21 @@ program
   .option("--dir <dir>", "documentation directory (overrides the config)")
   .option("--lexical", "index without embeddings (lexical search only)")
   .action(async (options: { dir?: string; lexical?: boolean }) => {
+    // The only impure expression in the whole feature: everywhere else, mode
+    // resolution and rendering are pure functions of injected inputs.
+    const mode = resolveProgressMode(process.env["COMPENDIO_PROGRESS"], process.stderr.isTTY === true);
+    const progress = createProgressSink(mode, process.stderr);
     await withContainer(
-      { docsDir: options.dir, forceLexical: options.lexical },
+      { docsDir: options.dir, forceLexical: options.lexical, onProgress: progress.onProgress },
       async (container) => {
-        const report = await container.indexDocuments.execute();
+        let report: Awaited<ReturnType<typeof container.indexDocuments.execute>>;
+        try {
+          report = await container.indexDocuments.execute();
+        } finally {
+          // Clears any in-progress bar line before any console.warn/console.log
+          // below can be appended onto a partially-drawn bar line.
+          progress.finish();
+        }
         for (const skippedItem of report.skipped) {
           console.warn(`WARNING ${skippedItem.path}: ${skippedItem.errors.join("; ")}`);
         }
@@ -150,13 +163,18 @@ program
   });
 
 async function withContainer(
-  options: { docsDir?: string | undefined; forceLexical?: boolean | undefined },
+  options: {
+    docsDir?: string | undefined;
+    forceLexical?: boolean | undefined;
+    onProgress?: ContainerOptions["onProgress"];
+  },
   action: (container: Container) => Promise<void>,
 ): Promise<void> {
   const root = program.opts<GlobalOptions>().root;
   const containerOptions: Parameters<typeof createContainer>[0] = { root };
   if (options.docsDir !== undefined) containerOptions.docsDir = options.docsDir;
   if (options.forceLexical !== undefined) containerOptions.forceLexical = options.forceLexical;
+  if (options.onProgress !== undefined) containerOptions.onProgress = options.onProgress;
   const container = createContainer(containerOptions);
   try {
     await action(container);

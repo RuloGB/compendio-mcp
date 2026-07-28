@@ -60,8 +60,19 @@ function ensureBuilt(): void {
   });
 }
 
-function runCli(args: string[], entry: string = CLI): SpawnSyncReturns<string> {
-  return spawnSync(process.execPath, [entry, ...args], { encoding: "utf8" });
+/**
+ * `env` merges ON TOP of `process.env` (never replaces it) — a bare
+ * `{ COMPENDIO_PROGRESS }` would drop `PATH` and break the spawn on Windows.
+ */
+function runCli(
+  args: string[],
+  entry: string = CLI,
+  env?: Record<string, string | undefined>,
+): SpawnSyncReturns<string> {
+  return spawnSync(process.execPath, [entry, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+  });
 }
 
 let workdir: string;
@@ -152,6 +163,69 @@ describe("CLI subprocess: corpus commands", () => {
     const allowedPayload = JSON.parse(allowed.stdout) as { results: { path: string }[] };
     expect(allowedPayload.results.map((r) => r.path)).toContain("test-plan-inventory-alerts.md");
   });
+});
+
+describe("CLI subprocess: index progress reporting", () => {
+  // `spawnSync` gives the child no TTY (stdio defaults to "pipe"), so
+  // COMPENDIO_PROGRESS is what makes every mode reachable under a pipe.
+  it("COMPENDIO_PROGRESS=none: stderr carries no progress output", () => {
+    const run = runCli(["--root", workdir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "none" });
+    expect(run.status).toBe(0);
+    // --lexical still emits the pre-existing embeddingsWarning on stderr —
+    // that WARNING line is unrelated to progress reporting. What "none"
+    // guarantees is the ABSENCE of progress-shaped text.
+    expect(run.stderr).not.toContain("Indexing");
+    expect(run.stderr).not.toMatch(/\[\d+\/\d+\]/);
+    expect(run.stderr).not.toContain("\r");
+  });
+
+  it("COMPENDIO_PROGRESS=plain: stderr shows 'Indexing N documents' and [i/N]-shaped ticks, no \\r", () => {
+    const run = runCli(["--root", workdir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "plain" });
+    expect(run.status).toBe(0);
+    expect(run.stderr).toContain("Indexing 5 documents");
+    expect(run.stderr).toMatch(/\[1\/5\]/);
+    expect(run.stderr).not.toContain("\r");
+  });
+
+  it("stdout is identical across none/plain/bar modes, modulo the pre-existing real duration figure", () => {
+    const none = runCli(["--root", workdir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "none" });
+    const plain = runCli(["--root", workdir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "plain" });
+    const bar = runCli(["--root", workdir, "index", "--lexical"], CLI, { COMPENDIO_PROGRESS: "bar" });
+    expect(none.status).toBe(0);
+    expect(plain.status).toBe(0);
+    expect(bar.status).toBe(0);
+    expect(none.stdout).toMatch(/Indexed 5 documents \(\d+ chunks\)/);
+    // `report.durationMs` is a real wall-clock measurement, not a progress
+    // concern: it already varied between separate runs before this change.
+    // Normalize it out so this test asserts what "stdout is byte-for-byte
+    // identical across modes" actually means: the reporting mode changes
+    // nothing about stdout's shape or content. This tiny 5-document fixture
+    // never crosses the bar's anti-flash threshold (~0.63 s of wall time
+    // against BAR_MIN_ELAPSED_MS), so bar mode never
+    // draws here either -- irrelevant to this assertion, since stdout is
+    // never touched by the sink regardless of whether it draws.
+    const normalize = (stdout: string): string => stdout.replace(/in \d+ ms/, "in N ms");
+    expect(normalize(plain.stdout)).toBe(normalize(none.stdout));
+    expect(normalize(bar.stdout)).toBe(normalize(none.stdout));
+  });
+
+  /**
+   * There is deliberately NO subprocess test asserting that `\r` reaches real
+   * stderr. Drawing the bar requires crossing `BAR_MIN_ELAPSED_MS` (real
+   * elapsed time, design decision D3), and wall-clock duration is not something
+   * this suite can control: forcing it needs a synthetic corpus of thousands of
+   * files, costs ~13 s on every run, and still finishes under the threshold on
+   * fast hardware — turning the assertion into a silent skip. Coverage that can
+   * vanish without anyone noticing is worse than no coverage, because it reads
+   * as green.
+   *
+   * The same branch is covered deterministically with an injected fake clock in
+   * `test/infrastructure/progress-sink.test.ts`: sub-threshold silence, the
+   * first frame showing accumulated state rather than zero, and the erase on
+   * `finish()`. What stays unproven end to end is only that the wired sink
+   * writes to the real stderr stream — one line in `cli.ts`, and the mode
+   * selection reaching the CLI is already asserted above.
+   */
 });
 
 /**
