@@ -21,11 +21,17 @@
  * so measurements are comparable across runs and machines.
  *
  * Usage:
- *   node scripts/generate-perf-corpus.mjs <target-dir> [--cp1252]
+ *   node scripts/generate-perf-corpus.mjs <target-dir> [--cp1252] [--profile <default|fixture>]
  *
  * `--cp1252` additionally writes the largest document in CP1252 instead of
  * UTF-8, reproducing the separate encoding defect where a non-UTF-8 file is
  * read as UTF-8 and every accented character becomes U+FFFD.
+ *
+ * `--profile fixture` generates the small, committed Gate 1b corpus instead
+ * of the full Gate 2 perf corpus: one heading-less ~12,000-character document
+ * carrying the `QUETZAL-7731` marker at ~char 6,000, plus 5 short distractor
+ * documents. Same prose vocabulary and `MARKER` constant as the default
+ * profile — one source of truth for both gates.
  */
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -146,49 +152,90 @@ function structuredDocument(title, sectionCount, sectionChars) {
   return parts.join("\n");
 }
 
+/** Gate 2 perf corpus: 38 documents, 5 of them oversized and heading-less. */
+function generateDefaultProfile(target, asCp1252) {
+  const docsDir = join(target, "docs");
+  rmSync(target, { recursive: true, force: true });
+  mkdirSync(join(docsDir, "ba"), { recursive: true });
+  mkdirSync(join(docsDir, "arch"), { recursive: true });
+
+  const write = (relative, content, encoding = "utf8") =>
+    writeFileSync(join(docsDir, relative), content, encoding);
+
+  // The five oversized, heading-less documents. Character targets are
+  // estimateTokens x 4, matching the measured real-corpus distribution.
+  const manual = headinglessDocument(167_345, { marker: true });
+  if (asCp1252) {
+    // latin1 is CP1252-compatible for the accented characters this prose uses.
+    write("ba/manual.md", manual, "latin1");
+  } else {
+    write("ba/manual.md", manual);
+  }
+  write("ba/manual-basico.md", headinglessDocument(11_632));
+  write("ba/presentacion-sistemas.md", headinglessDocument(9_844));
+  write("ba/comparativa.md", spreadsheetDocument(7_906));
+  write("ba/resumen-rapido.md", headinglessDocument(4_474));
+
+  // 33 conforming documents carrying the rest of the corpus. Each emits one
+  // intro chunk plus one per H2 section; the 27/6 split lands the corpus on
+  // the real one's 242 total chunks (27x7 + 6x8 + 5 oversized).
+  for (let i = 1; i <= 33; i++) {
+    const sections = i <= 27 ? 6 : 7;
+    write(
+      `arch/spec-${String(i).padStart(2, "0")}.md`,
+      structuredDocument(`Especificación funcional ${i}`, sections, 920),
+    );
+  }
+
+  console.log(`corpus generado en ${docsDir}`);
+  console.log(`  38 documentos, semilla ${SEED}`);
+  console.log(`  marcador de la puerta 1b: QUETZAL-7731 (dentro de ba/manual.md)`);
+  if (asCp1252) console.log("  ba/manual.md escrito en CP1252");
+}
+
+/**
+ * Gate 1b fixture corpus: one heading-less ~12,000-character marker document
+ * plus 5 short distractor documents, all heading-less so none of them can be
+ * reached by a heading-title lexical match. Cheap enough (seconds, not
+ * minutes) to commit and re-run on every future chunking change.
+ */
+function generateFixtureProfile(target) {
+  const docsDir = join(target, "docs");
+  rmSync(target, { recursive: true, force: true });
+  mkdirSync(docsDir, { recursive: true });
+
+  const write = (relative, content) => writeFileSync(join(docsDir, relative), content, "utf8");
+
+  write("manual-extenso.md", headinglessDocument(12_000, { marker: true }));
+  const distractorSizes = [3_000, 3_200, 3_400, 3_600, 3_800];
+  distractorSizes.forEach((size, index) => {
+    write(`distractor-${String(index + 1).padStart(2, "0")}.md`, headinglessDocument(size));
+  });
+
+  console.log(`fixture generated at ${docsDir}`);
+  console.log(`  1 marker document (~12,000 chars) + 5 distractor documents, seed ${SEED}`);
+  console.log(`  Gate 1b marker: QUETZAL-7731 (inside manual-extenso.md)`);
+}
+
 // --- main ---------------------------------------------------------------
 
 const target = process.argv[2];
 const asCp1252 = process.argv.includes("--cp1252");
+const profileFlagIndex = process.argv.indexOf("--profile");
+const profile = profileFlagIndex === -1 ? "default" : process.argv[profileFlagIndex + 1];
 if (target === undefined) {
-  console.error("usage: node scripts/generate-perf-corpus.mjs <target-dir> [--cp1252]");
+  console.error(
+    "usage: node scripts/generate-perf-corpus.mjs <target-dir> [--cp1252] [--profile <default|fixture>]",
+  );
+  process.exit(1);
+}
+if (profile !== "default" && profile !== "fixture") {
+  console.error(`unknown --profile "${profile}" (expected "default" or "fixture")`);
   process.exit(1);
 }
 
-const docsDir = join(target, "docs");
-rmSync(target, { recursive: true, force: true });
-mkdirSync(join(docsDir, "ba"), { recursive: true });
-mkdirSync(join(docsDir, "arch"), { recursive: true });
-
-const write = (relative, content, encoding = "utf8") =>
-  writeFileSync(join(docsDir, relative), content, encoding);
-
-// The five oversized, heading-less documents. Character targets are
-// estimateTokens x 4, matching the measured real-corpus distribution.
-const manual = headinglessDocument(167_345, { marker: true });
-if (asCp1252) {
-  // latin1 is CP1252-compatible for the accented characters this prose uses.
-  write("ba/manual.md", manual, "latin1");
+if (profile === "fixture") {
+  generateFixtureProfile(target);
 } else {
-  write("ba/manual.md", manual);
+  generateDefaultProfile(target, asCp1252);
 }
-write("ba/manual-basico.md", headinglessDocument(11_632));
-write("ba/presentacion-sistemas.md", headinglessDocument(9_844));
-write("ba/comparativa.md", spreadsheetDocument(7_906));
-write("ba/resumen-rapido.md", headinglessDocument(4_474));
-
-// 33 conforming documents carrying the rest of the corpus. Each emits one
-// intro chunk plus one per H2 section; the 27/6 split lands the corpus on the
-// real one's 242 total chunks (27x7 + 6x8 + 5 oversized).
-for (let i = 1; i <= 33; i++) {
-  const sections = i <= 27 ? 6 : 7;
-  write(
-    `arch/spec-${String(i).padStart(2, "0")}.md`,
-    structuredDocument(`Especificación funcional ${i}`, sections, 920),
-  );
-}
-
-console.log(`corpus generado en ${docsDir}`);
-console.log(`  38 documentos, semilla ${SEED}`);
-console.log(`  marcador de la puerta 1b: QUETZAL-7731 (dentro de ba/manual.md)`);
-if (asCp1252) console.log("  ba/manual.md escrito en CP1252");

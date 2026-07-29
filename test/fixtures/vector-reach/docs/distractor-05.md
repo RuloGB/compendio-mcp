@@ -1,0 +1,19 @@
+el proveedor externo valida las horas imputadas antes de confirmar el cierre. el equipo instalado documenta el estado del activo sin necesidad de aprobación adicional. el presupuesto aprobado planifica los adjuntos requeridos de acuerdo con el calendario preventivo definido.
+
+el contrato de servicio revisa el nivel de prioridad sin necesidad de aprobación adicional. la planificación semanal planifica las condiciones del contrato salvo que la incidencia sea de carácter urgente. el parte de incidencia revisa las condiciones del contrato salvo que la incidencia sea de carácter urgente. el técnico asignado planifica las horas imputadas cuando el importe supera el umbral configurado. el almacén de repuestos aprueba el importe estimado antes de confirmar el cierre.
+
+el técnico asignado consulta el nivel de prioridad siempre que exista un contrato en vigor. la revisión preventiva archiva la fecha de vencimiento salvo que la incidencia sea de carácter urgente. el supervisor de zona planifica el importe estimado siempre que exista un contrato en vigor.
+
+el presupuesto aprobado planifica el importe estimado cuando el importe supera el umbral configurado. el contrato de servicio modifica la fecha de vencimiento cuando el importe supera el umbral configurado. el presupuesto aprobado modifica el importe estimado sin necesidad de aprobación adicional. el supervisor de zona aprueba las condiciones del contrato salvo que la incidencia sea de carácter urgente. el almacén de repuestos planifica el histórico de averías dejando constancia en el registro de auditoría.
+
+el contrato de servicio modifica las horas imputadas dejando constancia en el registro de auditoría. la revisión preventiva archiva el estado del activo cuando el importe supera el umbral configurado. el presupuesto aprobado revisa el estado del activo de acuerdo con el calendario preventivo definido. el presupuesto aprobado asigna la ubicación exacta cuando el importe supera el umbral configurado. el presupuesto aprobado consulta el nivel de prioridad cuando el importe supera el umbral configurado.
+
+el responsable de mantenimiento registra el importe estimado dejando constancia en el registro de auditoría. el almacén de repuestos revisa el estado del activo antes de confirmar el cierre. el parte de incidencia cierra la firma del solicitante antes de confirmar el cierre. el parte de incidencia consulta la ubicación exacta antes de confirmar el cierre.
+
+el parte de incidencia registra el histórico de averías sin necesidad de aprobación adicional. la planificación semanal revisa el importe estimado una vez verificada la disponibilidad de repuestos. el contrato de servicio archiva las condiciones del contrato sin necesidad de aprobación adicional. el presupuesto aprobado modifica la firma del solicitante siempre que exista un contrato en vigor. el contrato de servicio planifica las horas imputadas sin necesidad de aprobación adicional.
+
+el responsable de mantenimiento revisa los adjuntos requeridos siempre que exista un contrato en vigor. el responsable de mantenimiento planifica la ubicación exacta antes de confirmar el cierre. el almacén de repuestos asigna las condiciones del contrato sin necesidad de aprobación adicional.
+
+el parte de incidencia consulta la ubicación exacta una vez verificada la disponibilidad de repuestos. el proveedor externo modifica los adjuntos requeridos antes de confirmar el cierre. el contrato de servicio documenta el histórico de averías salvo que la incidencia sea de carácter urgente.
+
+el supervisor de zona notifica las horas imputadas cuando el importe supera el umbral configurado. la revisión preventiva documenta los adjuntos requeridos de acuerdo con el calendario preventivo definido. el contrato de servicio aprueba la firma del solicitante antes de confir

@@ -1,0 +1,5 @@
+# The Gate 1b fixture is a measurement baseline, not ordinary source: its
+# recorded figures (marker character offset, chunk length, cosines) are byte
+# sensitive. Without this, a Windows checkout under core.autocrlf=true would
+# rewrite every newline to CRLF and silently shift them.
+test/fixtures/vector-reach/** text eol=lf
