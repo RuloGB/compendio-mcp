@@ -98,6 +98,49 @@ const LOOSE: ConventionConfig = {
   frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
+/** Wraps a real fake provider so the call order can be interleaved with events. */
+class RecordingEmbeddings implements EmbeddingsProvider {
+  private readonly inner = new FakeEmbeddings();
+  constructor(private readonly log: string[]) {}
+  async embed(texts: string[]): Promise<Float32Array[]> {
+    this.log.push("embed");
+    return this.inner.embed(texts);
+  }
+}
+
+describe("IndexDocuments — an embedding tick reports completed work", () => {
+  it("emits each embedding/tick only after its batch has been embedded", async () => {
+    // Reporting the tick before the await made the bar read N/N while the last
+    // batch had not started — on a corpus with one oversized chunk that is
+    // minutes of apparent hang at 100%. `current` must count finished batches.
+    const log: string[] = [];
+    const store = new SqliteIndexStore(":memory:");
+    // 20 single-chunk documents => 2 batches at the default batch size of 16.
+    const files = Array.from({ length: 20 }, (_, i) => ({
+      path: `doc-${i}.md`,
+      content: `# Doc ${i}\n\nContenido suficiente para producir un chunk indexable.\n`,
+    }));
+    const onProgress: ProgressReporter = (event) => {
+      if (event.phase === "embedding" && event.kind === "tick") {
+        log.push(`tick:${event.current}/${event.total}`);
+      }
+    };
+    const indexer = new IndexDocuments(
+      new StaticSource(files),
+      new RemarkMarkdownParser(),
+      store,
+      new RecordingEmbeddings(log),
+      createConventionPolicy(LOOSE),
+      { chunking: { minTokens: 10, maxTokens: 800 }, noChunking: [], onProgress },
+    );
+    await indexer.execute();
+    store.close();
+
+    // Every batch is embedded first and only then counted.
+    expect(log).toEqual(["embed", "tick:1/2", "embed", "tick:2/2"]);
+  });
+});
+
 describe("IndexDocuments — a skipped file still ticks", () => {
   it("emits files/tick for a document skipped for having no indexable content", async () => {
     const onProgress = vi.fn<ProgressReporter>();

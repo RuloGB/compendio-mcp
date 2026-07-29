@@ -122,13 +122,19 @@ export class IndexDocuments {
       let batchIndex = 0;
       for (let i = 0; i < pending.length; i += batchSize) {
         const batch = pending.slice(i, i + batchSize);
-        this.report({ phase: "embedding", kind: "tick", current: batchIndex + 1, total: batches });
         // "passage: " prefix is required by the E5 embedding family.
         const vectors = await this.embeddings.embed(batch.map((p) => `passage: ${p.text}`));
         this.store.saveEmbeddings(
           batch.map((p, j) => ({ chunkId: p.chunkId, embedding: vectors[j]! })),
         );
         batchIndex += 1;
+        // Reported AFTER the batch is embedded and persisted, so `current`
+        // counts completed work. Reporting it before the await made the bar
+        // read 100% (N/N) at the exact moment the last — and by far the most
+        // expensive — batch was about to start, which is what a user reads as
+        // "it finished, then it hung". `embedding/start` already renders the
+        // 0/N frame, so nothing is lost by not announcing a batch up front.
+        this.report({ phase: "embedding", kind: "tick", current: batchIndex, total: batches });
       }
       return null;
     } catch (error) {
