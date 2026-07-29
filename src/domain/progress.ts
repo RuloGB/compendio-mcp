@@ -3,7 +3,7 @@
  * decide what to show from it. Nothing here touches the filesystem, SQLite,
  * transformers.js, or `process` — mode resolution and rendering are total
  * functions of injected inputs, never ambient reads. See
- * `openspec/changes/index-progress-reporting/design.md`.
+ * `openspec/changes/archive/2026-07-28-index-progress-reporting/design.md`.
  */
 
 export type ProgressMode = "bar" | "plain" | "none";
