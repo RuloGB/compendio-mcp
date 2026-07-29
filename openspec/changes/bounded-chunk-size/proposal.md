@@ -114,8 +114,9 @@ No persisted state needs undoing beyond that re-index.
 - Real embeddings provider for Gate 1b — vector reachability cannot be measured with
   `test/helpers/fake-embeddings.ts`, so that gate is a manual verification step, documented like
   the existing progress smoke test in `CLAUDE.md`.
-- The external 38-document corpus described in `exploration.md` for Gate 2 — private, not
-  committable; manual step.
+- `scripts/generate-perf-corpus.mjs` for Gate 2 — regenerates a byte-identical 38-document corpus
+  reproducing the measured profile, so the gate no longer depends on the private corpus the
+  exploration used. Still a manual step (a ~370 s run is not a CI test), but reproducible by anyone.
 
 ## Success Criteria
 
@@ -155,11 +156,13 @@ or a vector-only ranking path).
 
 ### Gate 2 — Falsifiable prediction (BLOCKING)
 
-Measured on the external corpus described in `exploration.md`:
+Measured on the corpus from `scripts/generate-perf-corpus.mjs`, whose pre-change baseline was
+measured at **242 chunks / 367 s** (the private corpus the exploration used measured 285 s; the
+generated one is harsher because its Spanish prose is not CP1252-mangled and so tokenizes longer):
 
-- [ ] `MANUAL.md` (the 167 KB heading-less document): 1 chunk → ~88
+- [ ] `ba/manual.md` (the 167 KB heading-less document): 1 chunk → ~88
 - [ ] Corpus: 242 → ~330 chunks
-- [ ] Full-corpus index: 285 s → roughly 50 s
+- [ ] Full-corpus index: 367 s → roughly 60 s
 
 If measurement contradicts this, **stop**: the analysis is wrong and the design must be revisited
 before proceeding.
