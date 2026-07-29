@@ -74,6 +74,10 @@ export function resolveProgressMode(raw: string | undefined, isTTY: boolean): Pr
   return isTTY ? "bar" : "plain";
 }
 
+/** Label for the embedding phase, shared by `start` and `tick` so a tick can
+ * restore it after a download has overwritten it. */
+const EMBEDDING_LABEL = "Embedding chunks";
+
 /** The state a run starts in, before any event has been reported. */
 export function initialProgressState(): ProgressState {
   return { phase: "idle", label: "", current: 0, total: 0, download: null };
@@ -104,13 +108,28 @@ export function advanceProgress(state: ProgressState, event: ProgressEvent): Pro
         case "start":
           return {
             phase: "embedding",
-            label: "Embedding chunks",
+            label: EMBEDDING_LABEL,
             current: 0,
             total: event.batches,
             download: null,
           };
         case "tick":
-          return { ...state, phase: "embedding", current: event.current, total: event.total };
+          // Clearing `download` (and restoring the label) is what keeps this a
+          // transition rather than a dead end. The model is fetched lazily
+          // inside the first `embed()` await, so the real event order is
+          // tick 1 -> download... -> tick 2. Spreading `download` forward left
+          // it non-null for the rest of the run, and both `progressRatio` and
+          // `renderDetail` give it priority over `current`/`total` — so every
+          // batch after the download rendered as "100% downloading model",
+          // frozen for the whole embedding phase. A tick arriving after a
+          // download means the download is over and CPU inference has begun.
+          return {
+            phase: "embedding",
+            label: EMBEDDING_LABEL,
+            current: event.current,
+            total: event.total,
+            download: null,
+          };
         case "download":
           return {
             ...state,
@@ -119,7 +138,9 @@ export function advanceProgress(state: ProgressState, event: ProgressEvent): Pro
             download: { loaded: event.loaded, total: event.total },
           };
         case "failed":
-          return { ...state, phase: "embedding", label: event.reason };
+          // Same reason as `tick`: a stale download would outrank the reason
+          // in the rendered detail.
+          return { ...state, phase: "embedding", label: event.reason, download: null };
       }
   }
 }

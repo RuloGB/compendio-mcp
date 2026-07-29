@@ -108,6 +108,32 @@ describe("advanceProgress", () => {
     expect(state.total).toBe(3);
   });
 
+  it("a batch tick after a completed download stops rendering the download", () => {
+    // Regression: the model is fetched lazily inside the first `embed()`
+    // await, so the real order is tick 1 -> download... -> tick 2. Carrying
+    // `download` past the tick pinned the bar to "100% downloading model" for
+    // the entire embedding phase — the CLI looked hung for minutes.
+    let state = initialProgressState();
+    state = advanceProgress(state, { phase: "embedding", kind: "start", batches: 16, chunks: 242 });
+    state = advanceProgress(state, { phase: "embedding", kind: "tick", current: 1, total: 16 });
+    state = advanceProgress(state, {
+      phase: "embedding",
+      kind: "download",
+      loaded: 129_000_000,
+      total: 129_000_000,
+    });
+    expect(state.download).not.toBeNull();
+
+    state = advanceProgress(state, { phase: "embedding", kind: "tick", current: 2, total: 16 });
+    expect(state.download).toBeNull();
+    expect(state.label).toBe("Embedding chunks");
+    // The rendered frame must report batches, not a finished download.
+    const frame = renderBar(state, 79, 120_000);
+    expect(frame).toContain("Embedding chunks 2/16");
+    expect(frame).not.toContain("downloading model");
+    expect(frame).not.toContain("100%");
+  });
+
   it("an embedding/failed event does not throw and keeps the embedding phase", () => {
     const state: ProgressState = {
       phase: "embedding",
