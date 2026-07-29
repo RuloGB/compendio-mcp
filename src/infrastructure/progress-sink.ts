@@ -98,9 +98,11 @@ export function createProgressSink(
   // Armed unconditionally at construction, unref()'d so it can never hold
   // the process open by itself, and cleared by `finish()`. This is the only
   // way to observe elapsed time crossing the threshold when NO event ever
-  // arrives after it: `IndexDocuments` emits `embedding/tick` before its
-  // `await`, so a one-batch corpus fires every event within ~25 ms and then
-  // blocks in silence for seconds. A timer armed reactively by an event
+  // arrives after it: `IndexDocuments` emits `embedding/start` and then
+  // blocks inside the first `await`, so a one-batch corpus fires every event
+  // within ~25 ms and then goes silent for seconds (ticks now land *after*
+  // each batch, so there is nothing at all to report in between). A timer
+  // armed reactively by an event
   // would never fire in that case, leaving stderr silent for the exact
   // duration this heartbeat exists to cover — confirmed by reproducing it
   // against this repo's own `docs/` before adopting this shape. Every tick
