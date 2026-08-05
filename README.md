@@ -204,7 +204,7 @@ Global option `-C, --root <dir>`: project root. Add `--lexical` to `index` or `s
 ```
 docs/**/*.md
      │
-     ├─▶ split into fragments at heading boundaries (tables are never cut)
+     ├─▶ split into fragments at heading boundaries, then bounded to maxTokens
      │
      ├─▶ index each fragment twice ─┬─ full-text (keywords)
      │                              └─ embeddings (meaning)
