@@ -135,9 +135,16 @@ retrieval, so a fall means the design is wrong and must be revisited.
 such. Measured over `ejemplos/docs` with the real parser and chunker: 28 chunks, 5 459 tokens,
 **0 chunks above 800** and **exactly 1 above 480** (639 tokens,
 `leadsviewer/validacion-formulario.md :: Reglas de negocio`; the 514-token chunk is `INDEX.md`,
-which is excluded from indexing). Under today's default the splitting path is never exercised
-here; under 480 it fires once. Gate 1 proves only that already-conforming documents were not
-broken.
+which is excluded from indexing).
+
+**Corrected during apply (Phase 8), measured:** this paragraph originally claimed the splitting path
+"fires once" under 480. It does not fire at all. `## Reglas de negocio` has four H3 children, so at
+480 the section exceeds the bound *and* has children — `chunkOutline` descends to H3 and every
+resulting piece is already under the bound, so `splitToBound` is never reached. The real indexer
+reports 11 documents / 27 chunks at 800 and 11 documents / 29 chunks at 480; that shift comes from
+heading descent plus the narrower merge headroom, not from a split. Gate 1 therefore proves *only*
+that already-conforming documents were not broken — it does not exercise the splitter on any path.
+Gate 1b is the gate that does.
 
 ### Gate 1b — Retrieval reachability on oversized content (BLOCKING, the actual proof)
 

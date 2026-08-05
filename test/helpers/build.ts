@@ -6,6 +6,7 @@ import { ReadDocument } from "../../src/application/read-document";
 import { SearchDocuments } from "../../src/application/search-documents";
 import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
 import type { EmbeddingsProvider } from "../../src/domain/ports";
+import { DEFAULT_CONFIG, NO_CHUNKING } from "../../src/infrastructure/config";
 import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
@@ -70,9 +71,9 @@ export function buildHarness(
     store,
     embeddings,
     policy,
-    // es-frozen: "glosario.md" is the real frozen `ejemplos/` corpus filename,
-    // mirroring the production default — not a leftover translation.
-    { chunking: { minTokens: 100, maxTokens: 800 }, noChunking: ["glosario.md"] },
+    // Mirrors production config exactly (imported, not re-typed) so this
+    // harness can never drift from `DEFAULT_CONFIG.chunk` again.
+    { chunking: DEFAULT_CONFIG.chunk, noChunking: NO_CHUNKING },
   );
   const search = new SearchDocuments(store, embeddings, {
     k: 5,

@@ -87,6 +87,38 @@ script asserts the resulting invariant (cosines monotonically non-increasing dow
 normalized vectors make ascending L2 order identical to descending cosine order) and exits non-zero if
 it breaks. Numbers for both runs live in the change's `verify-report.md`, not here.
 
+Manual gate 2 (`bounded-chunk-size`): proves the fix at full-corpus scale — the shape Gate 1b's
+6-document fixture only approximates — using the same generator's default profile (38 documents, one
+167 KB heading-less document, pre-change baseline **242 chunks / 367 s** at `maxTokens: 800`):
+
+```bash
+node scripts/generate-perf-corpus.mjs <scratch-dir>
+node dist/cli.js --root <scratch-dir> index
+```
+
+`<scratch-dir>` must sit outside the repository (or be `.gitignore`d) — the generated corpus is
+~200 KB of throwaway output, not meant to be committed.
+
+| # | Metric | Predicted | Measured (`maxTokens: 480`) |
+|---|---|---|---|
+| A | `ba/manual.md` chunk count | 1 → ~88 | 1 → **99** |
+| B | Corpus total chunk count | 242 → ~330 | 242 → **358** |
+| C | Full index wall-clock | 367 s → ~60 s | 367 s → **~31 s** |
+
+Gate 2 is **blocking** (proposal, Success Criteria): it exists so a wrong analysis stops the change
+rather than shipping. What it gates on is *falsification* — a measurement contradicting the reasoning
+— not a tolerance band around the point estimates. It **passed**: all three moved in the predicted
+direction and in the predicted magnitude class. The point predictions themselves were imprecise, and
+that is recorded here rather than smoothed away. A and B measured moderately above them
+(+12.5% / +8.5%): greedy
+packing does not fill every piece to exactly `maxTokens`, so more, smaller pieces than the naive
+`41 837 / 480 ≈ 87` division implies is expected, not a defect. C measured well below the ~60 s
+prediction (roughly half): the old default's single 41 837-token chunk paid a disproportionate
+tokenization/embedding cost on its own (`exploration.md`'s batch-padding measurement: a 43 KB chunk
+alone took 4.23 s versus 0.03 s for 16 small chunks combined), so removing it entirely saves more than
+the conservative midpoint estimate predicted. Full run transcripts live in the change's
+`verify-report.md`.
+
 `prepublishOnly` runs `build` then `test` — publishing fails if either fails.
 
 Tests use `pool: "forks"` (vitest.config.ts) because `better-sqlite3` is a native addon loaded once per worker; don't switch this to threads. `CI=true` turns on `forbidOnly` so a stray `it.only` can't silently slim down the suite outside CI.
@@ -128,7 +160,8 @@ Registered in `server.ts`. Progressive disclosure is a set of rungs, **not a man
 - **Embeddings are normalized in the provider; the `vec0` table uses plain L2**, not `distance_metric=cosine`. With normalized vectors, L2 order == cosine order, and it sidesteps a fragile cross-version syntax.
 - **`compendio index-md` reads the filesystem, not the SQLite index** (`GenerateIndexMd` in `src/application/generate-index-md.ts` uses `DocumentSource` + `MarkdownParser` directly). This means `docs/INDEX.md` can never lag behind a stale DB index. `INDEX.md` never lists itself even if config `exclude` is overridden.
 - **Graceful degradation on embeddings failure**: if the embeddings provider is missing or throws, `IndexDocuments` completes indexing in lexical-only mode (`mode: "lexical"`) instead of crashing, and reports why via `embeddingsWarning`.
-- **Heading-based chunking** (H2, H3 if a section exceeds the token max) — cuts only happen at heading boundaries, so tables are never split mid-row.
+- **Heading-based chunking** (H2, H3 if a section exceeds the token max) decides WHERE the coarse cuts land; `splitToBound` (`src/domain/split-text.ts`) then guarantees every emitted chunk stays within `chunk.maxTokens` regardless of source. A table or fenced code block that would otherwise exceed the bound is split across rows/lines, re-emitting its header/separator or fence markers on each piece — tables and fences ARE split mid-row/mid-block when they must be to hold the bound.
+- **A `chunk.maxTokens` (or splitting-logic) change needs a full `compendio index` to reach an existing corpus.** Incremental sync's change fingerprint is the document's content hash alone, so a document whose content hasn't changed keeps its old chunk boundaries under an incremental `serve` sync pass even after the config changes. There is deliberately no schema-version marker or automatic re-chunk migration for this (`openspec/changes/bounded-chunk-size/specs/indexing/spec.md`'s "Chunk Boundary Changes Require a Full Reindex" requirement) — `compendio index`'s `reset()` (drop-and-recreate) is the only mechanism that applies new boundaries to unchanged content.
 - **RRF** (`score = Σ 1/(60 + rank)`) fuses lexical and vector rankings — no weights to tune.
 - **A structurally impossible filter is dropped, not honoured** (`dropImpossibleFilters` in `src/domain/search-diagnostics.ts`). An agent told to go straight to `search_docs` cannot know the project's taxonomy, so it infers `type` from directory names (`docs/uc/` → `type: "uc"`); against a project whose frontmatter keys were never mapped, that filter can never match. Prose could not stop this — parameter descriptions saying "never infer it from directory names" were observed being ignored three times in one session, with the agent escalating `k` from 5 to 10 rather than dropping the filter `noMatchReason` told it to drop. So the mechanism changed instead: a filter targeting a field **no document declares** is removed, the search re-runs unfiltered, and `filterWarning` says what was ignored and names `convention.frontmatterFields` as the real fix. Nothing is hidden — the fallback is loud. The narrower line matters: a filter on a *declared* field with an unknown value is kept, because that request is answerable and the caller gets the real values back to correct itself with.
 - **An empty `search_docs` result explains itself** via `noMatchReason` (`explainEmptyResult`), covering the value-does-not-exist case (declared values listed), individually-valid filters whose combination matches nothing, and the project's own `convention.excludedStatuses` deny-list — that last being the case a caller cannot possibly guess, since it comes from config rather than the request. Deliberately absent on an *unfiltered* miss: a bare query matching nothing needs no explanation, and inventing one would be noise on every empty search.

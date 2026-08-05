@@ -37,7 +37,12 @@ export interface CompendioConfig {
 
 export const CONFIG_FILE = "compendio.config.json";
 
-/** Files indexed as a single chunk (no heading-based chunking). */
+/**
+ * File names (relative path or basename) exempt from heading-based
+ * chunking -- split by size only, via `splitToBound`, never by internal
+ * headings. Still emits a single chunk when the body fits within
+ * `maxTokens`; splits into several bounded chunks otherwise.
+ */
 // es-frozen: filename in the Spanish `ejemplos/` reference corpus; translating
 // it would change the corpus chunk count and move the eval baseline.
 export const NO_CHUNKING = ["glosario.md"];
@@ -50,7 +55,7 @@ export const DEFAULT_CONFIG: CompendioConfig = {
   exclude: [INDEX_FILE],
   db: ".compendio/compendio.db",
   embeddings: { provider: "local", model: "Xenova/multilingual-e5-small" },
-  chunk: { minTokens: 100, maxTokens: 800 },
+  chunk: { minTokens: 100, maxTokens: 480 },
   search: { k: 5 },
   sync: { throttleMs: DEFAULT_THROTTLE_MS },
   convention: {

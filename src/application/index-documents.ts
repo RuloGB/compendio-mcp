@@ -33,8 +33,11 @@ export interface IndexReport {
 
 export interface IndexDocumentsOptions {
   chunking: ChunkingOptions;
-  /** File names (relative path or basename) indexed as a single chunk,
-   * without heading-based chunking. The glossary is the canonical case. */
+  /** File names (relative path or basename) exempt from heading-based
+   * chunking -- split by size only, via `splitToBound`, never by internal
+   * headings. Still emits a single chunk when the body fits within
+   * `maxTokens`; splits into several bounded chunks otherwise. The glossary
+   * is the canonical case. */
   noChunking: string[];
   embeddingBatchSize?: number;
   /** Optional progress observability hook; a no-op by default. */

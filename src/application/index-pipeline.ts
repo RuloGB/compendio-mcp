@@ -3,11 +3,15 @@ import { chunkOutline, type ChunkingOptions } from "../domain/chunking.js";
 import type { ConventionPolicy } from "../domain/convention.js";
 import type { Chunk, DocumentMeta } from "../domain/model.js";
 import type { DocumentFile, MarkdownParser } from "../domain/ports.js";
+import { splitToBound } from "../domain/split-text.js";
 
 export interface PipelineOptions {
   chunking: ChunkingOptions;
-  /** File names (relative path or basename) indexed as a single chunk,
-   * without heading-based chunking. The glossary is the canonical case. */
+  /** File names (relative path or basename) exempt from heading-based
+   * chunking -- split by size only, via `splitToBound`, never by internal
+   * headings. Still emits a single chunk when the body fits within
+   * `maxTokens`; splits into several bounded chunks otherwise. The glossary
+   * is the canonical case. */
   noChunking: string[];
 }
 
@@ -69,7 +73,7 @@ export function transformFile(
   }
 
   const chunks = isNoChunking(file.path, options.noChunking)
-    ? wholeDocumentChunk(resolution.meta.title, parsed.body)
+    ? wholeDocumentChunk(resolution.meta.title, parsed.body, options.chunking.maxTokens)
     : chunkOutline(parsed.outline, options.chunking);
 
   if (chunks.length === 0) {
@@ -84,8 +88,12 @@ function isNoChunking(path: string, noChunking: string[]): boolean {
   return noChunking.some((entry) => entry === path || entry === basename);
 }
 
-function wholeDocumentChunk(title: string, body: string): Chunk[] {
+function wholeDocumentChunk(title: string, body: string, maxTokens: number): Chunk[] {
   const content = body.trim();
   if (content.length === 0) return [];
-  return [{ heading: title, content, position: 0 }];
+  return splitToBound(content, maxTokens).map((text, position) => ({
+    heading: title,
+    content: text,
+    position,
+  }));
 }
