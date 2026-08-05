@@ -3,6 +3,7 @@ import { IndexDocuments } from "../../src/application/index-documents";
 import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
 import type { ProgressEvent, ProgressReporter } from "../../src/domain/progress";
 import type { DiscoverResult, DocumentFile, DocumentSource, EmbeddingsProvider } from "../../src/domain/ports";
+import { DEFAULT_CONFIG, NO_CHUNKING } from "../../src/infrastructure/config";
 import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
@@ -20,8 +21,9 @@ function buildExamplesIndexer(
     store,
     embeddings,
     createConventionPolicy(EXAMPLES_CONVENTION),
-    // es-frozen: "glosario.md" is the real frozen `ejemplos/` corpus filename.
-    { chunking: { minTokens: 100, maxTokens: 800 }, noChunking: ["glosario.md"], onProgress },
+    // Mirrors production config exactly (imported, not re-typed) so this
+    // harness can never drift from `DEFAULT_CONFIG.chunk` again.
+    { chunking: DEFAULT_CONFIG.chunk, noChunking: NO_CHUNKING, onProgress },
   );
   return { indexer, store };
 }

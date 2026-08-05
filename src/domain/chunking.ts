@@ -1,5 +1,6 @@
 import type { Chunk } from "./model.js";
 import type { DocOutline, DocSection } from "./outline.js";
+import { splitToBound } from "./split-text.js";
 import { estimateTokens } from "./tokens.js";
 
 export interface ChunkingOptions {
@@ -19,11 +20,15 @@ function sectionFullText(section: DocSection): string {
 
 /**
  * Chunking policy: split by H2, descend to H3 only when the H2 section
- * exceeds `maxTokens`, then merge contiguous tiny pieces (< minTokens).
+ * exceeds `maxTokens`, then bound every resulting piece via `splitToBound`
+ * before merging contiguous tiny pieces (< minTokens).
  *
- * Splitting only ever happens at heading boundaries, so tables are never cut
- * in half: a section holding a large table stays whole even if it exceeds the
- * maximum. Every chunk carries its full heading path ("H2 > H3").
+ * Heading-based descent decides WHERE the coarse cuts land; `splitToBound`
+ * guarantees the SIZE bound afterward, on every piece regardless of source
+ * (intro, leaf section, or oversized child) -- a table or fenced code block
+ * is split across rows/lines, re-wrapping its header/separator or fence
+ * markers, rather than staying whole past `maxTokens`. Every chunk carries
+ * its full heading path ("H2 > H3"), including split pieces.
  */
 export function chunkOutline(outline: DocOutline, opts: ChunkingOptions): Chunk[] {
   const pieces: Piece[] = [];
@@ -46,7 +51,11 @@ export function chunkOutline(outline: DocOutline, opts: ChunkingOptions): Chunk[
     }
   }
 
-  return mergeTinyPieces(pieces, opts).map((piece, position) => ({
+  const bounded = pieces.flatMap((p) =>
+    splitToBound(p.text, opts.maxTokens).map((text) => ({ path: p.path, text })),
+  );
+
+  return mergeTinyPieces(bounded, opts).map((piece, position) => ({
     heading: piece.path.join(" > "),
     content: piece.text,
     position,
@@ -58,21 +67,27 @@ export function chunkOutline(outline: DocOutline, opts: ChunkingOptions): Chunk[
  * combination stays within `maxTokens`. The merged chunk keeps the first
  * heading path; the swallowed section keeps its heading line inside the text,
  * so lexical search still matches it.
+ *
+ * The guard measures the CANDIDATE joined string, not the sum of the two
+ * pieces' individual token estimates: `estimateTokens` is `ceil(len / 4)`,
+ * and the merge itself adds two characters (`\n\n`), so `ceil(la/4) +
+ * ceil(lb/4)` can be strictly less than `ceil((la + lb + 2) / 4)` -- summing
+ * the estimates could pass the guard while the actual merged text lands one
+ * token over `maxTokens`.
  */
 function mergeTinyPieces(pieces: Piece[], opts: ChunkingOptions): Piece[] {
   const merged: Piece[] = [];
   for (const piece of pieces) {
     const previous = merged[merged.length - 1];
     const tokens = estimateTokens(piece.text);
-    if (
-      previous !== undefined &&
-      tokens < opts.minTokens &&
-      estimateTokens(previous.text) + tokens <= opts.maxTokens
-    ) {
-      previous.text = `${previous.text}\n\n${piece.text}`;
-    } else {
-      merged.push({ ...piece });
+    if (previous !== undefined && tokens < opts.minTokens) {
+      const candidate = `${previous.text}\n\n${piece.text}`;
+      if (estimateTokens(candidate) <= opts.maxTokens) {
+        previous.text = candidate;
+        continue;
+      }
     }
+    merged.push({ ...piece });
   }
   return merged;
 }

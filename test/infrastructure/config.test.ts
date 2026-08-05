@@ -30,6 +30,35 @@ describe("loadConfig", () => {
     });
   });
 
+  it("defaults chunk.maxTokens to 480 when no config file exists", () => {
+    const config = loadConfig(join(dir, "no-such-project"));
+    expect(config.chunk).toEqual({ minTokens: 100, maxTokens: 480 });
+  });
+
+  it("defaults chunk.maxTokens to 480 when the config declares no chunk block", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-nochunk-"));
+    await writeFile(
+      join(projectDir, "compendio.config.json"),
+      JSON.stringify({ docsDir: "documentation" }),
+      "utf8",
+    );
+    const config = loadConfig(projectDir);
+    await rm(projectDir, { recursive: true, force: true });
+    expect(config.chunk.maxTokens).toBe(480);
+  });
+
+  it("honours a declared chunk.maxTokens over the default", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-chunk-"));
+    await writeFile(
+      join(projectDir, "compendio.config.json"),
+      JSON.stringify({ chunk: { maxTokens: 600 } }),
+      "utf8",
+    );
+    const config = loadConfig(projectDir);
+    await rm(projectDir, { recursive: true, force: true });
+    expect(config.chunk.maxTokens).toBe(600);
+  });
+
   it("keeps convention at its default when the config only declares docsDir", async () => {
     const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-docsdir-"));
     await writeFile(

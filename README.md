@@ -133,7 +133,7 @@ Entirely optional — every field has a default, and Compendio works with no con
   "exclude": ["INDEX.md"],
   "db": ".compendio/compendio.db",
   "embeddings": { "provider": "local", "model": "Xenova/multilingual-e5-small" },
-  "chunk": { "minTokens": 100, "maxTokens": 800 },
+  "chunk": { "minTokens": 100, "maxTokens": 480 },
   "search": { "k": 5 },
   "sync": { "throttleMs": 30000 },
   "convention": {
@@ -204,7 +204,7 @@ Global option `-C, --root <dir>`: project root. Add `--lexical` to `index` or `s
 ```
 docs/**/*.md
      │
-     ├─▶ split into fragments at heading boundaries (tables are never cut)
+     ├─▶ split into fragments at heading boundaries, then bounded to maxTokens
      │
      ├─▶ index each fragment twice ─┬─ full-text (keywords)
      │                              └─ embeddings (meaning)
@@ -239,12 +239,12 @@ The reference corpus and evaluation set shipped in `ejemplos/` are Spanish — d
 
 ## How much does semantics add over grep?
 
-Measured with `compendio eval` on the example corpus (`ejemplos/`: 11 documents, 27 chunks, **no config file** — the zero-config path itself) and its goldenset of 22 real questions:
+Measured with `compendio eval` on the example corpus (`ejemplos/`: 11 documents, 29 chunks, **no config file** — the zero-config path itself) and its goldenset of 22 real questions:
 
 | mode | recall@5 | MRR | failures |
 |---|---|---|---|
 | **hybrid** | **1.00** | **0.943** | **0** |
-| keyword-only | 0.95 | 0.857 | 1 |
+| keyword-only | 0.95 | 0.856 | 1 |
 
 - Keyword search is already strong when the question uses the corpus terminology.
 - The gap opens on paraphrases and synonyms: *«¿Qué endpoint hay que llamar para crear un lead?»* falls out of the top 5 without embeddings, and the semantic leg recovers it. Questions with zero word overlap with the matching document are solved *only* by semantics.

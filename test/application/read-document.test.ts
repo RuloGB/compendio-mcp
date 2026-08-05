@@ -1,6 +1,15 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { formatFrontmatter } from "../../src/application/read-document";
+import { IndexDocuments } from "../../src/application/index-documents";
+import { formatFrontmatter, ReadDocument } from "../../src/application/read-document";
+import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
 import type { DocumentMeta } from "../../src/domain/model";
+import { DEFAULT_CONFIG, NO_CHUNKING } from "../../src/infrastructure/config";
+import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
+import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
+import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 import { buildHarness, type TestHarness } from "../helpers/build";
 import { FakeEmbeddings } from "../helpers/fake-embeddings";
 
@@ -85,6 +94,77 @@ describe("ReadDocument over the ejemplos corpus", () => {
     expect(result.type).toBe("section-not-found");
     if (result.type !== "section-not-found") return;
     expect(result.availableSections.length).toBeGreaterThan(0);
+  });
+});
+
+// --- A section that splitToBound divides into several chunks must still ---
+// --- read back whole and in order (design.md Decision 3, "load-bearing"). --
+//
+// No section in ejemplos/ is large enough to exceed the new 480-token bound
+// on its own (measured: the corpus's chunk-count increase at 480 comes
+// entirely from mergeTinyPieces' narrower headroom, not from any single
+// section being split -- see apply-progress.md Phase 8). This exercises the
+// real production default end to end through the full IndexDocuments ->
+// SqliteIndexStore -> ReadDocument pipeline against a synthetic document
+// sized to actually trigger a split, which the ejemplos corpus cannot.
+
+const LOOSE: ConventionConfig = {
+  mode: "loose",
+  excludedStatuses: [],
+  frontmatterFields: { type: "type", module: "module", status: "status" },
+};
+
+describe("ReadDocument — a section split by the size bound reads back whole and in order", () => {
+  it("reassembles a section that splitToBound divided into multiple same-heading chunks, in position order", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-read-split-"));
+    try {
+      const sentences = Array.from(
+        { length: 120 },
+        (_, i) => `Oración número ${i} con contenido suficiente para acumular tokens de forma constante.`,
+      ).join(" ");
+      writeFileSync(join(dir, "grande.md"), `# Documento grande\n\n## Sección extensa\n\n${sentences}\n`);
+
+      const store = new SqliteIndexStore(":memory:");
+      const indexer = new IndexDocuments(
+        new FileDocumentSource(dir, []),
+        new RemarkMarkdownParser(),
+        store,
+        null,
+        createConventionPolicy(LOOSE),
+        { chunking: DEFAULT_CONFIG.chunk, noChunking: NO_CHUNKING },
+      );
+      const read = new ReadDocument(store);
+
+      try {
+        const report = await indexer.execute();
+        expect(report.skipped).toEqual([]);
+
+        const doc = store.getDocumentByPath("grande.md");
+        expect(doc).not.toBeNull();
+        if (doc === null) return;
+        const rawChunks = store
+          .getChunksByDocument(doc.id)
+          .filter((c) => c.heading === "Sección extensa");
+        // The section alone is well over 480 tokens -- it must have been
+        // divided into more than one chunk, all sharing the same heading.
+        expect(rawChunks.length).toBeGreaterThan(1);
+
+        const result = read.execute({ path: "grande.md", section: "sección extensa" });
+        expect(result.type).toBe("section");
+        if (result.type !== "section") return;
+        // Whole: both the first and last sentence survive the split.
+        expect(result.content).toContain("Oración número 0 ");
+        expect(result.content).toContain("Oración número 119 ");
+        // In order: sentence 0 precedes sentence 119 in the reassembled text.
+        expect(result.content.indexOf("Oración número 0 ")).toBeLessThan(
+          result.content.indexOf("Oración número 119 "),
+        );
+      } finally {
+        store.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
