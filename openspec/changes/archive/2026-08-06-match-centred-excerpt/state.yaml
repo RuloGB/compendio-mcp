@@ -9,7 +9,7 @@ phases:
   tasks: done
   apply: done
   verify: done
-  archive: pending
+  archive: done
 
 execution_mode: interactive
 
