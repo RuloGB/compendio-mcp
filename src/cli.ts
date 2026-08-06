@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Command } from "commander";
 import { parse as parseYaml } from "yaml";
+import { formatEncodingNotice } from "./application/index-documents.js";
 import { formatOverview } from "./application/get-overview.js";
 import type { SearchQuery } from "./application/search-documents.js";
 import type { EvalCase, EvalSummary } from "./domain/metrics.js";
@@ -52,6 +53,9 @@ program
         for (const skippedItem of report.skipped) {
           console.warn(`WARNING ${skippedItem.path}: ${skippedItem.errors.join("; ")}`);
         }
+        for (const notice of report.encodingNotices ?? []) {
+          console.warn(`WARNING ${formatEncodingNotice(notice)}`);
+        }
         if (report.embeddingsWarning !== undefined) {
           console.warn(`WARNING ${report.embeddingsWarning}`);
         }
@@ -77,6 +81,9 @@ program
         console.warn(
           `WARNING ${skippedItem.path}: ${skippedItem.errors.join("; ")} (not listed in INDEX.md)`,
         );
+      }
+      for (const notice of report.encodingNotices ?? []) {
+        console.warn(`WARNING ${formatEncodingNotice(notice)}`);
       }
       const outcome = report.changed ? "updated" : "unchanged";
       console.log(`INDEX.md ${outcome}: ${report.documents} documents at ${report.path}`);

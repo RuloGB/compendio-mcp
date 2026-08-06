@@ -8,9 +8,11 @@ import {
   STRICT_FIXTURE_DOCS,
   type TestHarness,
 } from "../helpers/build";
+import { cp1252Bytes } from "../helpers/cp1252";
 import { BrokenEmbeddings, FakeEmbeddings } from "../helpers/fake-embeddings";
 import { IndexDocuments } from "../../src/application/index-documents";
 import type { IndexReport } from "../../src/application/index-documents";
+import { computeHash } from "../../src/application/index-pipeline";
 import { ReadDocument } from "../../src/application/read-document";
 import { SearchDocuments } from "../../src/application/search-documents";
 import { SyncIndex } from "../../src/application/sync-index";
@@ -425,6 +427,51 @@ describe("IndexDocuments — resilience skip reasons (mode-independent)", () => 
   });
 });
 
+// W3 (verify-report.md): "genuinely undecodable, distinct message, never
+// transcoded" was tested at the FileDocumentSource layer and under `loose`
+// at the IndexDocuments layer, but never with a `strict` ConventionPolicy
+// wired in. `StaticSource` above hands IndexDocuments already-decoded
+// strings, so it cannot exercise decodeText's rejection at all -- this uses
+// a real FileDocumentSource over actual on-disk bytes instead.
+describe("IndexDocuments — undecodable content is skipped under strict mode too (mode-independent resilience)", () => {
+  it("skips a binary file with the distinct encoding-rejection message under strict, and still indexes the valid document", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-strict-undecodable-"));
+    writeFileSync(join(dir, "ok.md"), "---\ntype: guide\nmodule: m\nstatus: current\n---\n\n# OK\n\nText.\n");
+    // JPEG magic header: contains 0x00, which rules out both UTF-8 and CP1252.
+    writeFileSync(
+      join(dir, "binary.md"),
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00]),
+    );
+
+    const store = new SqliteIndexStore(":memory:");
+    const source = new FileDocumentSource(dir, []);
+    const indexer = new IndexDocuments(
+      source,
+      new RemarkMarkdownParser(),
+      store,
+      null,
+      createConventionPolicy(cfgStrict({ types: ["guide"], statuses: ["current"] })),
+      { chunking: { minTokens: 10, maxTokens: 800 }, noChunking: [] },
+    );
+
+    try {
+      const report = await indexer.execute();
+
+      expect(report.indexed.map((d) => d.path)).toEqual(["ok.md"]);
+      expect(report.skipped).toHaveLength(1);
+      expect(report.skipped[0]!.path).toBe("binary.md");
+      // Distinguishable from a generic I/O error, and mode-independent: this
+      // resilience reason is collected in discover(), ahead of and outside
+      // ConventionPolicy entirely, before strict's own taxonomy checks run.
+      expect(report.skipped[0]!.errors[0]).not.toMatch(/EACCES|ENOENT|permission denied/);
+      expect(report.skipped[0]!.errors[0]).toContain("windows-1252");
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // --- SearchDocuments: open type + excludedStatuses deny-list -------------
 
 function seedDoc(
@@ -590,6 +637,156 @@ describe("SyncIndex — end-to-end incremental sync over a temp docs directory",
         forceLexical: true,
       });
       expect(stillThere.results.map((r) => r.path)).toContain("b.md");
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// --- IndexDocuments — CP1252 encoding notices, end to end -----------------
+
+describe("IndexDocuments — CP1252 documents are transcoded, indexed, and reported (Gates 1+2)", () => {
+  it("indexes a CP1252 document cleanly: zero U+FFFD, exact code points, notice present, not skipped", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-cp1252-e2e-"));
+    // Every character this change exists for: curly quotes, en dash,
+    // ellipsis (all overridden CP1252 bytes) plus an accented vowel (the
+    // identity-mapped 0xA0-0xFF range).
+    const original =
+      "# Titulo\n\n" +
+      "“Cita” con guion – y puntos suspensivos… vocal acentuada: ó.\n";
+    writeFileSync(join(dir, "cp1252.md"), cp1252Bytes(original));
+
+    const store = new SqliteIndexStore(":memory:");
+    const source = new FileDocumentSource(dir, []);
+    const indexer = new IndexDocuments(
+      source,
+      new RemarkMarkdownParser(),
+      store,
+      null,
+      createConventionPolicy(LOOSE),
+      { chunking: { minTokens: 10, maxTokens: 800 }, noChunking: [] },
+    );
+
+    try {
+      const report = await indexer.execute();
+
+      expect(report.skipped).toEqual([]);
+      expect(report.encodingNotices).toEqual([{ path: "cp1252.md", encoding: "windows-1252" }]);
+
+      const doc = store.getDocumentByPath("cp1252.md");
+      expect(doc).not.toBeNull();
+      const chunks = store.getChunksByDocument(doc!.id);
+      const allContent = chunks.map((c) => c.content).join("\n");
+      expect(allContent).not.toContain("�");
+      expect(allContent).toContain("“"); // left curly quote
+      expect(allContent).toContain("”"); // right curly quote
+      expect(allContent).toContain("–"); // en dash
+      expect(allContent).toContain("…"); // ellipsis
+      expect(allContent).toContain("ó"); // accented o
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves encodingNotices undefined for a UTF-8-only corpus (no warning noise on a healthy corpus)", async () => {
+    const harness = buildHarness(new FakeEmbeddings());
+    try {
+      const report = await harness.index.execute();
+      expect(report.encodingNotices).toBeUndefined();
+    } finally {
+      harness.close();
+    }
+  });
+});
+
+describe("SyncIndex — CP1252 encoding notices persist across passes, even with an unchanged hash", () => {
+  it("reports the transcoded document on the indexing pass and again on a hash-match no-op pass", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-cp1252-sync-"));
+    const original = "# Titulo\n\nTexto con “comillas” y guion – acentuado: ó.\n";
+    writeFileSync(join(dir, "cp1252.md"), cp1252Bytes(original));
+
+    const store = new SqliteIndexStore(":memory:");
+    const source = new FileDocumentSource(dir, []);
+    const sync = new SyncIndex(source, new RemarkMarkdownParser(), store, null, createConventionPolicy(LOOSE), {
+      chunking: { minTokens: 10, maxTokens: 800 },
+      noChunking: [],
+    });
+
+    try {
+      const first = await sync.execute();
+      expect(first.skipped).toEqual([]);
+      expect(first.indexed.map((d) => d.path)).toContain("cp1252.md");
+      expect(first.encodingNotices).toEqual([{ path: "cp1252.md", encoding: "windows-1252" }]);
+
+      // Second pass: the file on disk is unchanged (same hash), so it takes
+      // the hash-match no-op path -- but `discover()` still decodes and
+      // reports it every pass, per design.md's "even when the transcode was
+      // exact" requirement.
+      const second = await sync.execute();
+      expect(second.indexed).toEqual([]);
+      expect(second.encodingNotices).toEqual([{ path: "cp1252.md", encoding: "windows-1252" }]);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// W2 (verify-report.md): the indexing spec's "Corrected Decoding Self-Heals
+// via Incremental Sync" ADDED requirement had zero automated coverage. This
+// seeds the index the way a pre-fix `compendio index` run would have left
+// it -- content and hash both computed over the OLD UTF-8-only decoder's
+// U+FFFD-corrupted output -- then proves the fix reaches that document
+// through nothing but an ordinary incremental sync pass, with the on-disk
+// bytes never touched.
+describe("SyncIndex — self-heals a previously mis-decoded document via incremental sync", () => {
+  it("re-indexes and cleans a document whose stored hash was computed over the old decoder's U+FFFD-corrupted content", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-selfheal-"));
+    const original = "# Titulo\n\nTexto con “comillas” y guion – acentuado: ó.\n";
+    const bytes = cp1252Bytes(original);
+    writeFileSync(join(dir, "cp1252.md"), bytes);
+
+    // What the pre-fix, UTF-8-only decoder produced from these exact bytes:
+    // every byte outside the valid-UTF-8 grammar becomes U+FFFD. Sanity
+    // check makes the simulated defect explicit rather than assumed.
+    const corrupted = bytes.toString("utf8");
+    expect(corrupted).toContain("�");
+
+    const store = new SqliteIndexStore(":memory:");
+    // Seed the index exactly as a pre-fix `compendio index` run would have
+    // left it: stored content AND its hash both derive from the corrupted
+    // string, not from the real CP1252 bytes still sitting on disk.
+    store.saveDocument(
+      { path: "cp1252.md", title: "Titulo", summary: "r", tags: [], hash: computeHash(corrupted) },
+      [{ heading: "Titulo", content: corrupted, position: 0 }],
+    );
+    expect(store.getDocumentByPath("cp1252.md")).not.toBeNull();
+
+    const source = new FileDocumentSource(dir, []);
+    const sync = new SyncIndex(source, new RemarkMarkdownParser(), store, null, createConventionPolicy(LOOSE), {
+      chunking: { minTokens: 10, maxTokens: 800 },
+      noChunking: [],
+    });
+
+    try {
+      const report = await sync.execute();
+
+      // The bytes on disk never changed, but the fixed decoder's output
+      // differs from the corrupted string that was hashed and stored, so
+      // the fingerprint differs and the pass re-indexes it unassisted -- no
+      // full `compendio index` required (the requirement under test).
+      expect(report.indexed.map((d) => d.path)).toContain("cp1252.md");
+
+      const doc = store.getDocumentByPath("cp1252.md")!;
+      const chunks = store.getChunksByDocument(doc.id);
+      const allContent = chunks.map((c) => c.content).join("\n");
+      expect(allContent).not.toContain("�");
+      expect(allContent).toContain("“"); // left curly quote
+      expect(allContent).toContain("”"); // right curly quote
+      expect(allContent).toContain("–"); // en dash
+      expect(allContent).toContain("ó"); // accented o
     } finally {
       store.close();
       rmSync(dir, { recursive: true, force: true });

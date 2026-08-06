@@ -5,6 +5,7 @@ import type {
   DocumentFile,
   DocumentSource,
   EmbeddingsProvider,
+  EncodingNotice,
   IndexStore,
   MarkdownParser,
   ReadError,
@@ -22,6 +23,11 @@ export interface SyncReport {
   /** Present when embeddings were requested but unavailable for at least one
    * document or reconciliation group during this pass. */
   embeddingsWarning?: string;
+  /** Present, and non-empty, when at least one currently-discovered document
+   * decodes under a non-UTF-8 encoding -- surfaced every pass, even when the
+   * document's hash is unchanged, since `discover()` decodes every file on
+   * every pass regardless of whether it ends up re-indexed. */
+  encodingNotices?: EncodingNotice[];
 }
 
 /** Mutable accumulator threaded through one pass's three phases. */
@@ -32,6 +38,7 @@ interface PassState {
   /** Paths whose hash matched the persisted value this pass — the set the
    * vector-coverage reconciliation phase is restricted to. */
   hashMatchPaths: Set<string>;
+  encodingNotices: EncodingNotice[];
   embeddingsWarning?: string;
 }
 
@@ -65,7 +72,7 @@ export class SyncIndex {
 
   async execute(): Promise<SyncReport> {
     const start = Date.now();
-    const { files, readErrors } = await this.source.discover();
+    const { files, readErrors, encodingNotices } = await this.source.discover();
     const existing = this.store.listDocuments();
 
     const state: PassState = {
@@ -73,9 +80,10 @@ export class SyncIndex {
       skipped: readErrors.map((e) => ({ path: e.path, errors: [e.error] })),
       deleted: [],
       hashMatchPaths: new Set(),
+      encodingNotices: [],
     };
 
-    await this.processNewAndChanged(files, existing, state);
+    await this.processNewAndChanged(files, existing, encodingNotices ?? [], state);
     this.deleteMissingDocuments(files, existing, readErrors, state);
     await this.reconcileVectors(state);
 
@@ -89,21 +97,29 @@ export class SyncIndex {
       durationMs: Date.now() - start,
     };
     if (state.embeddingsWarning !== undefined) report.embeddingsWarning = state.embeddingsWarning;
+    if (state.encodingNotices.length > 0) report.encodingNotices = state.encodingNotices;
     return report;
   }
 
   /** New/changed documents: embeds each document's own chunks first, then
    * commits via `upsertDocument` (documents+chunks+fts+vectors together, one
    * transaction). A resolver rejection on a known path deletes the stale
-   * row; on a new path it is a plain skip. */
+   * row; on a new path it is a plain skip. Also carries `discover()`'s
+   * per-file encoding notices onto the pass state for every currently
+   * discovered file, whether hash-matched or re-indexed this pass. */
   private async processNewAndChanged(
     files: DocumentFile[],
     existing: IndexedDocument[],
+    encodingNotices: EncodingNotice[],
     state: PassState,
   ): Promise<void> {
     const existingByPath = new Map(existing.map((doc) => [doc.path, doc]));
+    const noticeByPath = new Map(encodingNotices.map((n) => [n.path, n]));
 
     for (const file of files) {
+      const notice = noticeByPath.get(file.path);
+      if (notice !== undefined) state.encodingNotices.push(notice);
+
       const hash = computeHash(file.content);
       const existingDoc = existingByPath.get(file.path);
 

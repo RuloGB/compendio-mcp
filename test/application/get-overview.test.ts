@@ -129,6 +129,14 @@ describe("toSyncInfo — content-based omission", () => {
       embeddingsWarning: "embeddings unavailable: search runs in lexical mode",
     });
   });
+
+  it("is non-null for a pass whose only finding is a populated encodingNotices", () => {
+    const report = fakeReport({ encodingNotices: [{ path: "cp1252.md", encoding: "windows-1252" }] });
+    expect(toSyncInfo(report)).toEqual({
+      skipped: [],
+      encodingNotices: [{ path: "cp1252.md", encoding: "windows-1252" }],
+    });
+  });
 });
 
 describe("formatOverview — sync block", () => {
@@ -157,6 +165,22 @@ describe("formatOverview — sync block", () => {
     expect(salida).toContain("roto.md");
     expect(salida).toContain("permiso denegado");
     expect(salida).toContain("embeddings unavailable: search runs in lexical mode");
+    store.close();
+  });
+
+  it("renders an encoding-notice line when sync.encodingNotices is present", () => {
+    const store = new SqliteIndexStore(":memory:");
+    seed(store, { path: "a.md" });
+    const overview = new GetOverview(store).execute();
+
+    const salida = formatOverview(overview, {
+      skipped: [],
+      encodingNotices: [{ path: "cp1252.md", encoding: "windows-1252" }],
+    });
+
+    expect(salida).toContain("Sync");
+    expect(salida).toContain("cp1252.md");
+    expect(salida).toContain("windows-1252");
     store.close();
   });
 });

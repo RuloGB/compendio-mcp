@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ConventionPolicy } from "../domain/convention.js";
 import { INDEX_FILE, renderIndexMd, type IndexEntry } from "../domain/index-markdown.js";
-import type { DocumentSource, IndexFileWriter, MarkdownParser } from "../domain/ports.js";
+import type { DocumentSource, EncodingNotice, IndexFileWriter, MarkdownParser } from "../domain/ports.js";
 import type { SkippedFileReport } from "./index-documents.js";
 
 export interface IndexMdReport {
@@ -12,6 +12,10 @@ export interface IndexMdReport {
   /** Documents listed in the index. */
   documents: number;
   skipped: SkippedFileReport[];
+  /** Present, and non-empty, when at least one listed document decodes under
+   * a non-UTF-8 encoding. `INDEX.md` itself is filtered out, exactly as
+   * `skipped` already is. */
+  encodingNotices?: EncodingNotice[];
 }
 
 /**
@@ -31,7 +35,7 @@ export class GenerateIndexMd {
   ) {}
 
   async execute(): Promise<IndexMdReport> {
-    const { files, readErrors } = await this.source.discover();
+    const { files, readErrors, encodingNotices } = await this.source.discover();
     const entries: IndexEntry[] = [];
     const skipped: SkippedFileReport[] = readErrors
       .filter((e) => e.path !== INDEX_FILE)
@@ -64,12 +68,15 @@ export class GenerateIndexMd {
     }
 
     const written = await this.writer.write(renderIndexMd(entries, this.compare));
-    return {
+    const report: IndexMdReport = {
       path: written.path,
       changed: written.changed,
       documents: entries.length,
       skipped,
     };
+    const notices = (encodingNotices ?? []).filter((n) => n.path !== INDEX_FILE);
+    if (notices.length > 0) report.encodingNotices = notices;
+    return report;
   }
 }
 

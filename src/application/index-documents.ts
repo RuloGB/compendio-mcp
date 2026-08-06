@@ -4,6 +4,7 @@ import type { SearchMode } from "../domain/model.js";
 import type {
   DocumentSource,
   EmbeddingsProvider,
+  EncodingNotice,
   IndexStore,
   MarkdownParser,
 } from "../domain/ports.js";
@@ -29,6 +30,18 @@ export interface IndexReport {
   durationMs: number;
   /** Present when embeddings were requested but unavailable (degraded mode). */
   embeddingsWarning?: string;
+  /** Present, and non-empty, when at least one document was decoded under a
+   * non-UTF-8 encoding during this run -- a reportable event, not a failure:
+   * the document is indexed normally. */
+  encodingNotices?: EncodingNotice[];
+}
+
+/** `${path}: not UTF-8 — decoded as ${encoding} and indexed; re-save as UTF-8
+ * to silence this` -- one renderer shared by `index`/`index-md`'s CLI warn
+ * loops and `docs_overview`'s `Sync:` block, so the remediation message
+ * cannot drift between the three call sites. */
+export function formatEncodingNotice(notice: EncodingNotice): string {
+  return `${notice.path}: not UTF-8 — decoded as ${notice.encoding} and indexed; re-save as UTF-8 to silence this`;
 }
 
 export interface IndexDocumentsOptions {
@@ -67,7 +80,7 @@ export class IndexDocuments {
   async execute(): Promise<IndexReport> {
     const start = Date.now();
     this.report({ phase: "discovery", kind: "start" });
-    const { files, readErrors } = await this.source.discover();
+    const { files, readErrors, encodingNotices } = await this.source.discover();
 
     const indexed: IndexedFileReport[] = [];
     const skipped: SkippedFileReport[] = readErrors.map((e) => ({
@@ -110,6 +123,7 @@ export class IndexDocuments {
       durationMs: Date.now() - start,
     };
     if (warning !== null) report.embeddingsWarning = warning;
+    if (encodingNotices !== undefined && encodingNotices.length > 0) report.encodingNotices = encodingNotices;
     return report;
   }
 
