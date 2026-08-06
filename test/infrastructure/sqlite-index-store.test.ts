@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DocumentMeta } from "../../src/domain/model";
-import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
+import { SqliteIndexStore, toFtsQuery } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
 function meta(overrides: Partial<DocumentMeta> = {}): DocumentMeta {
   return {
@@ -158,6 +158,30 @@ describe("SqliteIndexStore", () => {
 
     const conDenyList = store.searchLexical("unico1", { excludedStatuses: ["borrador"] }, 10);
     expect(conDenyList).toHaveLength(2); // vigente.md and sin-status.md remain eligible
+  });
+});
+
+// Regression guard for design.md Decision 2: toFtsQuery now delegates to
+// the shared tokenizeQuery (src/domain/match-location.ts), but the MATCH
+// string it emits must be byte-identical to what the old, self-contained
+// implementation produced — this is the one place the change can reach
+// retrieval, and Gate 4 (compendio eval identity) depends on it staying
+// exactly this string, not an equivalent one.
+describe("toFtsQuery — emitted MATCH string is byte-identical across the tokenizeQuery extraction", () => {
+  const cases: [string, string | null][] = [
+    ["email duplicado", '"email" OR "duplicado"'],
+    ["¿Cuándo se considera duplicado un lead?", '"Cuándo" OR "se" OR "considera" OR "duplicado" OR "un" OR "lead"'],
+    ["", null],
+    ["   ", null],
+    ["the windvane", '"the" OR "windvane"'],
+    ["(sample AND OR NEAR)*", '"sample" OR "AND" OR "OR" OR "NEAR"'],
+    ["PostgreSQL vs MongoDB", '"PostgreSQL" OR "vs" OR "MongoDB"'],
+    ["hyphen-ated word", '"hyphen" OR "ated" OR "word"'],
+    ["número 123 con dígitos", '"número" OR "123" OR "con" OR "dígitos"'],
+  ];
+
+  it.each(cases)("toFtsQuery(%j) === %j", (query, expected) => {
+    expect(toFtsQuery(query)).toBe(expected);
   });
 });
 

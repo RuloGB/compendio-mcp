@@ -9,6 +9,7 @@ import type {
   IndexedDocument,
   SearchFilters,
 } from "../../domain/model.js";
+import { tokenizeQuery } from "../../domain/match-location.js";
 import type { ChunkEmbedding, ChunkMissingVector, IndexStore, SavedDocument } from "../../domain/ports.js";
 
 interface DocumentRow {
@@ -425,12 +426,18 @@ export class SqliteIndexStore implements IndexStore {
  * Converts free text into a safe FTS5 query: bare terms joined with OR so
  * natural-language questions never break MATCH syntax, and BM25 does the
  * ranking. Returns null when no searchable token remains.
+ *
+ * Delegates tokenization to the domain's `tokenizeQuery` (design.md
+ * Decision 2) so the terms the excerpt locator hunts for are, by
+ * construction, the terms the lexical leg searched with — one definition
+ * of "what a query term is," not two that can silently drift apart.
+ * Exported (only) for the regression test that asserts this emitted MATCH
+ * string stayed byte-identical across that extraction (Gate 4 depends on
+ * it): `tokenizeQuery` MUST NOT lowercase or fold, since FTS5 does its own
+ * case folding and changing this string risks moving retrieval.
  */
-function toFtsQuery(query: string): string | null {
-  const tokens = query
-    .split(/[^\p{L}\p{N}]+/u)
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0);
+export function toFtsQuery(query: string): string | null {
+  const tokens = tokenizeQuery(query);
   if (tokens.length === 0) return null;
   return tokens.map((t) => `"${t}"`).join(" OR ");
 }
