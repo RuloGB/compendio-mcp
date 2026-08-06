@@ -120,8 +120,9 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     expect(primero.path).toBe("informes/plan-pruebas.md");
     expect(primero.section.length).toBeGreaterThan(0);
     expect(primero.status).toBe("borrador");
-    // +1 for the ellipsis buildExcerpt appends when it cuts.
-    expect(primero.excerpt.length).toBeLessThanOrEqual(LEAD_EXCERPT_CHARS + 1);
+    // +2: the rank-1 excerpt is now a window (match-centred-excerpt), which
+    // can carry an ellipsis at BOTH truncated edges, not only a trailing one.
+    expect(primero.excerpt.length).toBeLessThanOrEqual(LEAD_EXCERPT_CHARS + 2);
     expect(primero.excerpt).not.toContain("###");
   });
 
@@ -132,7 +133,8 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     expect(primero.path.length).toBeGreaterThan(0);
     expect(primero.section.length).toBeGreaterThan(0);
     expect(primero.status).toBeUndefined();
-    expect(primero.excerpt.length).toBeLessThanOrEqual(LEAD_EXCERPT_CHARS + 1);
+    // +2, same reason as above: a rank-1 window can be truncated on both edges.
+    expect(primero.excerpt.length).toBeLessThanOrEqual(LEAD_EXCERPT_CHARS + 2);
     expect(primero.excerpt).not.toContain("###");
   });
 
@@ -179,9 +181,16 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     const respuesta = await harness.search.execute({ query: "email duplicado", k: 5 });
     expect(respuesta.results.length).toBeGreaterThan(1);
     const [lead, ...supporting] = respuesta.results;
-    expect(lead!.excerpt.length).toBeLessThanOrEqual(LEAD_EXCERPT_CHARS + 1);
+    // +2: the lead result's excerpt is a window, truncatable on both edges.
+    expect(lead!.excerpt.length).toBeLessThanOrEqual(LEAD_EXCERPT_CHARS + 2);
     for (const result of supporting) {
+      // Deliberately still +1, not +2: supporting fragments stay
+      // start-anchored prefixes (design.md Decision 7) — never a window, so
+      // never a leading ellipsis. Asserted explicitly (not left to drift)
+      // so a later edit that starts centring supporting fragments too fails
+      // loudly here instead of silently.
       expect(result.excerpt.length).toBeLessThanOrEqual(SUPPORTING_EXCERPT_CHARS + 1);
+      expect(result.excerpt.startsWith("…")).toBe(false);
     }
     // The lead must actually be allowed to carry more, otherwise the gradient
     // exists in the constants but never reaches the wire.

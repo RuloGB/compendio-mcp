@@ -1,5 +1,6 @@
 import { buildExcerpt, excerptBudget } from "../domain/excerpt.js";
 import { capPerDocument, reciprocalRankFusion } from "../domain/fusion.js";
+import { locateSpans, tokenizeQuery } from "../domain/match-location.js";
 import type { SearchFilters, SearchResponse, SearchResultItem } from "../domain/model.js";
 import {
   collectFacets,
@@ -94,20 +95,30 @@ export class SearchDocuments {
     ).slice(0, k);
 
     const documents = this.store.getDocumentsByIds(chunks.map((c) => c.documentId));
+    // Hoisted once per search, not once per result — the same terms
+    // `searchLexical`'s `toFtsQuery` used, since both now share
+    // `tokenizeQuery` (design.md Decision 2).
+    const terms = tokenizeQuery(query.query);
     const results: SearchResultItem[] = [];
     for (const entry of top) {
       const chunk = chunkById.get(entry.id);
       if (chunk === undefined) continue;
       const doc = documents.get(chunk.documentId);
       if (doc === undefined) continue;
+      // `results.length` is this item's 0-based rank among emitted results,
+      // which is what the caller sees — not its index in `top`, where a
+      // dropped chunk would leave a hole.
+      const rank = results.length;
+      // Spans are located for the rank-0 (lead) result only (design.md
+      // Decision 7): supporting fragments stay start-anchored prefixes, and
+      // a chunk the vector leg found alone has no lexical match to locate —
+      // that IS the empty-spans path, not a separate branch.
+      const spans = rank === 0 ? locateSpans(chunk.content, terms) : [];
       const item: SearchResultItem = {
         path: doc.path,
         title: doc.title,
         section: chunk.heading,
-        // `results.length` is this item's 0-based rank among emitted results,
-        // which is what the caller sees — not its index in `top`, where a
-        // dropped chunk would leave a hole.
-        excerpt: buildExcerpt(chunk.content, excerptBudget(results.length)),
+        excerpt: buildExcerpt(chunk.content, excerptBudget(rank), spans),
         score: Number(entry.score.toFixed(4)),
       };
       if (doc.status !== undefined) item.status = doc.status;

@@ -105,12 +105,13 @@ export function createMcpServer(container: Container): McpServer {
         "message, limits, endpoints, deployment steps, or the reasoning behind a decision. " +
         "Cheapest first probe for such a question; source code remains the authority on " +
         "current behaviour, while these docs are the only record of intent. " +
-        "The top result carries a full-length excerpt that usually answers outright; the rest " +
-        "carry short ones, enough to tell whether the top result is the right one. Each result " +
-        "has path, title, section, excerpt and score. An excerpt ending in '…' was cut — that " +
-        "is the signal to call read_doc with its path and section. If the project declares " +
-        "convention.excludedStatuses, documents in those statuses are left out unless " +
-        "include_excluded is set; if it declares none, no document is excluded by status.",
+        "The top result carries a full-length excerpt, centred on the part of the document that " +
+        "matched, which usually answers outright; the rest carry short ones from the start of " +
+        "their section, enough to tell whether the top result is the right one. Each result has " +
+        "path, title, section, excerpt and score. A '…' at either end of an excerpt marks content " +
+        "omitted there — that is the signal to call read_doc with its path and section. If the " +
+        "project declares convention.excludedStatuses, documents in those statuses are left out " +
+        "unless include_excluded is set; if it declares none, no document is excluded by status.",
       inputSchema: {
         query: z.string().min(1).describe("Natural-language query"),
         // Filters are a footgun on first contact: their values are

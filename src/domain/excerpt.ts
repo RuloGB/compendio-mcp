@@ -1,3 +1,6 @@
+import { flattenWithMap, toFlatOffset, type FlatText } from "./flatten-map.js";
+import { selectMatchCentre, type MatchSpan } from "./match-location.js";
+
 /**
  * Budget for the lead (rank-1) fragment: large enough to answer the question
  * outright, so no `read_doc` round trip is needed. Capped rather than
@@ -35,40 +38,122 @@ export function excerptBudget(rank: number): number {
 
 /**
  * Builds the excerpt returned by search: strips heading lines and light
- * markdown syntax, collapses whitespace, and cuts at a word boundary.
- * Defaults to the supporting budget — an unqualified excerpt is the cheap one.
+ * markdown syntax, collapses whitespace, and slices a window at most
+ * `maxChars` long. Defaults to the supporting budget — an unqualified
+ * excerpt is the cheap one.
+ *
+ * `spans` locate where the query matched, in RAW markdown coordinates (the
+ * same string `markdown` is). `[]` (the default) is today's prefix path,
+ * byte-identical to before this parameter existed (design.md Decision 6) —
+ * this is deliberately also the vector-only path, since a chunk the vector
+ * leg found alone has no lexical match to locate (design.md Decision 7).
+ *
+ * Ordering is fixed by design (a correctness constraint, not a preference):
+ * locate in raw -> flatten the WHOLE chunk -> map the offsets -> slice the
+ * window in flattened space. Slicing a raw window first and flattening the
+ * substring would leak half a fenced code block into the excerpt.
  */
-export function buildExcerpt(markdown: string, maxChars: number = SUPPORTING_EXCERPT_CHARS): string {
-  const dense = flatten(markdown, true);
+export function buildExcerpt(
+  markdown: string,
+  maxChars: number = SUPPORTING_EXCERPT_CHARS,
+  spans: readonly MatchSpan[] = [],
+): string {
+  let flat = flattenWithMap(markdown, true);
   // A section whose body is entirely fenced blocks — a templates or examples
   // section — strips to nothing. Returning that empty string is worse than
   // returning code: it spends the rank's budget on silence AND carries no
   // trailing "…", so the tool contract reads it as "complete" and the agent
   // is told not to call read_doc. Keeping the fences is the honest fallback.
-  const text = dense.length > 0 ? dense : flatten(markdown, false);
+  // The map belongs to whichever pass actually produced the text.
+  if (flat.text.length === 0) flat = flattenWithMap(markdown, false);
+  const text = flat.text;
 
   if (text.length <= maxChars) return text;
+
+  const flatSpans = mapSpansToFlat(flat, spans);
+  if (flatSpans.length === 0) return prefixExcerpt(text, maxChars);
+
+  const centre = selectMatchCentre(flatSpans, maxChars);
+  if (centre === null) return prefixExcerpt(text, maxChars);
+
+  const { start, end } = computeWindow(text, centre, maxChars, flatSpans);
+  const leading = start > 0 ? "…" : "";
+  const trailing = end < text.length ? "…" : "";
+  return `${leading}${text.slice(start, end)}${trailing}`;
+}
+
+/**
+ * Maps raw-coordinate spans into flattened coordinates. A span whose text
+ * did not survive flattening (e.g. inside a dropped fenced block) collapses
+ * to zero width and is discarded — you cannot centre on text the reader
+ * will never see.
+ */
+function mapSpansToFlat(flat: FlatText, spans: readonly MatchSpan[]): MatchSpan[] {
+  return spans
+    .map((span) => ({
+      start: toFlatOffset(flat, span.start),
+      end: toFlatOffset(flat, span.end),
+      term: span.term,
+    }))
+    .filter((span) => span.end > span.start);
+}
+
+/**
+ * Today's prefix behaviour, unchanged: cut at `maxChars`, snap back to the
+ * last word boundary if it falls past the halfway point, and append a
+ * trailing ellipsis. No leading ellipsis — a prefix always starts at 0.
+ */
+function prefixExcerpt(text: string, maxChars: number): string {
   const cut = text.slice(0, maxChars);
   const lastSpace = cut.lastIndexOf(" ");
   return `${cut.slice(0, lastSpace > maxChars / 2 ? lastSpace : maxChars)}…`;
 }
 
 /**
- * Collapses markdown to a single plain-text line. Heading lines always go;
- * fenced blocks go only when `dropFencedBlocks` is set, so the caller can
- * retry without that rule when it strips a section down to nothing.
+ * Clamps a `maxChars`-wide window around `centre`, then snaps both edges to
+ * a word boundary (design.md Decision 5). Snapping only ever shrinks the
+ * window, so `end - start <= maxChars` always holds; ellipses are added on
+ * top, so the final length is at most `maxChars + 2`.
+ *
+ * The snap-revert guard: a snap that would push any span visible in the
+ * pre-snap window outside `[start, end)` is reverted — word-boundary
+ * snapping can never hide the match it was centred on.
  */
-function flatten(markdown: string, dropFencedBlocks: boolean): string {
-  const withoutHeadings = markdown
-    .split("\n")
-    .filter((line) => !/^\s*#{1,6}\s/.test(line))
-    .join(" ");
-  const body = dropFencedBlocks
-    ? withoutHeadings.replace(/```[^`]*```/g, " ")
-    : withoutHeadings;
-  return body
-    .replace(/[`*_>|]/g, " ")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
+function computeWindow(
+  text: string,
+  centre: number,
+  maxChars: number,
+  flatSpans: readonly MatchSpan[],
+): { start: number; end: number } {
+  const maxStart = Math.max(0, text.length - maxChars);
+  let start = clamp(centre - Math.floor(maxChars / 2), 0, maxStart);
+  let end = Math.min(start + maxChars, text.length);
+
+  const visible = flatSpans.filter((span) => span.start < end && span.end > start);
+  const clusterStart = visible.length > 0 ? Math.min(...visible.map((span) => span.start)) : centre;
+  const clusterEnd = visible.length > 0 ? Math.max(...visible.map((span) => span.end)) : centre;
+
+  if (start > 0) {
+    const firstSpace = text.indexOf(" ", start);
+    const half = start + Math.floor((end - start) / 2);
+    if (firstSpace !== -1 && firstSpace < end && firstSpace <= half) {
+      const candidateStart = firstSpace + 1;
+      if (candidateStart <= clusterStart) start = candidateStart;
+    }
+  }
+
+  if (end < text.length) {
+    const lastSpace = text.lastIndexOf(" ", end - 1);
+    const half = start + Math.ceil((end - start) / 2);
+    if (lastSpace !== -1 && lastSpace >= start && lastSpace > half) {
+      const candidateEnd = lastSpace;
+      if (candidateEnd >= clusterEnd) end = candidateEnd;
+    }
+  }
+
+  return { start, end };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }

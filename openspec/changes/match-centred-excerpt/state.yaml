@@ -1,0 +1,73 @@
+change: match-centred-excerpt
+artifact_store: openspec
+
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: done
+  archive: pending
+
+execution_mode: interactive
+
+delivery_decision:
+  strategy: single-pr
+  size_exception: accepted
+  decided_by: user
+  decided_on: 2026-08-06
+  forecast_at_decision:
+    total_lines: "750-800"
+    budget: 400
+    proposal_phase_forecast: "300-470"
+  orchestrator_recommendation: chained-prs
+  rationale: >
+    The user reviewed the design-phase forecast and chose a single PR with
+    size:exception over the recommended two-PR chain. Recorded so a reviewer
+    knows the size is a deliberate, informed decision rather than an oversight.
+    The design's cut line remains the review structure inside the single PR:
+    work unit 1 is the pure core (flatten-map.ts, match-location.ts, the
+    toFtsQuery extraction and their invariant tests) and answers "is the offset
+    map correct?"; work unit 2 is the window (excerpt.ts, the call site, the
+    fixtures and the contract text) and answers "does the window reach the
+    answer?". Precedent: encoding-aware-reads (forecast 555-695) and
+    incremental-reindex (forecast 500-800) both shipped this way.
+
+review_focus:
+  - >
+    The raw-to-flattened offset map is the highest-risk logic in the change. A
+    silent off-by-N centres on the wrong text and no test fails by default.
+    Invariant I3 and the referenceFlatten golden comparison (I4) exist for this.
+  - >
+    toFtsQuery is deliberately modified — the one place this change can reach
+    retrieval. tokenizeQuery MUST NOT lowercase or fold, or the emitted MATCH
+    string changes. Gate 4 (compendio eval, exact identity, no tolerance band)
+    is the real check on this, not a formality.
+  - >
+    Gate 3 (the stopword trap) is the gate that distinguishes a real fix from
+    position-based centring, which passes casual inspection while reproducing
+    the defect.
+
+source: >
+  IMPROVEMENTS.md section 2, "The lead excerpt is a blind prefix, not a window
+  on the match". Second of the three defects measured on 2026-08-05. Improvement
+  1 shipped as 2026-08-06-encoding-aware-reads; improvement 3 remains open.
+
+notes:
+  - >
+    The exploration sub-agent had no write access; the orchestrator persisted
+    exploration.md and independently re-verified the FTS5 DDL, the single
+    buildExcerpt call site, flatten()'s transformation order, and
+    EvaluateSearch's non-use of the excerpt field. One exploration claim was
+    false (goldenset.yaml's location) and is corrected in place in section 6.
+  - >
+    IMPROVEMENTS.md names FTS5 offsets() as a source for the match span.
+    offsets() is FTS3/4 only and does not exist in FTS5. highlight() and
+    snippet() are the real options. This must not survive into the proposal.
+  - >
+    Two claims are deliberately unmeasured (exploration section 7) and are
+    scheduled as the first task of apply, before the design mechanism is locked:
+    NFD diacritic-fold fidelity versus unicode61 remove_diacritics 2, and
+    highlight() behaviour under WHERE chunks_fts MATCH ? AND rowid = ?.

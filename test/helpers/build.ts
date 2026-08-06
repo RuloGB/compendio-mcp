@@ -47,6 +47,16 @@ export const STRICT_FIXTURE_CONVENTION: ConventionConfig = {
   frontmatterFields: { type: "type", module: "module", status: "status" },
 };
 
+/**
+ * `match-centred-excerpt` fixture corpus (design.md "The gates"): five
+ * English documents, one chunk each, driving Gates 1/2/3/5 lexical-only
+ * (via a null embeddings provider) so the assertions are deterministic with
+ * no model and no vector leg.
+ */
+export const EXCERPT_WINDOW_DOCS = fileURLToPath(
+  new URL("../fixtures/excerpt-window/docs", import.meta.url),
+);
+
 export interface TestHarness {
   store: SqliteIndexStore;
   index: IndexDocuments;
