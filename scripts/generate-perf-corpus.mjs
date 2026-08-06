@@ -166,7 +166,10 @@ function generateDefaultProfile(target, asCp1252) {
   // estimateTokens x 4, matching the measured real-corpus distribution.
   const manual = headinglessDocument(167_345, { marker: true });
   if (asCp1252) {
-    // latin1 is CP1252-compatible for the accented characters this prose uses.
+    // latin1 is CP1252-compatible only for the 0xA0-0xFF accented-vowel range
+    // this prose uses -- NOT in general (0x80-0x9F diverges: latin1 maps
+    // those bytes to C1 controls, CP1252 maps 27 of them to curly quotes,
+    // dashes, and similar punctuation). Not a model for decode-text.ts.
     write("ba/manual.md", manual, "latin1");
   } else {
     write("ba/manual.md", manual);
