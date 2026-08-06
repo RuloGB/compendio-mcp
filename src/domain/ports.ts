@@ -20,10 +20,24 @@ export interface ReadError {
   error: string;
 }
 
+/** A file successfully decoded under a non-UTF-8 encoding. Reportable, not a
+ * failure: the document is indexed normally, but every consumer of the
+ * discovery/report pipeline is told, even when the transcode was exact. */
+export interface EncodingNotice {
+  path: string;
+  /** Open label, e.g. "windows-1252". The closed union lives in the adapter
+   * (`decode-text.ts`'s `DecodedEncoding`) -- the domain must not import it. */
+  encoding: string;
+}
+
 /** Result of a discovery pass: successfully read files plus per-file read failures. */
 export interface DiscoverResult {
   files: DocumentFile[];
   readErrors: ReadError[];
+  /** Optional so existing in-memory `DocumentSource` fakes compile unchanged;
+   * the production adapter always sets it (empty array when nothing was
+   * transcoded). */
+  encodingNotices?: EncodingNotice[];
 }
 
 /**

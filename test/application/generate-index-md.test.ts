@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { GenerateIndexMd } from "../../src/application/generate-index-md";
 import { createIndexComparator, createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
@@ -5,10 +8,12 @@ import type {
   DiscoverResult,
   DocumentFile,
   DocumentSource,
+  EncodingNotice,
   IndexFileWriter,
   IndexWriteResult,
   ReadError,
 } from "../../src/domain/ports";
+import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 
 const LOOSE: ConventionConfig = {
@@ -41,6 +46,19 @@ class StaticSource implements DocumentSource {
   ) {}
   async discover(): Promise<DiscoverResult> {
     return { files: this.files, readErrors: this.readErrors };
+  }
+}
+
+/** Separate from `StaticSource` (which stays untouched, per design Decision
+ * 6) so it can additionally return `encodingNotices` without widening the
+ * fake every other test in this file relies on. */
+class SourceWithEncodingNotices implements DocumentSource {
+  constructor(
+    private readonly files: DocumentFile[],
+    private readonly encodingNotices: EncodingNotice[],
+  ) {}
+  async discover(): Promise<DiscoverResult> {
+    return { files: this.files, readErrors: [], encodingNotices: this.encodingNotices };
   }
 }
 
@@ -195,5 +213,61 @@ describe("GenerateIndexMd — resilience (mode-independent)", () => {
     expect(report.documents).toBe(1);
     expect(report.skipped).toEqual([{ path: "guides/unreadable.md", errors: ["permission denied"] }]);
     expect(writer.content).toContain("guides/transversal-valid.md");
+  });
+});
+
+describe("GenerateIndexMd — encoding notices (encoding-aware-reads)", () => {
+  it("lists and reports a transcoded document, filtered on INDEX.md like skipped", async () => {
+    const { useCase, writer } = buildUseCase(
+      new SourceWithEncodingNotices(
+        [VALID_DOC],
+        [
+          { path: "guides/transversal-valid.md", encoding: "windows-1252" },
+          { path: "INDEX.md", encoding: "windows-1252" },
+        ],
+      ),
+    );
+    const report = await useCase.execute();
+
+    expect(report.documents).toBe(1);
+    expect(writer.content).toContain("guides/transversal-valid.md");
+    expect(report.encodingNotices).toEqual([
+      { path: "guides/transversal-valid.md", encoding: "windows-1252" },
+    ]);
+  });
+});
+
+// W4 (verify-report.md): every resilience test above uses a fake DocumentSource
+// that hands GenerateIndexMd an already-decoded readError string (e.g. "permission
+// denied") -- never the real decodeText-produced message. This uses a real
+// FileDocumentSource over actual on-disk bytes so the "distinguishable from a
+// generic I/O error" half of the index-md spec's undecodable-content scenario is
+// proven against production wiring, not a hand-written stand-in for it.
+describe("GenerateIndexMd — undecodable content, real decodeText rejection message", () => {
+  it("skips a binary file with a message distinguishable from a generic I/O error, and lists the remaining document", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-indexmd-undecodable-"));
+    mkdirSync(join(dir, "guides"));
+    writeFileSync(join(dir, "guides", "transversal-valid.md"), VALID_DOC.content);
+    // JPEG magic header: contains 0x00, which rules out both UTF-8 and CP1252.
+    writeFileSync(
+      join(dir, "guides", "binary.md"),
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00]),
+    );
+
+    const source = new FileDocumentSource(dir, []);
+    const { useCase, writer } = buildUseCase(source);
+
+    try {
+      const report = await useCase.execute();
+
+      expect(report.documents).toBe(1);
+      expect(writer.content).toContain("guides/transversal-valid.md");
+      expect(report.skipped).toHaveLength(1);
+      expect(report.skipped[0]!.path).toBe("guides/binary.md");
+      expect(report.skipped[0]!.errors[0]).not.toMatch(/EACCES|ENOENT|permission denied/);
+      expect(report.skipped[0]!.errors[0]).toContain("windows-1252");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

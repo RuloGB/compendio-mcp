@@ -1,6 +1,6 @@
 import { displaySummary, formatDocLine } from "../domain/index-markdown.js";
-import type { IndexStore } from "../domain/ports.js";
-import type { SkippedFileReport } from "./index-documents.js";
+import type { EncodingNotice, IndexStore } from "../domain/ports.js";
+import { formatEncodingNotice, type SkippedFileReport } from "./index-documents.js";
 import type { SyncReport } from "./sync-index.js";
 
 export interface OverviewLine {
@@ -53,21 +53,31 @@ export class GetOverview {
 export interface SyncInfo {
   skipped: SkippedFileReport[];
   embeddingsWarning?: string;
+  /** Present, and non-empty, when the most recent pass decoded at least one
+   * document under a non-UTF-8 encoding. */
+  encodingNotices?: EncodingNotice[];
 }
 
 /**
  * Maps `SyncScheduler.lastReport` to `SyncInfo`. The omission rule
  * is CONTENT-based, not presence-based: `null` both when there is no report
- * yet, AND when the most recent pass had nothing to report (empty `skipped`
- * and no `embeddingsWarning`) — `runTracked()` sets `lastReport` after every
- * completed pass, including a fully clean one, so a presence-only rule would
- * render an empty block forever after the first successful pass.
+ * yet, AND when the most recent pass had nothing to report (empty `skipped`,
+ * no `embeddingsWarning`, and no `encodingNotices`) — `runTracked()` sets
+ * `lastReport` after every completed pass, including a fully clean one, so a
+ * presence-only rule would render an empty block forever after the first
+ * successful pass. A pass whose only finding is a transcoded document (Gate
+ * 2) MUST still surface as non-null, or that finding renders nothing.
  */
 export function toSyncInfo(report: SyncReport | null): SyncInfo | null {
   if (report === null) return null;
-  if (report.skipped.length === 0 && report.embeddingsWarning === undefined) return null;
+  const encodingNotices = report.encodingNotices;
+  const hasEncodingNotices = encodingNotices !== undefined && encodingNotices.length > 0;
+  if (report.skipped.length === 0 && report.embeddingsWarning === undefined && !hasEncodingNotices) {
+    return null;
+  }
   const info: SyncInfo = { skipped: report.skipped };
   if (report.embeddingsWarning !== undefined) info.embeddingsWarning = report.embeddingsWarning;
+  if (encodingNotices !== undefined && encodingNotices.length > 0) info.encodingNotices = encodingNotices;
   return info;
 }
 
@@ -93,6 +103,9 @@ export function formatOverview(
     }
     if (sync.embeddingsWarning !== undefined) {
       lines.push(`WARNING ${sync.embeddingsWarning}`);
+    }
+    for (const notice of sync.encodingNotices ?? []) {
+      lines.push(`WARNING ${formatEncodingNotice(notice)}`);
     }
   }
   return lines.join("\n");

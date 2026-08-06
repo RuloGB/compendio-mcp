@@ -1,0 +1,39 @@
+change: encoding-aware-reads
+artifact_store: openspec
+
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: pending
+  verify: pending
+  archive: pending
+
+delivery_decision:
+  strategy: single-pr
+  size_exception: accepted
+  decided_by: user
+  decided_on: 2026-08-06
+  forecast_at_decision:
+    total_lines: "555-695"
+    work_unit_1_decoder_adapter: "360-445"
+    work_unit_2_report_threading: "195-250"
+    budget: 400
+  orchestrator_recommendation: chained-prs (stacked-to-main)
+  rationale: >
+    The user reviewed the forecast and chose a single PR with size:exception over
+    the recommended two-PR chain. Recorded so a reviewer knows the size is a
+    deliberate, informed decision rather than an oversight. The two work units
+    defined in tasks.md remain the review structure inside the single PR: work
+    unit 1 answers "is the CP1252 table correct?", work unit 2 answers "does the
+    notice reach every surface?". Precedent: the archived incremental-reindex
+    change shipped the same way (forecast 500-800, size:exception accepted).
+
+review_focus:
+  - The 27-entry CP1252 table, byte by byte, against the two cited authorities.
+    This is the highest-risk data in the change and the reason the orchestrator
+    recommended splitting.
+  - Gate 1 is the discriminating gate. Gate 3's corpus contains no 0x80-0x9F
+    byte, so it passes even with a latin1-only decoder.
