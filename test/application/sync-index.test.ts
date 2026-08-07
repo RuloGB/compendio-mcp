@@ -14,6 +14,7 @@ import type {
   ReadError,
   SavedDocument,
 } from "../../src/domain/ports";
+import { CompositeDocumentSource, type RootSource } from "../../src/infrastructure/fs/composite-document-source";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
@@ -290,6 +291,108 @@ describe("SyncIndex — read failures protect the affected path subtree from del
     expect(second.skipped).toEqual([{ path: "a.md", errors: ["editor lock"] }]);
     expect(store.getDocumentByPath("a.md")).not.toBeNull();
     close();
+  });
+});
+
+// --- Gate 4b: a failed root's alias-prefixed ReadError protects its whole ---
+// --- subtree from deletion (design.md Decision 4, tasks.md Phase 11). ------
+//
+// `isProtected` (sync-index.ts, unchanged by this change) matches a
+// `ReadError.path` against persisted `path` values via exact-equality or a
+// `<path>/` prefix. Persisted paths always carry a root's ALIAS, never its
+// declared string, so `ReadError.path` MUST carry the alias too, or
+// protection silently never fires. This is the single most load-bearing
+// property in this PR — kept as its own describe block, not folded into any
+// other test.
+describe("SyncIndex — Gate 4b: a failed root's alias-prefixed ReadError protects its subtree from deletion", () => {
+  it("protects an existing subtree when readErrors carries the alias (the value CompositeDocumentSource actually pushes)", async () => {
+    const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
+    source.files = [
+      { path: "openspec/specs/indexing/spec.md", content: "# Indexing\n\nText.\n" },
+      { path: "openspec/specs/configuration/spec.md", content: "# Configuration\n\nText.\n" },
+    ];
+    await sync.execute();
+    expect(store.getDocumentByPath("openspec/specs/indexing/spec.md")).not.toBeNull();
+
+    // The root fails to read this pass: no files, one ReadError carrying the
+    // ALIAS "openspec" -- exactly what CompositeDocumentSource pushes as
+    // ReadError.path (Decision 4), never the declared root string.
+    source.files = [];
+    source.readErrors = [
+      { path: "openspec", error: 'declared documentation root "openspec" (/abs/openspec) could not be read: ENOENT' },
+    ];
+    const second = await sync.execute();
+
+    expect(second.deleted).toEqual([]);
+    expect(store.getDocumentByPath("openspec/specs/indexing/spec.md")).not.toBeNull();
+    expect(store.getDocumentByPath("openspec/specs/configuration/spec.md")).not.toBeNull();
+    close();
+  });
+
+  it("the inverse: a ReadError.path carrying the DECLARED string instead of the alias fails to protect and purges the subtree", async () => {
+    const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
+    source.files = [{ path: "docs/a.md", content: "# A\n\nText.\n" }];
+    await sync.execute();
+    expect(store.getDocumentByPath("docs/a.md")).not.toBeNull();
+
+    // Simulates what a WRONG implementation of CompositeDocumentSource would
+    // push -- root.declared ("packages/app/docs") instead of root.prefix
+    // ("docs") -- as ReadError.path. It matches no persisted path (persisted
+    // paths are alias-prefixed "docs/..."), so isProtected returns false and
+    // the whole subtree is purged: exactly the silent-data-loss failure mode
+    // Decision 4 exists to prevent.
+    source.files = [];
+    source.readErrors = [{ path: "packages/app/docs", error: "unreadable" }];
+    const second = await sync.execute();
+
+    expect(second.deleted).toEqual(["docs/a.md"]);
+    expect(store.getDocumentByPath("docs/a.md")).toBeNull();
+    close();
+  });
+
+  it("end to end through the real CompositeDocumentSource over a nested, differently-aliased root — fails if composite-document-source.ts pushed root.declared instead of root.prefix", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    const parser = new RemarkMarkdownParser();
+    const policy = createConventionPolicy(LOOSE);
+
+    // A per-root fake whose failure is toggled between SyncIndex passes,
+    // mirroring FileDocumentSource's real root-unreadable throw.
+    class MutableRootSource implements DocumentSource {
+      files: DocumentFile[] = [];
+      shouldFail = false;
+      async discover(): Promise<DiscoverResult> {
+        if (this.shouldFail) throw new Error("EACCES: permission denied");
+        return { files: this.files, readErrors: [] };
+      }
+    }
+
+    const nestedRoot = new MutableRootSource();
+    nestedRoot.files = [
+      { path: "docs/a.md", content: "# A\n\nText one.\n" },
+      { path: "docs/nested/b.md", content: "# B\n\nText two.\n" },
+    ];
+    const otherRoot = new MutableRootSource();
+    otherRoot.files = [{ path: "openspec/c.md", content: "# C\n\nText three.\n" }];
+    // Two roots, so the nested root's later failure is tolerated (N=1
+    // degenerates to "all fail" and throws -- not what this test is about).
+    const roots: RootSource[] = [
+      { declared: "packages/app/docs", dir: "/abs/packages/app/docs", prefix: "docs", source: nestedRoot },
+      { declared: "openspec", dir: "/abs/openspec", prefix: "openspec", source: otherRoot },
+    ];
+    const composite = new CompositeDocumentSource(roots);
+    const sync = new SyncIndex(composite, parser, store, new FakeEmbeddings(), policy, OPTIONS);
+
+    await sync.execute();
+    expect(store.getDocumentByPath("docs/a.md")).not.toBeNull();
+    expect(store.getDocumentByPath("docs/nested/b.md")).not.toBeNull();
+
+    nestedRoot.shouldFail = true;
+    const second = await sync.execute();
+
+    expect(second.deleted).toEqual([]);
+    expect(store.getDocumentByPath("docs/a.md")).not.toBeNull();
+    expect(store.getDocumentByPath("docs/nested/b.md")).not.toBeNull();
+    store.close();
   });
 });
 
