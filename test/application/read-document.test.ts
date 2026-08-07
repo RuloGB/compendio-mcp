@@ -168,6 +168,56 @@ describe("ReadDocument — a section split by the size bound reads back whole an
   });
 });
 
+// --- The "no-sections" ReadResult variant (design.md Decision 4) ----------
+//
+// Reachable without any pipeline trickery: a corpus indexed by a pre-fix
+// build (heading: "" persisted, content-hash fingerprint unchanged) stays in
+// that state until a full `compendio index` runs (Gate 6). Seeded directly
+// against SqliteIndexStore(":memory:") -- exactly that stale-corpus state.
+
+describe("ReadDocument — the 'no-sections' variant (Decision 4, the stale-corpus read path)", () => {
+  it("[RED->GREEN] returns 'no-sections' when every stored chunk has an empty heading and no content-embedded heading either", () => {
+    const store = new SqliteIndexStore(":memory:");
+    try {
+      const meta: DocumentMeta = { path: "stale.md", title: "Stale", summary: "s", tags: [], hash: "h" };
+      store.saveDocument(meta, [
+        { heading: "", content: "plain body, no markdown headings inside", position: 0 },
+      ]);
+      const read = new ReadDocument(store);
+
+      const result = read.execute({ path: "stale.md", section: "anything" });
+
+      expect(result.type).toBe("no-sections");
+      if (result.type !== "no-sections") return;
+      expect(result.meta.path).toBe("stale.md");
+      expect(result.section).toBe("anything");
+    } finally {
+      store.close();
+    }
+  });
+
+  it("[RED->GREEN] section-not-found's availableSections never contains an empty member, even when some stored chunks have an empty heading and others do not", () => {
+    const store = new SqliteIndexStore(":memory:");
+    try {
+      const meta: DocumentMeta = { path: "mixed.md", title: "Mixed", summary: "s", tags: [], hash: "h" };
+      store.saveDocument(meta, [
+        { heading: "", content: "plain body", position: 0 },
+        { heading: "Real section", content: "## Real section\n\nbody", position: 1 },
+      ]);
+      const read = new ReadDocument(store);
+
+      const result = read.execute({ path: "mixed.md", section: "made-up section" });
+
+      expect(result.type).toBe("section-not-found");
+      if (result.type !== "section-not-found") return;
+      expect(result.availableSections).not.toContain("");
+      expect(result.availableSections).toEqual(["Real section"]);
+    } finally {
+      store.close();
+    }
+  });
+});
+
 describe("formatFrontmatter — conditional rendering of absent fields", () => {
   function baseMeta(overrides: Partial<DocumentMeta> = {}): DocumentMeta {
     return { path: "a.md", title: "A", summary: "r", tags: [], hash: "h", ...overrides };

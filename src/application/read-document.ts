@@ -16,7 +16,8 @@ export type ReadResult =
       meta: DocumentMeta;
       section: string;
       availableSections: string[];
-    };
+    }
+  | { type: "no-sections"; meta: DocumentMeta; section: string };
 
 const SUGGESTION_LIMIT = 3;
 
@@ -78,10 +79,19 @@ export class ReadDocument {
         headingsIn(c.content).some((h) => normalize(h).includes(wanted)),
     );
     if (matching.length === 0) {
+      // Empty members are excluded on the way in: a stored `heading: ""`
+      // (an unreindexed, pre-fix corpus -- design.md Decision 4) must never
+      // surface as an "available" section to request. When that leaves
+      // nothing at all, there is genuinely nothing to list.
       const available = new Set<string>();
       for (const chunk of chunks) {
-        available.add(chunk.heading);
-        for (const heading of headingsIn(chunk.content)) available.add(heading);
+        if (chunk.heading !== "") available.add(chunk.heading);
+        for (const heading of headingsIn(chunk.content)) {
+          if (heading !== "") available.add(heading);
+        }
+      }
+      if (available.size === 0) {
+        return { type: "no-sections", meta: doc, section: request.section };
       }
       return {
         type: "section-not-found",

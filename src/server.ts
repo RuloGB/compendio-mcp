@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { formatOverview, toSyncInfo } from "./application/get-overview.js";
-import { formatFrontmatter } from "./application/read-document.js";
+import { formatFrontmatter, type ReadResult } from "./application/read-document.js";
 import type { SearchQuery } from "./application/search-documents.js";
 import type { Container } from "./composition.js";
 
@@ -108,10 +108,12 @@ export function createMcpServer(container: Container): McpServer {
         "The top result carries a full-length excerpt, centred on the part of the document that " +
         "matched, which usually answers outright; the rest carry short ones from the start of " +
         "their section, enough to tell whether the top result is the right one. Each result has " +
-        "path, title, section, excerpt and score. A '…' at either end of an excerpt marks content " +
-        "omitted there — that is the signal to call read_doc with its path and section. If the " +
-        "project declares convention.excludedStatuses, documents in those statuses are left out " +
-        "unless include_excluded is set; if it declares none, no document is excluded by status.",
+        "path, title, section, excerpt and score; section names the document region the fragment " +
+        "came from — a document with no headings reports one region for the whole file. A '…' at " +
+        "either end of an excerpt marks content omitted there — that is the signal to call " +
+        "read_doc with its path and section. If the project declares convention.excludedStatuses, " +
+        "documents in those statuses are left out unless include_excluded is set; if it declares " +
+        "none, no document is excluded by status.",
       inputSchema: {
         query: z.string().min(1).describe("Natural-language query"),
         // Filters are a footgun on first contact: their values are
@@ -175,7 +177,8 @@ export function createMcpServer(container: Container): McpServer {
           .optional()
           .describe(
             "Heading (or part of it) of the section to read, e.g. 'Business rules'. " +
-              "Use the section field of a search_docs result.",
+              "Use the section field of a search_docs result. Sections name a region of a " +
+              "document, not a single fragment: a large section returns all of its parts joined.",
           ),
       },
     },
@@ -191,9 +194,16 @@ export function createMcpServer(container: Container): McpServer {
   return server;
 }
 
-function formatReadResult(
-  result: ReturnType<Container["readDocument"]["execute"]>,
-): string {
+/**
+ * Exported (only) for `test/server/format-read-result.test.ts`, which asserts
+ * its literal rendered output for every `ReadResult` variant (Gate 4) --
+ * in-repo precedent: `toFtsQuery` (`sqlite-index-store.ts`).
+ *
+ * Retyped from `ReturnType<Container["readDocument"]["execute"]>` to the
+ * named `ReadResult` union so the test can construct any variant directly,
+ * without a live `Container`.
+ */
+export function formatReadResult(result: ReadResult): string {
   switch (result.type) {
     case "document":
       return `${formatFrontmatter(result.meta)}\n\n${result.content}`;
@@ -205,11 +215,29 @@ function formatReadResult(
         "Closest matching paths:",
         ...result.suggestions.map((s) => `- ${s}`),
       ].join("\n");
-    case "section-not-found":
+    case "section-not-found": {
+      // Filtered again here, independent of ReadDocument's own filtering
+      // (design.md Decision 5): Gate 4 is a property of formatReadResult for
+      // ANY input, not conditional on a well-behaved caller. If nothing
+      // survives, there is genuinely nothing to list.
+      const available = result.availableSections.filter((s) => s !== "");
+      if (available.length === 0) {
+        return formatNoSections(result.meta.path);
+      }
       return [
         `Document "${result.meta.path}" has no section matching "${result.section}".`,
         "Available sections:",
-        ...result.availableSections.map((s) => `- ${s}`),
+        ...available.map((s) => `- ${s}`),
       ].join("\n");
+    }
+    case "no-sections":
+      return formatNoSections(result.meta.path);
   }
+}
+
+function formatNoSections(path: string): string {
+  return [
+    `Document "${path}" has no addressable sections.`,
+    `Read it whole with read_doc({ path: "${path}" }).`,
+  ].join("\n");
 }
