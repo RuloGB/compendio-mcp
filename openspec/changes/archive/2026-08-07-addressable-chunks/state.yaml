@@ -1,0 +1,388 @@
+change: addressable-chunks
+artifact_store: openspec
+
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: passed-with-warnings
+  archive: done
+
+execution_mode: interactive
+
+delivery_decision:
+  strategy: single-pr
+  size_exception: accepted
+  decided_by: user
+  decided_on: 2026-08-07
+  forecast_at_decision:
+    proposal_phase: "290-505"
+    design_phase: "540-770"
+    budget: 400
+  orchestrator_recommendation: chained-prs
+  rationale: >
+    The user was shown the design-phase forecast (540-770 against a 400 budget,
+    already over, and this project's forecasts have grown at every phase) and the
+    proposed two-PR cut line, and chose a single PR regardless of final size.
+    Recorded so a reviewer knows the size is a deliberate, informed decision
+    rather than an oversight. Precedent: match-centred-excerpt (forecast 750-800,
+    ~1521 actual), encoding-aware-reads (555-695) and incremental-reindex
+    (500-800) all shipped this way.
+  review_structure: >
+    The design's cut line survives as the review structure INSIDE the single PR,
+    not as a PR boundary. Work unit 1 is the write-side invariant (documentHeading,
+    withNonEmptyHeadings, the chunking.ts segment filter and the index-pipeline
+    seam) and answers "can a chunk still be persisted with an empty or malformed
+    heading?". Work unit 2 is the read side (the no-sections ReadResult variant,
+    availableSections filtering, formatReadResult) and answers "does the failure
+    path say something true?". Per design Decision 4 work unit 2 has the wider
+    reach of the two — it is the only half that helps an installation that never
+    reindexes — so it should not be the one that gets squeezed if the PR runs long.
+
+section_value_decision:
+  choice: humanized-filename
+  decided_by: user
+  decided_on: 2026-08-07
+  rationale: >
+    The `section` an agent reads for a heading-less document is derived from the
+    filename (manual-extenso.md -> "Manual extenso"), not from the document's
+    opening line. Stable and predictable, and it makes `search_docs`'s `section`
+    agree with the H1 that `read_doc({path})` already renders from
+    DocumentMeta.title (read-document.ts:67) — the two surfaces show the same
+    string instead of two different ones.
+  consequences_for_design:
+    - >
+      This is effectively exploration section 4's Option C (minimal backfill),
+      narrowing but NOT closing design's decision. Design still owns: the fallback
+      when humanizeFileName returns "" (convention.ts:45-51, the `-.md` case that
+      Gate 2 exists to catch — the decided source is provably not always non-empty,
+      so a second-level fallback is mandatory, not optional); how the value crosses
+      the index-pipeline seam (transformFile resolves the title at :63-69 and then
+      calls chunkOutline with the raw outline at :77); and the shape of read_doc's
+      "no sections" result.
+    - >
+      The invariant stays on the emitted Chunk.heading, not on the data source.
+      Choosing the humanized filename as the SOURCE does not weaken that: Gate 2
+      still fails any implementation that merely passes meta.title through.
+
+scope_decision:
+  choice: symptom-only
+  decided_by: user
+  decided_on: 2026-08-07
+  rejected:
+    - stable per-chunk identifier / hash column (exploration section 4, Option A)
+    - per-chunk-unique headings (Option B in its per-chunk form)
+    - line ranges / provenance ranges (Option D)
+  accepted_limitation: >
+    Individual fragment addressability is NOT delivered. After this change the
+    89-chunk heading-less manual still has 89 chunks sharing one heading, and
+    read_doc({path, section}) still returns them joined. The user was shown this
+    consequence in the option preview before choosing. Recorded in proposal.md
+    under "Decision: individual fragment addressability is NOT delivered", with
+    the one constraint it imposes: nothing shipped may describe `section` as
+    fragment-level.
+
+source: >
+  IMPROVEMENTS.md section 3, "Documents without headings produce unaddressable
+  chunks". Third and last of the three defects measured on 2026-08-05.
+  Improvement 1 shipped as 2026-08-06-encoding-aware-reads; improvement 2 as
+  2026-08-06-match-centred-excerpt. IMPROVEMENTS.md rates this one "the most
+  invasive of the three".
+
+review_focus:
+  - >
+    The reassembly behaviour is load-bearing and pinned twice over. Multiple
+    chunks sharing one heading is what makes read_doc({section}) return a whole
+    split section instead of one fragment: test/application/read-document.test.ts:116-166
+    depends on it, and openspec/specs/indexing/spec.md:441-448 makes it a
+    normative MUST. Any mechanism that gives every chunk a unique section string
+    must either keep a parallel "whole section" path or amend that spec
+    deliberately. Breaking it looks like success — the individual chunk becomes
+    addressable while the whole-section case quietly regresses.
+  - >
+    Case A (no H1, no H2 — the reported defect) has ZERO test coverage in the
+    entire suite. Verified: no test constructs a DocOutline with title: "", and
+    no test asserts an empty heading. The test named for the heading-less shape
+    (test/domain/chunking.test.ts:170-184) cannot reach it, because the outline()
+    helper hardcodes title: "Test doc". A green suite therefore says nothing
+    about this defect; a red-first fixture is mandatory under strict TDD.
+  - >
+    Scope boundary: MAX_CHUNKS_PER_DOCUMENT = 2 compounds the defect but is
+    explicitly out of scope (IMPROVEMENTS.md: "deserves a measurement before
+    anything is changed"). The measurement recipe is recorded in exploration
+    section 7; do not raise the constant "while in the area".
+
+notes:
+  - >
+    The exploration sub-agent had no write access; the orchestrator persisted
+    exploration.md and independently re-verified the load-bearing claims
+    (chunking.ts:36-62, the chunks DDL, the reassembly test, the indexing spec
+    requirement, the index-pipeline title split, read-document.ts and
+    server.ts's empty-bullet path). All confirmed.
+  - >
+    One exploration claim was FALSE and is corrected in place in sections 2.2
+    and 6: it stated no test exercises the "H1 present, no H2" case.
+    test/domain/chunking.test.ts:170-184 does. The correction matters because it
+    exposed the real gap — that same fact means the test cannot reproduce the
+    actual defect either.
+  - >
+    One claim the ORCHESTRATOR passed to the agent (taken from IMPROVEMENTS.md)
+    was falsified by it and independently confirmed falsified: docs_overview and
+    INDEX.md do NOT consume the chunk-level heading/section. Both consume the
+    document-level title. This narrows the blast radius — a chunk-addressing
+    change has no code path into either surface.
+  - >
+    Novel finding not in IMPROVEMENTS.md (exploration section 2.5): the
+    humanized title from the loose resolver never reaches chunkOutline, which
+    receives the raw outline. So whole-document read_doc already renders a proper
+    title; the defect is scoped specifically to per-section addressing. This
+    exposes a smaller option (C, minimal backfill) than IMPROVEMENTS.md's framing
+    suggested.
+  - >
+    No mechanism was chosen, by instruction. Five options are laid out in
+    exploration section 4 with tradeoffs; A+C is noted as a coherent incremental
+    combination, but the choice belongs to sdd-design.
+  - >
+    Propose phase (2026-08-07). Four proposal findings were independently
+    re-verified by the orchestrator, all CONFIRMED: (1) test/fixtures/vector-reach/docs/
+    already reproduces the defect — all 6 committed documents have zero markdown
+    headings of any level, so no new fixture corpus is needed and Gate 1b has been
+    indexing all-empty headings on every chunking change; (2) humanizeFileName
+    returns "" for `-.md`/`_.md` (convention.ts:45-51) and FileDocumentSource skips
+    only names starting with "." (file-document-source.ts:57), so DocumentMeta.title
+    is NOT guaranteed non-empty — this is why the requirement is an invariant on the
+    emitted Chunk.heading rather than on a data source, and it is Gate 2;
+    (3) the defect can only occur under convention.mode "loose" — strict skips a
+    document with no H1 (indexing/spec.md:88-96); (4) the existing reindex
+    requirement (indexing/spec.md:468-482) is literally scoped to chunk.maxTokens
+    and splitting-logic changes, so it does NOT cover a heading-only change — spec
+    must broaden it or add a sibling, which is Gate 6.
+  - >
+    Also re-verified: every ejemplos/ document carries exactly one H1 (12 files,
+    11 indexed), so the change provably cannot reach that corpus. That is what
+    makes Gate 5's eval assertion an identity check rather than a tolerance band.
+  - >
+    One minor discrepancy, not corrected in the artifact because nothing depends
+    on it: the proposal cites 14 test call sites of chunkOutline; measured, there
+    are 15 in test/domain/chunking.test.ts plus 1 in production.
+  - >
+    The propose agent exceeded the 450-word artifact budget in its own SKILL.md
+    (443 lines written) and flagged it rather than deviating silently. Accepted:
+    openspec/config.yaml's rules.proposal is binding for this project and sets no
+    word limit, and the orchestrator's brief required matching the
+    match-centred-excerpt shape, falsifiable gates and a size forecast.
+  - >
+    Spec phase (2026-08-07). Orchestrator CORRECTED one requirement in place. The
+    mcp-contract delta asserted unconditionally that search_docs' `section` is
+    never empty; that is false on a corpus indexed before this change, as the
+    sibling reindex requirement written two paragraphs above in the same delta
+    says. The same agent had handled the stale-corpus case in the read_doc
+    requirement and not in this one. The guarantee is now scoped to documents
+    indexed under the invariant, plus a new scenario forbidding query-time repair
+    of stored empty headings — the tempting wrong fix.
+  - >
+    Design phase (2026-08-07). Mechanism: enforce the invariant ONCE at the
+    index-pipeline seam via a post-hoc map (withNonEmptyHeadings + documentHeading),
+    not by changing chunkOutline's signature or ChunkingOptions. Verified by the
+    orchestrator: transformFile has exactly two production call sites
+    (index-documents.ts:98, sync-index.ts:131) and is the only caller of both
+    Chunk[] producers, so one expression covers every path a chunk takes to SQLite,
+    with zero churn across chunkOutline's 15 test call sites. Fallback chain:
+    heading path -> meta.title -> file.path -> "Untitled document". Level 2 uses the
+    path because it round-trips by construction — normalize (similarity.ts:36-42)
+    only lowercases and strips diacritics, leaving punctuation intact, verified.
+    Level 3 is declared a totality terminator, explicitly NOT a gate, because no
+    state of the world reaches it.
+  - >
+    MEASURED by the orchestrator, closing design task P1 which the design agent
+    could only derive (it had no shell). A SECOND live path to the defect exists,
+    named by neither IMPROVEMENTS.md nor the exploration: an empty ATX heading
+    (`##`) is valid CommonMark, textOf returns "" for it, and buildOutline pushes
+    it unchecked. Measured with the real parser plus chunkOutline at maxTokens 480:
+    a top-level empty `##` with enough body yields 4 chunks with heading "" IN A
+    DOCUMENT THAT HAS A CORRECT H1 AND H2; an empty `###` child under a good H2
+    yields 4 chunks with heading "Parent > " — non-empty but malformed, which a
+    plain emptiness check passes. This confirms the design's prediction exactly and
+    justifies its second rule (filter empty segments before joining the path, not
+    just check the joined string). It also widens the defect beyond "documents
+    without headings". A first probe with a small body returned only ["Good section"]
+    because mergeTinyPieces absorbed the empty-heading piece — the case only
+    surfaces with enough text, which a regression test must account for.
+  - >
+    Design Decision 6 CORRECTS the proposal: the heading is a retrieval input on
+    BOTH legs, so "this change is metadata, not retrieval" is false. Verified:
+    chunks_fts is declared over (content, heading) (sqlite-index-store.ts:66-69),
+    and the embedded string includes it — index-documents.ts:110 builds
+    `${chunk.heading}\n${chunk.content}` before the "passage: " prefix at :143, and
+    sync-index.ts:146,193 do the same. Gate 5's ejemplos/ identity assertion still
+    holds and is now better grounded (all 12 ejemplos/ documents have exactly one
+    H1, so no heading there changes). But a consequence nobody had noticed: the
+    Gate 1b cosines recorded in CLAUDE.md go stale, because all six documents in
+    test/fixtures/vector-reach/ are heading-less and will be re-embedded with a
+    filename-derived prefix. Handled as a required CLAUDE.md caveat.
+  - >
+    Design Decision 4 establishes why PR 2 has WIDER reach than PR 1. Decision 1 is
+    the write-side fix and needs a full compendio index to land. Decision 4
+    (read_doc's no-sections variant) is the read-side half and is the only part of
+    this change that reaches an installation that never reindexes. If only one PR
+    ships, it should be PR 2 — the reverse of the proposal's implied ordering.
+  - >
+    Tasks phase (2026-08-07). 35 tasks, 12 phases, RED-then-invert sequencing.
+    Orchestrator verified the helpers the breakdown assumes and all exist:
+    buildHarness/EXAMPLES_CONVENTION (test/helpers/build.ts:26,71, with
+    EXCERPT_WINDOW_DOCS at :56 as the precedent for adding VECTOR_REACH_DOCS) and
+    run(content, options, path) (test/application/index-pipeline.test.ts:17).
+  - >
+    Orchestrator CORRECTED task 2.2 in place. Its trap warning gave the wrong
+    threshold: it said body text "past minTokens (>= 100 chars at this file's
+    OPTS)". test/domain/chunking.test.ts:7 sets OPTS = { minTokens: 25,
+    maxTokens: 100 } — the 100 is maxTokens, and the unit is TOKENS, not
+    characters. A test sized to ~100 characters lands near 25 tokens, right at the
+    merge boundary, which is precisely the failure the warning exists to prevent.
+    Corrected to state the real mechanism (mergeTinyPieces fires when
+    estimateTokens(piece) < minTokens AND the merged candidate still fits
+    maxTokens, so either condition defeats it) and to require asserting
+    chunks.length > 1 so a silently merged fixture fails loudly.
+  - >
+    Verified as CORRECT, against an initial orchestrator suspicion that it was
+    wrong: task 3.5 leaves cases 2.1 and 2.2(a) asserting heading === "" after the
+    segment filter lands, inverting only 2.2(b). That is right — the filter turns
+    ["Parent", ""] into "Parent" but turns [""] into [] and then "", so a
+    single-empty-segment path still needs withNonEmptyHeadings at the seam
+    (Phase 4) to close it. The two rules of design Decision 1 are not redundant.
+  - >
+    Apply phase (2026-08-07). 35/35 tasks, strict TDD. Orchestrator re-ran
+    everything rather than citing the agent's report. Measured independently:
+    npm test 588/588 across 40 files; npm run typecheck clean; npm run build
+    clean; node dist/cli.js --root ejemplos eval returns hybrid recall@5 1.00,
+    MRR 0.943, 0 failures — exact identity with the pinned baseline, so Gate 5
+    holds. Gate 5's scope falsifiers verified by diff, not by assertion: the
+    chunks DDL in sqlite-index-store.ts is untouched (empty diff), and every hunk
+    in read-document.test.ts and chunking.test.ts is a pure addition (@@ -170,0
+    +171,50 @@ / @@ -16,0 +17,9 @@ / @@ -135,0 +145,54 @@) with zero deletions,
+    so the three tests that had to pass unchanged were not edited.
+  - >
+    MUTATION-TESTED by the orchestrator, because a green suite on a defect that
+    had zero coverage proves nothing on its own. Both rules of design Decision 1
+    were disabled independently, with file backups taken first since the work was
+    uncommitted. Disabling withNonEmptyHeadings at the seam: 4 tests fail,
+    including Gate 2's `-.md` case ("expected '' to be '-.md'"). Disabling the
+    segment filter in chunking.ts: 1 test fails, the empty-`###`-child case
+    ("expected 'Parent > ' to be 'Parent'"). Restored from backup and re-confirmed
+    588/588. The two rules are therefore both load-bearing and separately covered —
+    neither is dead code, and neither test passes for free.
+  - >
+    The apply agent CORRECTED the orchestrator, and it was right. The brief (and
+    design.md's Testing Strategy) asserted that npm run typecheck is blind to
+    test/. It is not: package.json:35 runs `tsc --noEmit && tsc -p
+    tsconfig.test.json`, and tsconfig.test.json:9 includes ["src/**/*",
+    "test/**/*"]. Neither file was touched by this change. The narrow claim (the
+    root tsconfig.json alone excludes test/) is true; the claim about the command
+    is false. The orchestrator had carried this forward from a stale memory of
+    case 11 in compendio-agentes-reportan-verde-falso, whose own text records that
+    it was FIXED in 7b0a34f. A green typecheck in this repo is stronger evidence
+    than design.md assumed.
+  - >
+    Size correction. The apply report says 282 changed lines in src+test; that is
+    the tracked diff only and git diff cannot see untracked files. Three new test
+    files add 301 lines (heading-less-round-trip 119, heading-fallback 65,
+    format-read-result 117), so the real figure is 583 lines in src+test, plus
+    CLAUDE.md (+8) and the openspec artifacts. 583 lands inside the design's
+    540-770 forecast — the first phase in this project's recorded history where
+    the forecast did not have to grow again.
+  - >
+    Gate 6 verified by reading the diff, not the checkbox. CLAUDE.md gained the
+    non-empty-heading bullet (fallback chain, why level 2 is the path, and the
+    reindex consequence) and an explicit caveat that the Gate 1b cosine table
+    predates this change and must be re-measured before being trusted, with the
+    reason (all six vector-reach documents are heading-less and are now embedded
+    with a filename-derived heading line). Re-measuring was deliberately not
+    promoted to a gate. Contract text checked for the fragment-level prohibition
+    and it is honest: "section names the document region the fragment came from"
+    and "Sections name a region of a document, not a single fragment".
+  - >
+    Verify phase (2026-08-07). Verdict PASS WITH WARNINGS: 0 critical, 3 warnings,
+    2 suggestions. All six blocking gates independently reproduced. The verify
+    agent re-ran both mutation tests from scratch rather than inheriting the
+    orchestrator's, and got identical results (4 failures for the seam, 1 for the
+    segment filter). It also did two things neither prior phase did: it reproduced
+    the P1 parser probe against the COMPILED parser, confirming the second defect
+    path is real end-to-end and not only through hand-built DocOutline fixtures;
+    and it collected the Phase 12 observations by direct SQL against a fresh
+    index — 6 distinct headings, max 7 chunks-per-heading on manual-extenso.md.
+    That max-7 figure is the baseline a future fragment-addressability cycle
+    argues from.
+  - >
+    Working tree confirmed restored by the orchestrator AFTER verify's own
+    mutation round (two separate processes mutated files in this tree): git diff
+    is back to 282 insertions / 19 deletions across the same 9 files, the same 4
+    untracked paths, and npx vitest run is 588/588.
+  - >
+    W1 CLOSED by the orchestrator (2026-08-07), on the user's instruction, before
+    archive. Added a test to test/application/heading-less-round-trip.test.ts that
+    seeds SqliteIndexStore directly with a chunk whose stored heading is "" — the
+    pre-fix on-disk state the pipeline can no longer produce — and asserts
+    search_docs returns section: "" unrepaired. Verified as a real gate, not an
+    assumption: mutating search-documents.ts:120 to `chunk.heading || doc.title`
+    makes it fail on exactly that assertion; restored and re-confirmed. Suite is
+    now 589/589, typecheck clean. This closes the one warning that guarded a MUST
+    NOT on live application code.
+  - >
+    W3 CLOSED by the orchestrator (2026-08-07). design.md's Testing Strategy
+    paragraph claiming npm run typecheck is blind to test/ is struck through in
+    place rather than deleted, with a correction block above it recording the
+    measurement (package.json:35, tsconfig.test.json:9) and the reason the wrong
+    belief existed. Kept visible because that claim was passed to sdd-tasks and
+    sdd-apply as a constraint, and the record should show what they were told.
+    Consequence worth noting: Decision 4's compile-time enforcement is STRONGER
+    than the design assumed.
+  - >
+    W2 and S1 remain OPEN as accepted debt. Both are weaker than W1 was, because
+    neither guards live code this change touched:
+    W2 — the indexing scenario "incremental sync alone does not correct existing
+    empty headings" has no heading-specific test; it rests on a pre-existing
+    generic fingerprint test. The fingerprint mechanism was not modified here.
+    S1 — the empty-ATX-heading finding has no end-to-end test through the real
+    parser, only through hand-built DocOutline fixtures. The orchestrator (before
+    design) and sdd-verify (against the compiled parser) each reproduced it
+    manually, so it is a measured fact with a fixture-level regression test, not
+    an unverified claim.
+  - >
+    Archive phase (2026-08-07). The folder move was deliberately WITHHELD from the
+    sdd-archive agent and performed by the orchestrator with git mv. Reason, from
+    measured history rather than caution: this phase had failed three consecutive
+    times in this repository, twice reporting success while leaving 5-line stubs
+    in place of 500-line documents and leaving the source folder unmoved. The
+    agent was given only the two jobs it can do reliably — merge the delta specs
+    and write the report.
+  - >
+    Merge verified by the orchestrator rather than accepted from the report,
+    because this phase has mis-stated its own counts before. Measured: indexing
+    24 -> 26 requirements, mcp-contract 14 -> 16, matching the agent's claim
+    exactly. git diff over openspec/specs/ is 78 insertions and ZERO deletions,
+    so nothing was destroyed. All three load-bearing nuances survived the merge
+    verbatim: the invariant phrased on the emitted Chunk rather than a data
+    source; the "not repaired at query time" scenario (which is the orchestrator's
+    own correction to the delta, confirming the merged version was the corrected
+    one and not an earlier draft); and "does not imply fragment-level
+    addressability". No stubs anywhere in openspec/specs/ or the change folder;
+    all ten artifacts are full-length.
+  - >
+    Known blind spot carried into apply: tsconfig.json's include is ["src/**/*"],
+    so npm run typecheck does not see test/, and vitest does not typecheck. Design
+    Decision 4's compile-time enforcement (a new ReadResult member is TS2366 until
+    handled) is real for src/server.ts and worth nothing for test files. This is the
+    same gap recorded as case 11 in compendio-agentes-reportan-verde-falso.
+  - >
+    Size forecast, tracked across phases because in this project it grows every
+    time: proposal 290-505 (stated by the proposal itself as a LOWER bound) ->
+    design 540-770, already over the 400-line budget. Tests are ~60% of it and the
+    least compressible, precisely because nothing currently fails. Precedent
+    (compendio-forecast-tamano-crece-por-fase): match-centred-excerpt went 300-470
+    (proposal) -> 750-800 (design) -> ~1521 actual. Expect the tasks figure to be
+    higher again. Cut line: PR 1 = chunking invariant + seam + spec delta (needs a
+    full reindex to land); PR 2 = read_doc's failure-path answer. Per design
+    Decision 4, PR 2 has the wider reach of the two.
