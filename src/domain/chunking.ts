@@ -8,6 +8,36 @@ export interface ChunkingOptions {
   maxTokens: number;
 }
 
+/**
+ * Last-resort chunk heading. Reached only when a document has neither a
+ * resolved title nor a path -- unreachable through `FileDocumentSource`, kept
+ * so `documentHeading` is total over its type rather than over its current
+ * callers.
+ */
+export const UNTITLED_HEADING = "Untitled document";
+
+/**
+ * The heading every chunk of a document falls back to when its own heading
+ * path is empty. `title` is the convention-resolved `DocumentMeta.title` (the
+ * humanized filename under `loose`); `path` is the docs-relative file path.
+ * Enforced once, at the `index-pipeline` seam, via `withNonEmptyHeadings` --
+ * not inside `chunkOutline` (design.md Decision 1).
+ */
+export function documentHeading(title: string, path: string): string {
+  return title.trim() || path.trim() || UNTITLED_HEADING;
+}
+
+/**
+ * Guarantees the invariant: no returned chunk has an empty heading, and every
+ * chunk of one document that needed the fallback carries the SAME value --
+ * the shared-heading shape `read_doc({ section })` reassembles from
+ * (design.md Decision 1/3). A pure post-hoc map, applied once at
+ * `transformFile` to the output of both `Chunk[]` producers.
+ */
+export function withNonEmptyHeadings(chunks: Chunk[], fallback: string): Chunk[] {
+  return chunks.map((chunk) => (chunk.heading === "" ? { ...chunk, heading: fallback } : chunk));
+}
+
 interface Piece {
   path: string[];
   text: string;
@@ -56,7 +86,14 @@ export function chunkOutline(outline: DocOutline, opts: ChunkingOptions): Chunk[
   );
 
   return mergeTinyPieces(bounded, opts).map((piece, position) => ({
-    heading: piece.path.join(" > "),
+    // Empty path segments are dropped before joining: an empty ATX heading
+    // (`##`/`###` with no text) is valid CommonMark and reaches here as
+    // `title: ""`. Without the filter, ["Parent", ""].join(" > ") yields the
+    // malformed but non-empty "Parent > " -- non-empty, so a plain emptiness
+    // check at the seam would pass while the value is garbage (design.md
+    // Decision 1). A single empty segment ([""]) still collapses to "" here;
+    // closing that last mile is `withNonEmptyHeadings`'s job, at the seam.
+    heading: piece.path.filter((s) => s.trim().length > 0).join(" > "),
     content: piece.text,
     position,
   }));

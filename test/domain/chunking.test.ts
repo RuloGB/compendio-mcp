@@ -14,6 +14,15 @@ function outline(sections: DocSection[], intro = ""): DocOutline {
   return { title: "Test doc", summary: "Summary.", intro, sections };
 }
 
+/**
+ * A heading-less outline (`outline.title === ""`) -- the existing `outline()`
+ * helper above hardcodes `title: "Test doc"` and cannot express this case.
+ * `addressable-chunks` design.md Decision 1/2.
+ */
+function emptyTitleOutline(sections: DocSection[], intro = ""): DocOutline {
+  return { title: "", summary: "Summary.", intro, sections };
+}
+
 describe("chunkOutline", () => {
   it("creates one chunk per H2 section when sizes are within limits", () => {
     const chunks = chunkOutline(outline([section("Context", 200), section("Rules", 250)]), OPTS);
@@ -130,6 +139,60 @@ describe("chunkOutline", () => {
     for (const chunk of chunks) {
       expect(estimateTokens(chunk.content)).toBeLessThanOrEqual(opts.maxTokens);
     }
+  });
+});
+
+// --- Non-empty-heading invariant: Gate 1/2 unit-level baselines ------------
+//
+// Case A (no H1, no H2) has zero coverage before this describe block: no test
+// in this file constructs an outline with `title: ""`. These are BASELINEs,
+// run and recorded on unmodified `src/` first (addressable-chunks design.md,
+// "Gate 1 — red-first"); task 3.5 inverts 2.2(b) only, once
+// `withNonEmptyHeadings` exists at the seam -- see that task's comment for
+// why 2.1 and 2.2(a) stay asserting `heading === ""` here even after the
+// domain-level fix lands.
+
+describe("chunkOutline — non-empty-heading invariant (Gate 1/2 unit half)", () => {
+  it("BASELINE (2.1, to be inverted at the seam, not here): a heading-less intro yields several chunks, every one with an empty heading", () => {
+    const intro = "Prose with no heading structure at all, repeated many times over today. ".repeat(
+      20,
+    );
+    const chunks = chunkOutline(emptyTitleOutline([], intro), OPTS);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.heading).toBe("");
+    }
+  });
+
+  it("BASELINE (2.2a, to be inverted at the seam, not here): a top-level empty '##' section among real ones yields an empty heading for that section's chunk", () => {
+    // Sized above minTokens (25 tokens / 100 chars) so mergeTinyPieces does
+    // not fold the empty-heading piece into its neighbor -- a silently
+    // merged fixture would pass this assertion for the wrong reason.
+    const chunks = chunkOutline(
+      outline([section("Context", 150), section("", 150), section("Rules", 150)]),
+      OPTS,
+    );
+
+    expect(chunks.length).toBeGreaterThan(1);
+    const emptyHeadingChunk = chunks.find((c) => c.content.includes("x".repeat(150)) && c.position === 1);
+    expect(emptyHeadingChunk).toBeDefined();
+    expect(emptyHeadingChunk!.heading).toBe("");
+  });
+
+  it("INVERTED (2.2b): the join filters the empty child segment before joining, so an empty '###' child under a good H2 now yields the well-formed 'Parent' rather than the malformed 'Parent > '", () => {
+    // Parent oversized enough (with its child) to force the split-into-children
+    // branch; the child's own body (300 chars = 75 tokens) is sized above
+    // minTokens so it survives mergeTinyPieces intact and is not silently
+    // folded into the parent piece.
+    const big = section("Parent", 0, [section("", 300)]);
+    big.text = `## Parent\n\n${"i".repeat(150)}`;
+    const chunks = chunkOutline(outline([big]), OPTS);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    const childChunk = chunks.find((c) => c.content.includes("x".repeat(300)));
+    expect(childChunk).toBeDefined();
+    expect(childChunk!.heading).toBe("Parent");
   });
 });
 

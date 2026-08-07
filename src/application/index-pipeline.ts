@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chunkOutline, type ChunkingOptions } from "../domain/chunking.js";
+import { chunkOutline, documentHeading, withNonEmptyHeadings, type ChunkingOptions } from "../domain/chunking.js";
 import type { ConventionPolicy } from "../domain/convention.js";
 import type { Chunk, DocumentMeta } from "../domain/model.js";
 import type { DocumentFile, MarkdownParser } from "../domain/ports.js";
@@ -72,9 +72,19 @@ export function transformFile(
     return { ok: false, errors: resolution.errors };
   }
 
-  const chunks = isNoChunking(file.path, options.noChunking)
-    ? wholeDocumentChunk(resolution.meta.title, parsed.body, options.chunking.maxTokens)
-    : chunkOutline(parsed.outline, options.chunking);
+  // Every chunk carries a non-empty heading, regardless of which producer
+  // emitted it and regardless of whether the source document has any
+  // markdown heading at all (indexing/spec.md "Every Emitted Chunk Heading
+  // Is Non-Empty"). Enforced once here, at the only production seam both
+  // `Chunk[]` producers pass through -- not inside either producer
+  // (design.md Decision 1).
+  const fallback = documentHeading(resolution.meta.title, file.path);
+  const chunks = withNonEmptyHeadings(
+    isNoChunking(file.path, options.noChunking)
+      ? wholeDocumentChunk(resolution.meta.title, parsed.body, options.chunking.maxTokens)
+      : chunkOutline(parsed.outline, options.chunking),
+    fallback,
+  );
 
   if (chunks.length === 0) {
     return { ok: false, errors: ["the document has no indexable content"] };
