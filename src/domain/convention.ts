@@ -35,10 +35,26 @@ function readField(data: Record<string, unknown>, key: string): string | undefin
   return isNonEmptyString(raw) ? raw.trim() : undefined;
 }
 
-/** First POSIX path segment, i.e. the folder-derived module; undefined for root-level files. */
-export function inferModule(path: string): string | undefined {
-  const idx = path.indexOf("/");
-  return idx === -1 ? undefined : path.slice(0, idx);
+/**
+ * First POSIX path segment within the document's containing declared root,
+ * i.e. the folder-derived module; undefined for a file at its root's top
+ * level. `rootPrefixes` are declared-root aliases (`ResolvedRoot.prefix`,
+ * `resolveRoots`'s output) -- at most one matching `<prefix>/` is stripped
+ * before taking the first remaining segment, so `module` keeps meaning "the
+ * folder this document sits in within its own root" rather than degrading
+ * into "which root it came from" (design.md Decision 7). "First match wins"
+ * is unambiguous only because `resolveRoots` rejects nested roots -- two
+ * prefixes can never both match the same path.
+ *
+ * With no `rootPrefixes` argument (or none matching), falls through to the
+ * naive first-segment behavior unchanged -- this is what every existing
+ * call site with no root context relies on.
+ */
+export function inferModule(path: string, rootPrefixes?: readonly string[]): string | undefined {
+  const prefix = rootPrefixes?.find((p) => path.startsWith(`${p}/`));
+  const rest = prefix !== undefined ? path.slice(prefix.length + 1) : path;
+  const idx = rest.indexOf("/");
+  return idx === -1 ? undefined : rest.slice(0, idx);
 }
 
 /** Basename minus `.md`, `-`/`_` -> space, collapse+trim whitespace, sentence-case the first character. */
@@ -54,7 +70,7 @@ export function humanizeFileName(path: string): string {
  * `loose` (default): infers `title`/`module`, never invents `type`/`status`,
  * never hard-fails for metadata reasons.
  */
-function createLoosePolicy(cfg: ConventionConfig): ConventionPolicy {
+function createLoosePolicy(cfg: ConventionConfig, rootPrefixes?: readonly string[]): ConventionPolicy {
   return {
     resolver(input: FrontmatterInput): FrontmatterResult {
       const { data } = input;
@@ -68,7 +84,7 @@ function createLoosePolicy(cfg: ConventionConfig): ConventionPolicy {
         : humanizeFileName(input.path);
       const type = readField(data, cfg.frontmatterFields.type);
       const status = readField(data, cfg.frontmatterFields.status);
-      const module = readField(data, cfg.frontmatterFields.module) ?? inferModule(input.path);
+      const module = readField(data, cfg.frontmatterFields.module) ?? inferModule(input.path, rootPrefixes);
 
       const meta: DocumentMeta = {
         path: input.path,
@@ -142,9 +158,18 @@ function createStrictPolicy(cfg: ConventionConfig): ConventionPolicy {
   };
 }
 
-/** Builds the convention policy selected by `cfg.mode`. */
-export function createConventionPolicy(cfg: ConventionConfig): ConventionPolicy {
-  return cfg.mode === "strict" ? createStrictPolicy(cfg) : createLoosePolicy(cfg);
+/**
+ * Builds the convention policy selected by `cfg.mode`. `rootPrefixes`
+ * (declared-root aliases) is threaded into `loose`'s folder-based `module`
+ * inference only -- `strict` never infers `module` (it validates presence
+ * only), so it ignores the parameter (design.md Decision 7). Optional so the
+ * ~30 existing call sites with no root context compile and behave unchanged.
+ */
+export function createConventionPolicy(
+  cfg: ConventionConfig,
+  rootPrefixes?: readonly string[],
+): ConventionPolicy {
+  return cfg.mode === "strict" ? createStrictPolicy(cfg) : createLoosePolicy(cfg, rootPrefixes);
 }
 
 /**

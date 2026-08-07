@@ -32,12 +32,10 @@ describe("ReadDocument over the ejemplos corpus", () => {
     if (result.type !== "document") return;
     expect(result.content.startsWith("# Validación del formulario de alta de leads")).toBe(true);
     expect(result.content).toContain("## Reglas de negocio");
-    // PR 2 intermediate state (design.md tasks.md Phase 12): `inferModule` is
-    // not yet alias-aware, so the first path segment is the root's own alias
-    // ("docs") rather than the real containing folder ("leadsviewer"). Fixed
-    // in PR 3 (Decision 7) — this asserts today's actual, naive value rather
-    // than the pre-change one.
-    expect(result.meta.module).toBe("docs");
+    // Alias-aware `inferModule` (design.md Decision 7, tasks.md Phase 12):
+    // the root's own alias ("docs") is stripped before folder inference, so
+    // this resolves to the real containing folder, not the root alias.
+    expect(result.meta.module).toBe("leadsviewer");
   });
 
   // es-frozen: "glosario.md"/"Glosario" are the real frozen `ejemplos/` corpus

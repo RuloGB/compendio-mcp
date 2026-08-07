@@ -12,6 +12,7 @@ import {
 import { cp1252Bytes } from "../helpers/cp1252";
 import { BrokenEmbeddings, FakeEmbeddings } from "../helpers/fake-embeddings";
 import { createContainer } from "../../src/composition";
+import { GetOverview } from "../../src/application/get-overview";
 import { IndexDocuments } from "../../src/application/index-documents";
 import type { IndexReport } from "../../src/application/index-documents";
 import { computeHash } from "../../src/application/index-pipeline";
@@ -81,14 +82,7 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     expect(paths).toContain("docs/leadsviewer/validacion-formulario.md");
   });
 
-  // PR 2 intermediate state (design.md tasks.md Phase 12): `inferModule` is
-  // not yet alias-aware, so every top-level-root document's first path
-  // segment is now the root's own alias ("docs"), not its real folder. This
-  // is the accepted, temporary regression Decision 7 / Phase 12 fixes in
-  // PR 3 — folder-based `module` filtering is not honestly testable until
-  // then, so this restates today's real (naive) behavior instead of
-  // asserting the pre-change one.
-  it.skip("filters by module (folder-inferred, zero-config) — restored in PR 3 (alias-aware inferModule)", async () => {
+  it("filters by module (folder-inferred, zero-config)", async () => {
     const soloInformes = await harness.search.execute({
       query: "leads",
       module: "informes",
@@ -328,6 +322,35 @@ describe("IndexDocuments — loose mode never skips for metadata reasons", () =>
     expect(doc).not.toBeNull();
     expect(doc!.type).toBeUndefined();
     expect(doc!.status).toBeUndefined();
+    store.close();
+  });
+});
+
+describe("IndexDocuments — alias-aware module inference across roots (design.md Decision 7, Gate 3)", () => {
+  it("byModule has no bucket for a root's own alias; a nested root's file infers its real folder, not the alias", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    const source = new StaticSource([
+      { path: "docs/documentation-convention.md", content: "# Doc\n\nText.\n" },
+      { path: "openspec/specs/indexing/spec.md", content: "# Spec\n\nText.\n" },
+    ]);
+    const indexer = new IndexDocuments(
+      source,
+      new RemarkMarkdownParser(),
+      store,
+      null,
+      createConventionPolicy(LOOSE, ["docs", "openspec"]),
+      { chunking: { minTokens: 10, maxTokens: 800 }, noChunking: [] },
+    );
+    const report = await indexer.execute();
+    expect(report.skipped).toEqual([]);
+
+    expect(store.getDocumentByPath("docs/documentation-convention.md")!.module).toBeUndefined();
+    expect(store.getDocumentByPath("openspec/specs/indexing/spec.md")!.module).toBe("specs");
+
+    const overview = new GetOverview(store).execute();
+    expect(overview.byModule).not.toHaveProperty("docs");
+    expect(overview.byModule).not.toHaveProperty("openspec");
+    expect(overview.byModule).toEqual({ specs: 1 });
     store.close();
   });
 });
