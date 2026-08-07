@@ -57,6 +57,16 @@ export const EXCERPT_WINDOW_DOCS = fileURLToPath(
   new URL("../fixtures/excerpt-window/docs", import.meta.url),
 );
 
+/**
+ * `addressable-chunks` fixture corpus (design.md "Gate 1"): six committed
+ * heading-less documents (~30 KB) already reproducing the reported defect —
+ * no new fixture corpus is required. Reused here (not modified) as the
+ * regression harness for the non-empty-heading invariant.
+ */
+export const VECTOR_REACH_DOCS = fileURLToPath(
+  new URL("../fixtures/vector-reach/docs", import.meta.url),
+);
+
 export interface TestHarness {
   store: SqliteIndexStore;
   index: IndexDocuments;

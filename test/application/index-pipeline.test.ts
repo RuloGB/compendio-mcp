@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { transformFile, type PipelineOptions } from "../../src/application/index-pipeline";
+import { documentHeading } from "../../src/domain/chunking";
 import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
 import type { DocumentFile } from "../../src/domain/ports";
 import { estimateTokens } from "../../src/domain/tokens";
@@ -102,6 +103,52 @@ describe("transformFile — NO_CHUNKING respects the size bound", () => {
       result.chunks.map((c) => c.content),
       content,
     );
+  });
+});
+
+// --- Non-empty-heading invariant: Gate 2 integration half -----------------
+//
+// A heading-less document at "-.md" -- humanizeFileName("-.md") === "" per
+// convention.ts:45-51 -- through both branches transformFile can take. Gate 2
+// is exactly the naive-fix falsifier: "pass meta.title through" alone still
+// leaves this input producing an empty heading, since meta.title IS "" here.
+// The path-level fallback in `documentHeading` is what closes it.
+
+describe("transformFile — Gate 2: a filename that humanizes to empty still yields a non-empty heading", () => {
+  const headingLessBody = "Prose with no heading structure at all, repeated many times over today. ".repeat(
+    20,
+  );
+
+  it("chunkOutline branch: every chunk's heading falls back to the path", () => {
+    const options: PipelineOptions = {
+      chunking: { minTokens: 25, maxTokens: 100 },
+      noChunking: [],
+    };
+
+    const result = run(headingLessBody, options, "-.md");
+
+    expect(result.chunks.length).toBeGreaterThan(1);
+    for (const chunk of result.chunks) {
+      expect(chunk.heading).toBe("-.md");
+    }
+  });
+
+  it("wholeDocumentChunk (NO_CHUNKING) branch: every chunk's heading falls back to the path", () => {
+    const options: PipelineOptions = {
+      chunking: { minTokens: 25, maxTokens: 100 },
+      noChunking: ["-.md"],
+    };
+
+    const result = run(headingLessBody, options, "-.md");
+
+    expect(result.chunks.length).toBeGreaterThan(1);
+    for (const chunk of result.chunks) {
+      expect(chunk.heading).toBe("-.md");
+    }
+  });
+
+  it("unit: documentHeading(\"\", \"\") reaches the totality terminator", () => {
+    expect(documentHeading("", "")).toBe("Untitled document");
   });
 });
 
