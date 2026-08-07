@@ -1,5 +1,22 @@
 # Improvement backlog
 
+> **Status as of 2026-08-07: all three shipped.** Kept as the record of how they were found and
+> what the measurements showed — the method is reusable, and the falsified hypothesis at the bottom
+> exists so a dead idea is not re-proposed.
+>
+> | # | Defect | Cycle | PR |
+> |---|---|---|---|
+> | 1 | Encoding assumed to be UTF-8 on read | `2026-08-06-encoding-aware-reads` | #15 |
+> | 2 | Lead excerpt is a blind prefix | `2026-08-06-match-centred-excerpt` | #17 |
+> | 3 | Documents without headings produce unaddressable chunks | `2026-08-07-addressable-chunks` | #19 |
+>
+> **Improvement 3 shipped to a deliberately narrowed scope.** The symptom is fixed — no chunk is
+> persisted with an empty heading, and `read_doc` explains a sectionless document instead of
+> rendering an empty bullet. **Individual fragment addressability was not delivered**: the chunks of
+> a heading-less document still share one heading and `read_doc({ section })` still returns them
+> joined. See the "Still open" section at the end for what a follow-up would need, including the
+> baseline measured for it.
+
 Three defects found on 2026-08-05 while investigating a real retrieval failure reported by an
 agent using the MCP tools against a large external corpus. Each one is a candidate for its own SDD
 cycle; they are listed in the order the evidence recommends.
@@ -215,8 +232,14 @@ content hash); only part of that survives contact with the code:
 Design questions worth resolving explicitly:
 
 - Whether a synthesized heading (e.g. derived from the chunk's leading line, or its ordinal within
-  the document) is preferable to an opaque id for the `section` field, since a human-readable value
-  is also what `docs_overview` and `INDEX.md` consume.
+  the document) is preferable to an opaque id for the `section` field, ~~since a human-readable value
+  is also what `docs_overview` and `INDEX.md` consume~~.
+  **Correction (2026-08-07): the struck clause is false, and it was measured.** Neither
+  `docs_overview` nor `INDEX.md` consumes the chunk-level `heading`/`section` — `get-overview.ts` and
+  `index-markdown.ts` contain zero references to either field; both consume the *document-level*
+  `title`. Designing for those two surfaces would have been designing for a consumer that does not
+  exist. Resolved in the cycle by taking the humanized filename as the source (an explicit product
+  decision), not the leading line.
 - What `read_doc` should answer when a document genuinely has no sections. The current empty bullet
   list is strictly worse than saying so.
 - Whether the block id becomes part of the public MCP contract — every added response field
@@ -260,3 +283,48 @@ lifetime concerns of its own. The server is stateless between queries by design.
 If the underlying need is real, the responsibility inverts cleanly: whoever stores an answer stores
 the block id from improvement 3, and Compendio answers "is this block still current?" on demand.
 Same guarantee, no new state.
+
+Note that improvement 3 shipped **without** that block id, so this inversion has no anchor to hang
+on today. It becomes available only if the follow-up below is taken.
+
+---
+
+## Still open: fragment-level addressability
+
+Improvement 3 fixed the malformed value, not the granularity limit. They are different defects and
+conflating them is what turns a two-file change into a schema change:
+
+- `""` was a **malformed value** — it broke the matcher, made the field uninterpretable, and
+  rendered a list of nothing. That is fixed.
+- A shared non-empty heading is a **coarse but truthful** statement: "these chunks all belong to
+  this one region". That remains.
+
+**The limit is universal, not specific to heading-less documents.** Any H2 section large enough to
+split already yields several chunks with an identical heading, and `read_doc({ section })` returns
+them joined — deliberately, and pinned by `openspec/specs/indexing/spec.md`'s "Every Split Piece
+Retains Its Full Heading Path" plus the reassembly test in `test/application/read-document.test.ts`.
+A follow-up wanting fragment granularity must therefore change it for **all** documents uniformly,
+or it reintroduces exactly the per-shape special case the `addressable-chunks` cycle removed.
+
+What such a cycle would have to decide, and what it already has:
+
+- **Measured baseline** (recorded in the cycle's `verify-report.md`, collected by direct SQL against
+  a fresh index of `test/fixtures/vector-reach/docs/`): **6 distinct headings, at most 7 chunks per
+  heading**. That is the number to argue from — whether 7 fragments behind one address is actually
+  costing a caller anything is an empirical question, not an obvious yes.
+- **The mechanism is already scoped**: a stable per-chunk identifier as an *additive* field, not a
+  replacement for `heading`. The `chunks` table still has no hash column, so adding one is
+  mechanical. The full option space, with the rejected alternatives and why, is in the cycle's
+  `exploration.md` §4.
+- **Line/provenance ranges are settled as out**: byte-exact ranges are *categorically* impossible,
+  not merely unbuilt — `splitTable`/`splitFence` re-emit a preamble on every piece, so a split
+  piece's content is not a contiguous slice of the source at all.
+
+### Related, still unmeasured: `MAX_CHUNKS_PER_DOCUMENT`
+
+Unchanged at 2, deliberately. It compounds the limit above — at most 2 chunks of any one document
+reach a caller per search, however many ranked. The cap is sound policy on its own (it stops one
+document filling the result set), and `IMPROVEMENTS.md`'s original framing still holds: it deserves
+a measurement before anything is changed. The instrument exists and needs no new code —
+`scripts/rank-probe.mjs` against a corpus containing a large heading-less document, reading the
+`after cap` row specifically.
