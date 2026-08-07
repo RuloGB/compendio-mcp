@@ -11,12 +11,13 @@ import { createIndexComparator, createConventionPolicy } from "./domain/conventi
 import { INDEX_FILE } from "./domain/index-markdown.js";
 import type { EmbeddingsProvider } from "./domain/ports.js";
 import type { ProgressReporter } from "./domain/progress.js";
-import { loadConfig, NO_CHUNKING, type CompendioConfig } from "./infrastructure/config.js";
+import { loadConfig, resolveRoots, NO_CHUNKING, type CompendioConfig } from "./infrastructure/config.js";
 import {
   LazyEmbeddings,
   TransformersEmbeddings,
   type TransformersEmbeddingsOptions,
 } from "./infrastructure/embeddings/transformers-embeddings.js";
+import { CompositeDocumentSource } from "./infrastructure/fs/composite-document-source.js";
 import { FileDocumentSource } from "./infrastructure/fs/file-document-source.js";
 import { FileIndexWriter } from "./infrastructure/fs/file-index-writer.js";
 import { RemarkMarkdownParser } from "./infrastructure/markdown/remark-markdown-parser.js";
@@ -55,7 +56,14 @@ export interface Container {
 
 export function createContainer(options: ContainerOptions): Container {
   const config = loadConfig(options.root);
-  const docsDir = resolve(options.root, options.docsDir ?? config.docsDir);
+  // Runs, and can throw, before `new SqliteIndexStore` below: `migrate()`
+  // creates `.compendio/` on every construction, so an invalid root set must
+  // be rejected first (design.md Decision 6) — this is what makes "no
+  // `.compendio/` afterward" literally true for a colliding config.
+  const roots = resolveRoots(
+    options.root,
+    options.docsDir !== undefined ? [options.docsDir] : config.docsDir,
+  );
   const store = new SqliteIndexStore(resolve(options.root, config.db));
   const onProgress = options.onProgress;
 
@@ -69,7 +77,15 @@ export function createContainer(options: ContainerOptions): Container {
           ),
         );
 
-  const source = new FileDocumentSource(docsDir, config.exclude);
+  // One unconditional wiring path: a one-element root set runs through the
+  // same composite as ten (design.md Decision 3) — no `multi` flag, no
+  // shortcut for the single-root case.
+  const source = new CompositeDocumentSource(
+    roots.map((root) => ({
+      ...root,
+      source: new FileDocumentSource(root.dir, config.exclude, root.prefix),
+    })),
+  );
   const parser = new RemarkMarkdownParser();
   const policy = createConventionPolicy(config.convention);
   const comparator = createIndexComparator(config.convention);
@@ -79,7 +95,10 @@ export function createContainer(options: ContainerOptions): Container {
   const generateIndexMd = new GenerateIndexMd(
     source,
     parser,
-    new FileIndexWriter(docsDir, INDEX_FILE),
+    // Writer target stays the first declared root; `selfPath` (Decision 9)
+    // is PR 4 scope, so the generated INDEX.md keeps its unprefixed
+    // self-exclusion checks until then.
+    new FileIndexWriter(roots[0]!.dir, INDEX_FILE),
     policy,
     comparator,
   );
