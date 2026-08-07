@@ -88,40 +88,42 @@ Chain strategy: feature-branch-chain
 
 ### Phase 4: `resolveRoots` — baseline, then implement (TDD)
 
-- [ ] 4.1 [RED] `test/infrastructure/config.test.ts`: restate `:62-70`'s single-string round trip as an array (`docsDir: ["documentation"]`). Add one failing test per rejection case: not-an-array, empty array, non-string entry, duplicate, case-differing duplicate (win32), nested (outer declared first), **nested (inner declared first)**, alias clash.
-- [ ] 4.2 [GREEN] `src/infrastructure/config.ts`: `CompendioConfig.docsDir: string[]`, `DEFAULT_CONFIG.docsDir = ["docs"]`. Add `ResolvedRoot { declared, dir, prefix }` and `resolveRoots(projectRoot, docsDir): ResolvedRoot[]` — alias = `basename(dir)` of the **resolved absolute** path; ordered-pair sweep using `path.relative` (never `resolve(a) === resolve(b)`, which misses case-differing duplicates on win32), checked in **both directions**; nesting predicate `rel !== ".." && !rel.startsWith(".." + sep)` (not `rel.startsWith("..")`, which misclassifies `docs/..cache`); 7 English messages naming the offending declared strings, per design's table.
-- [ ] 4.3 Confirm `mergeConfig`'s `docsDir: override.docsDir ?? base.docsDir` line is unchanged (whole-value replace is already correct for arrays).
-- [ ] 4.4 `npx vitest run test/infrastructure/config.test.ts` green.
+- [x] 4.1 [RED] `test/infrastructure/config.test.ts`: restate `:62-70`'s single-string round trip as an array (`docsDir: ["documentation"]`). Add one failing test per rejection case: not-an-array, empty array, non-string entry, duplicate, case-differing duplicate (win32), nested (outer declared first), **nested (inner declared first)**, alias clash.
+- [x] 4.2 [GREEN] `src/infrastructure/config.ts`: `CompendioConfig.docsDir: string[]`, `DEFAULT_CONFIG.docsDir = ["docs"]`. Add `ResolvedRoot { declared, dir, prefix }` and `resolveRoots(projectRoot, docsDir): ResolvedRoot[]` — alias = `basename(dir)` of the **resolved absolute** path; ordered-pair sweep using `path.relative` (never `resolve(a) === resolve(b)`, which misses case-differing duplicates on win32), checked in **both directions**; nesting predicate `rel !== ".." && !rel.startsWith(".." + sep)` (not `rel.startsWith("..")`, which misclassifies `docs/..cache`); 7 English messages naming the offending declared strings, per design's table.
+- [x] 4.3 Confirm `mergeConfig`'s `docsDir: override.docsDir ?? base.docsDir` line is unchanged (whole-value replace is already correct for arrays).
+- [x] 4.4 `npx vitest run test/infrastructure/config.test.ts` green.
 
 ### Phase 5: `CompositeDocumentSource` — no tolerance yet
 
-- [ ] 5.1 [new] `test/infrastructure/composite-document-source.test.ts`: over a fake `DocumentSource`, assert merge preserves declaration order pre-sort, `files` sorted by `path.localeCompare`, and **a throwing root propagates immediately** (no catch in this PR — one root fails exactly like today's single root).
-- [ ] 5.2 [GREEN] `src/infrastructure/fs/composite-document-source.ts` (new): `RootSource { declared, dir, prefix, source }`; `CompositeDocumentSource implements DocumentSource`; sequential `await` per root in declaration order; concatenate `files`/`readErrors`/`encodingNotices`; sort `files` only. Zero `node:` imports.
+- [x] 5.1 [new] `test/infrastructure/composite-document-source.test.ts`: over a fake `DocumentSource`, assert merge preserves declaration order pre-sort, `files` sorted by `path.localeCompare`, and **a throwing root propagates immediately** (no catch in this PR — one root fails exactly like today's single root).
+- [x] 5.2 [GREEN] `src/infrastructure/fs/composite-document-source.ts` (new): `RootSource { declared, dir, prefix, source }`; `CompositeDocumentSource implements DocumentSource`; sequential `await` per root in declaration order; concatenate `files`/`readErrors`/`encodingNotices`; sort `files` only. Zero `node:` imports.
 
 ### Phase 6: Composition wiring — one unconditional path
 
-- [ ] 6.1 `src/composition.ts:58`: replace `docsDir = resolve(...)` with `roots = resolveRoots(options.root, options.docsDir !== undefined ? [options.docsDir] : config.docsDir)`, placed immediately after `loadConfig` and **before** `new SqliteIndexStore` (line 59) — this is what makes Gate 5's "no `.compendio/` afterward" literally true.
-- [ ] 6.2 Wire `source = new CompositeDocumentSource(roots.map(r => ({ ...r, source: new FileDocumentSource(r.dir, config.exclude, r.prefix) })))`. Writer target stays `roots[0].dir` for now (selfPath change is PR 4).
-- [ ] 6.3 `ContainerOptions.docsDir?: string` stays unchanged (Decision 10) — normalization happens at the call site in 6.1, not in `cli.ts`.
+- [x] 6.1 `src/composition.ts:58`: replace `docsDir = resolve(...)` with `roots = resolveRoots(options.root, options.docsDir !== undefined ? [options.docsDir] : config.docsDir)`, placed immediately after `loadConfig` and **before** `new SqliteIndexStore` (line 59) — this is what makes Gate 5's "no `.compendio/` afterward" literally true.
+- [x] 6.2 Wire `source = new CompositeDocumentSource(roots.map(r => ({ ...r, source: new FileDocumentSource(r.dir, config.exclude, r.prefix) })))`. Writer target stays `roots[0].dir` for now (selfPath change is PR 4).
+- [x] 6.3 `ContainerOptions.docsDir?: string` stays unchanged (Decision 10) — normalization happens at the call site in 6.1, not in `cli.ts`.
 
 ### Phase 7: Collision guard — container-level test
 
-- [ ] 7.1 [new] Container-construction test: each of `["docs","docs/adr"]`, **`["docs/adr","docs"]` (inner declared first)**, `["docs","docs"]`, a case-differing duplicate on win32, `["a/docs","b/docs"]`, and `[]` → `createContainer` throws naming the offending strings, **and no `.compendio/` directory exists afterward** in a fresh temp project.
+- [x] 7.1 [new] Container-construction test: each of `["docs","docs/adr"]`, **`["docs/adr","docs"]` (inner declared first)**, `["docs","docs"]`, a case-differing duplicate on win32, `["a/docs","b/docs"]`, and `[]` → `createContainer` throws naming the offending strings, **and no `.compendio/` directory exists afterward** in a fresh temp project.
 
 ### Phase 8: Goldenset + harness re-addressing (one commit, per Decision 13/14 sequencing)
 
-- [ ] 8.1 [RED/baseline] `test/application/goldenset-addresses.test.ts` (new): `beforeAll` copies `ejemplos/` (docs + `goldenset.yaml`) into a temp dir (never index in place — would clobber `ejemplos/.compendio/compendio.db`); `createContainer({ root: tmp, forceLexical: true })`, index, then assert every indexed `path` starts `docs/` (Gate 1b) and every real `esperado` value is an indexed path (Gate 1c). Land this **before** the goldenset is re-addressed and confirm it fails on all 22 entries — a gate that has never been red proves nothing.
-- [ ] 8.2 `test/helpers/build.ts`: `buildHarness` calls `resolveRoots(REPO_ROOT, [docsDir])` and passes `root.prefix` as the third `FileDocumentSource` arg; correct the "mirroring production wiring" comment now that it is literally true. `test/application/index-progress.test.ts:19`'s direct `FileDocumentSource(EXAMPLES_DOCS, ["INDEX.md"])` construction is prefixed the same way in this commit.
-- [ ] 8.3 Re-address `ejemplos/goldenset.yaml`'s 22 `esperado` values with the `docs/` prefix — addresses only, no prose/filename/frontmatter change.
-- [ ] 8.4 Re-address the 26 harness-dependent literals: `evaluate.test.ts` (2 call sites + 3 inline `CASES`), `index-and-search.test.ts` (5), `read-document.test.ts` (1), `excerpt-window.test.ts` (4), `heading-less-round-trip.test.ts` (1).
-- [ ] 8.5 [invert] `goldenset-addresses.test.ts` now passes. Add a two-root multi-root integration case to `index-and-search.test.ts`: temp two-root corpus, lexical-only, index → search → `read_doc` round trip.
+- [x] 8.1 [RED/baseline] `test/application/goldenset-addresses.test.ts` (new): `beforeAll` copies `ejemplos/` (docs + `goldenset.yaml`) into a temp dir (never index in place — would clobber `ejemplos/.compendio/compendio.db`); `createContainer({ root: tmp, forceLexical: true })`, index, then assert every indexed `path` starts `docs/` (Gate 1b) and every real `esperado` value is an indexed path (Gate 1c). Land this **before** the goldenset is re-addressed and confirm it fails on all 22 entries — a gate that has never been red proves nothing.
+- [x] 8.2 `test/helpers/build.ts`: `buildHarness` calls `resolveRoots(REPO_ROOT, [docsDir])` and passes `root.prefix` as the third `FileDocumentSource` arg; correct the "mirroring production wiring" comment now that it is literally true. `test/application/index-progress.test.ts:19`'s direct `FileDocumentSource(EXAMPLES_DOCS, ["INDEX.md"])` construction is prefixed the same way in this commit.
+- [x] 8.3 Re-address `ejemplos/goldenset.yaml`'s 22 `esperado` values with the `docs/` prefix — addresses only, no prose/filename/frontmatter change.
+- [x] 8.4 Re-address the 26 harness-dependent literals: `evaluate.test.ts` (2 call sites + 3 inline `CASES`), `index-and-search.test.ts` (5), `read-document.test.ts` (1), `excerpt-window.test.ts` (4), `heading-less-round-trip.test.ts` (1).
+- [x] 8.5 [invert] `goldenset-addresses.test.ts` now passes. Add a two-root multi-root integration case to `index-and-search.test.ts`: temp two-root corpus, lexical-only, index → search → `read_doc` round trip.
+
+Note on 8.4's count: the actual literal count re-addressed was higher than 26 once verified against the running suite (`evaluate.test.ts` 3, `index-and-search.test.ts` 10 incl. the strict-fixture block, `read-document.test.ts` 9, `excerpt-window.test.ts` 4, `heading-less-round-trip.test.ts` 3 — 29 total), and two files outside the original list also needed re-addressing to keep `npm test` green: `test/fixtures/strict/compendio.config.json` (`docsDir` was still the pre-array-only string shape) and `test/cli-subprocess.test.ts` (3 literals against that same fixture, exercised through the real CLI subprocess). See apply-progress.md's Deviations section for the full accounting, including the accepted PR-2-only naive-`inferModule` regression (Decision 7/Phase 12, PR 3) and how it was handled in the two places it surfaced.
 
 ### Phase 9: Spec + verification
 
-- [ ] 9.1 Confirm `specs/configuration/spec.md`'s "`docsDir` Is a Non-Empty Array", "Colliding/Nested/Duplicate/Empty … Rejected at Construction", and "`--dir` … one-element root set" requirements are satisfied by 4.1–7.1 (already drafted for this change).
-- [ ] 9.2 Manual Gate 1: `node dist/cli.js --root ejemplos eval` **before** 8.3 — record MRR 0.000 / recall 0.00 in `verify-report.md` (proves the re-addressing is load-bearing). Re-run **after** 8.3 — record MRR ≥ 0.943, recall@5 = 1.00, top-1 ≥ 20/22, as identity.
-- [ ] 9.3 Manual Gate 2c: `compendio index` at the repo root with `docsDir: ["docs","openspec"], exclude: ["INDEX.md","openspec/changes/archive"]` — assert **zero** indexed paths start `openspec/changes/archive/`.
-- [ ] 9.4 `npm test`, `npm run typecheck`, `npm run build` green.
+- [x] 9.1 Confirm `specs/configuration/spec.md`'s "`docsDir` Is a Non-Empty Array", "Colliding/Nested/Duplicate/Empty … Rejected at Construction", and "`--dir` … one-element root set" requirements are satisfied by 4.1–7.1 (already drafted for this change).
+- [x] 9.2 Manual Gate 1: `node dist/cli.js --root ejemplos eval` **before** 8.3 — record MRR 0.000 / recall 0.00 in `verify-report.md` (proves the re-addressing is load-bearing). Re-run **after** 8.3 — record MRR ≥ 0.943, recall@5 = 1.00, top-1 ≥ 20/22, as identity.
+- [x] 9.3 Manual Gate 2c: `compendio index` at the repo root with `docsDir: ["docs","openspec"], exclude: ["INDEX.md","openspec/changes/archive"]` — assert **zero** indexed paths start `openspec/changes/archive/`.
+- [x] 9.4 `npm test`, `npm run typecheck`, `npm run build` green.
 
 ---
 
