@@ -138,7 +138,7 @@ describe("CLI subprocess: corpus commands", () => {
     const payload = JSON.parse(run.stdout) as { mode: string; results: { path: string }[] };
     expect(payload.mode).toBe("lexical");
     expect(payload.results.length).toBeGreaterThan(0);
-    expect(payload.results.map((r) => r.path)).toContain("guide-service-onboarding.md");
+    expect(payload.results.map((r) => r.path)).toContain("docs/guide-service-onboarding.md");
   });
 
   it("excludedStatuses deny-list: a draft document is hidden by default and surfaced with --all", () => {
@@ -149,7 +149,7 @@ describe("CLI subprocess: corpus commands", () => {
     const denied = runCli(["--root", workdir, "search", "inventory alerts test plan", "--lexical"]);
     expect(denied.status).toBe(0);
     const deniedPayload = JSON.parse(denied.stdout) as { results: { path: string }[] };
-    expect(deniedPayload.results.map((r) => r.path)).not.toContain("test-plan-inventory-alerts.md");
+    expect(deniedPayload.results.map((r) => r.path)).not.toContain("docs/test-plan-inventory-alerts.md");
 
     const allowed = runCli([
       "--root",
@@ -161,7 +161,7 @@ describe("CLI subprocess: corpus commands", () => {
     ]);
     expect(allowed.status).toBe(0);
     const allowedPayload = JSON.parse(allowed.stdout) as { results: { path: string }[] };
-    expect(allowedPayload.results.map((r) => r.path)).toContain("test-plan-inventory-alerts.md");
+    expect(allowedPayload.results.map((r) => r.path)).toContain("docs/test-plan-inventory-alerts.md");
   });
 });
 
@@ -273,7 +273,7 @@ describe("CLI subprocess: invoked through a link (npx / global install)", () => 
     expect(run.status).toBe(0);
     expect(run.stdout.trim().length).toBeGreaterThan(0);
     const payload = JSON.parse(run.stdout) as { results: { path: string }[] };
-    expect(payload.results.map((r) => r.path)).toContain("guide-service-onboarding.md");
+    expect(payload.results.map((r) => r.path)).toContain("docs/guide-service-onboarding.md");
   });
 
   it("reports --version through the link too", (ctx) => {
