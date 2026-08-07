@@ -131,29 +131,29 @@ Note on 8.4's count: the actual literal count re-addressed was higher than 26 on
 
 ### Phase 10: Composite tolerance + alias-as-`ReadError.path`
 
-- [ ] 10.1 [RED] Extend `composite-document-source.test.ts`: one of two fake roots throws → the other's files present plus one `ReadError`; **all** roots throw → the composite rejects with one aggregate message naming every declared root and reason.
-- [ ] 10.2 [GREEN] `composite-document-source.ts`: wrap each root's `discover()` in `try`/`catch`; on catch, push `{ path: root.prefix, error: 'declared documentation root "<declared>" (<dir>) could not be read: <reason>' }` into `readErrors` and continue; after the loop, rethrow one aggregate error only if every root threw. **`ReadError.path` is `root.prefix` (the alias), never `root.declared`** — Decision 4.
-- [ ] 10.3 Re-confirm `file-document-source.test.ts:99` and the 2.3 seeded-prefix test both still pass unchanged.
+- [x] 10.1 [RED] Extend `composite-document-source.test.ts`: one of two fake roots throws → the other's files present plus one `ReadError`; **all** roots throw → the composite rejects with one aggregate message naming every declared root and reason.
+- [x] 10.2 [GREEN] `composite-document-source.ts`: wrap each root's `discover()` in `try`/`catch`; on catch, push `{ path: root.prefix, error: 'declared documentation root "<declared>" (<dir>) could not be read: <reason>' }` into `readErrors` and continue; after the loop, rethrow one aggregate error only if every root threw. **`ReadError.path` is `root.prefix` (the alias), never `root.declared`** — Decision 4.
+- [x] 10.3 Re-confirm `file-document-source.test.ts:99` and the 2.3 seeded-prefix test both still pass unchanged.
 
 ### Phase 11: Gate 4b — a failed root protects its subtree
 
-- [ ] 11.1 [RED] `test/application/sync-index.test.ts`: a `SyncIndex` pass over a store holding `openspec/**` documents, source returning `readErrors: [{ path: "openspec" }]` and no files → `deleted` is empty. Add the inverse assertion showing a `ReadError.path` carrying the **declared** string (`"packages/app/docs"` instead of `"docs"`) would let `deleteMissingDocuments` purge the whole subtree — fails if 10.2 pushed the wrong value.
-- [ ] 11.2 Confirm green — this is satisfied by 10.2, not a separate implementation change.
+- [x] 11.1 [RED] `test/application/sync-index.test.ts`: a `SyncIndex` pass over a store holding `openspec/**` documents, source returning `readErrors: [{ path: "openspec" }]` and no files → `deleted` is empty. Add the inverse assertion showing a `ReadError.path` carrying the **declared** string (`"packages/app/docs"` instead of `"docs"`) would let `deleteMissingDocuments` purge the whole subtree — fails if 10.2 pushed the wrong value.
+- [x] 11.2 Confirm green — this is satisfied by 10.2, not a separate implementation change.
 
 ### Phase 12: Alias-aware `inferModule`
 
-- [ ] 12.1 [baseline] `test/domain/convention.test.ts` or an integration test: land an assertion of **today's naive** result — a root-level file under a prefixed path (`docs/documentation-convention.md`) infers `module: "docs"` — confirm it currently passes (this is the intermediate PR-2-only state).
-- [ ] 12.2 [GREEN] `src/domain/convention.ts`: `inferModule(path, rootPrefixes?: readonly string[])` strips at most one matching `<prefix>/` before taking the first remaining segment; `createConventionPolicy(cfg, rootPrefixes?)` threads it through to `createLoosePolicy`'s resolver (line 71); `createStrictPolicy` ignores the parameter (it never infers `module`).
-- [ ] 12.3 `composition.ts:74`: pass `roots.map(r => r.prefix)` unconditionally into `createConventionPolicy`.
-- [ ] 12.4 [invert] 12.1's baseline now asserts `module` is **absent** for `docs/documentation-convention.md`; add `openspec/specs/indexing/spec.md` → `module: "specs"` (not `"openspec"`); `docs_overview`'s `byModule` has no `docs`/`openspec` bucket.
+- [x] 12.1 [baseline] `test/domain/convention.test.ts` or an integration test: land an assertion of **today's naive** result — a root-level file under a prefixed path (`docs/documentation-convention.md`) infers `module: "docs"` — confirm it currently passes (this is the intermediate PR-2-only state).
+- [x] 12.2 [GREEN] `src/domain/convention.ts`: `inferModule(path, rootPrefixes?: readonly string[])` strips at most one matching `<prefix>/` before taking the first remaining segment; `createConventionPolicy(cfg, rootPrefixes?)` threads it through to `createLoosePolicy`'s resolver (line 71); `createStrictPolicy` ignores the parameter (it never infers `module`).
+- [x] 12.3 `composition.ts:74`: pass `roots.map(r => r.prefix)` unconditionally into `createConventionPolicy`.
+- [x] 12.4 [invert] 12.1's baseline now asserts `module` is **absent** for `docs/documentation-convention.md`; add `openspec/specs/indexing/spec.md` → `module: "specs"` (not `"openspec"`); `docs_overview`'s `byModule` has no `docs`/`openspec` bucket.
 
 ### Phase 13: Spec + verification
 
-- [ ] 13.1 Land the **required spec amendment**: `specs/indexing/spec.md`'s "Read Failures Protect the Affected `path` Subtree From Deletion" MODIFIED requirement (already drafted) — cross-check its scenarios against 10.1–11.1. Confirm this narrows, not deletes, the pre-existing MUST.
-- [ ] 13.2 Cross-check the "`module` inference … relative to the containing root" MODIFIED requirement against 12.1–12.4.
-- [ ] 13.3 Manual Gate 4: `docsDir: ["docs","openspec"]` with no `openspec/` directory present → run completes exit 0, every `docs/` document indexed, missing root reported in `skipped`/`readErrors`; every declared root unreadable → still throws.
-- [ ] 13.4 Manual Gate 3 on this repository — record `verify-report.md` numbers alongside Gate 2a/b/d/e if not already captured.
-- [ ] 13.5 `npm test`, `npm run typecheck`, `npm run build` green.
+- [x] 13.1 Land the **required spec amendment**: `specs/indexing/spec.md`'s "Read Failures Protect the Affected `path` Subtree From Deletion" MODIFIED requirement (already drafted) — cross-check its scenarios against 10.1–11.1. Confirm this narrows, not deletes, the pre-existing MUST.
+- [x] 13.2 Cross-check the "`module` inference … relative to the containing root" MODIFIED requirement against 12.1–12.4.
+- [x] 13.3 Manual Gate 4: `docsDir: ["docs","openspec"]` with no `openspec/` directory present → run completes exit 0, every `docs/` document indexed, missing root reported in `skipped`/`readErrors`; every declared root unreadable → still throws.
+- [x] 13.4 Manual Gate 3 on this repository — record `verify-report.md` numbers alongside Gate 2a/b/d/e if not already captured.
+- [x] 13.5 `npm test`, `npm run typecheck`, `npm run build` green.
 
 ---
 
