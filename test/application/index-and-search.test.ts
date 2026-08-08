@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -10,6 +11,8 @@ import {
 } from "../helpers/build";
 import { cp1252Bytes } from "../helpers/cp1252";
 import { BrokenEmbeddings, FakeEmbeddings } from "../helpers/fake-embeddings";
+import { createContainer } from "../../src/composition";
+import { GetOverview } from "../../src/application/get-overview";
 import { IndexDocuments } from "../../src/application/index-documents";
 import type { IndexReport } from "../../src/application/index-documents";
 import { computeHash } from "../../src/application/index-pipeline";
@@ -47,7 +50,7 @@ describe("index + hybrid search over the ejemplos corpus", () => {
   // es-frozen: "glosario.md" is the real frozen `ejemplos/` corpus filename,
   // not a leftover translation.
   it("indexes the glossary as a single chunk (no heading chunking)", () => {
-    const glosario = report.indexed.find((d) => d.path === "glosario.md");
+    const glosario = report.indexed.find((d) => d.path === "docs/glosario.md");
     expect(glosario?.chunks).toBe(1);
   });
 
@@ -57,14 +60,14 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     // to demonstrate that a declared status alone does not exclude a document from search
     // unless the project also opts into `convention.excludedStatuses`.
     const porDefecto = await harness.search.execute({ query: "borrador plan de pruebas panel", k: 10 });
-    expect(porDefecto.results.map((r) => r.path)).toContain("informes/plan-pruebas.md");
+    expect(porDefecto.results.map((r) => r.path)).toContain("docs/informes/plan-pruebas.md");
 
     const conTodos = await harness.search.execute({
       query: "borrador plan de pruebas panel",
       k: 10,
       includeExcluded: true,
     });
-    expect(conTodos.results.map((r) => r.path)).toContain("informes/plan-pruebas.md");
+    expect(conTodos.results.map((r) => r.path)).toContain("docs/informes/plan-pruebas.md");
   });
 
   it("bridges the semantic gap: synonyms with zero lexical overlap still retrieve", async () => {
@@ -76,7 +79,7 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     const hybrid = await harness.search.execute({ query: "registros clonados" });
     expect(hybrid.mode).toBe("hybrid");
     const paths = hybrid.results.slice(0, 3).map((r) => r.path);
-    expect(paths).toContain("leadsviewer/validacion-formulario.md");
+    expect(paths).toContain("docs/leadsviewer/validacion-formulario.md");
   });
 
   it("filters by module (folder-inferred, zero-config)", async () => {
@@ -86,7 +89,7 @@ describe("index + hybrid search over the ejemplos corpus", () => {
       k: 10,
     });
     expect(soloInformes.results.length).toBeGreaterThan(0);
-    expect(soloInformes.results.every((r) => r.path.startsWith("informes/"))).toBe(true);
+    expect(soloInformes.results.every((r) => r.path.startsWith("docs/informes/"))).toBe(true);
   });
 
   it("filters by tags", async () => {
@@ -96,7 +99,7 @@ describe("index + hybrid search over the ejemplos corpus", () => {
       k: 10,
     });
     expect(withTag.results.length).toBeGreaterThan(0);
-    expect(withTag.results.every((r) => r.path === "leadsviewer/importacion-csv.md")).toBe(true);
+    expect(withTag.results.every((r) => r.path === "docs/leadsviewer/importacion-csv.md")).toBe(true);
   });
 
   it("returns at most 2 chunks per document", async () => {
@@ -117,7 +120,7 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     const respuesta = await harness.search.execute({ query: "borrador plan de pruebas panel de informes" });
     expect(respuesta.results.length).toBeGreaterThan(0);
     const primero = respuesta.results[0]!;
-    expect(primero.path).toBe("informes/plan-pruebas.md");
+    expect(primero.path).toBe("docs/informes/plan-pruebas.md");
     expect(primero.section.length).toBeGreaterThan(0);
     expect(primero.status).toBe("borrador");
     // +2: the rank-1 excerpt is now a window (match-centred-excerpt), which
@@ -251,19 +254,19 @@ describe("strict synthetic fixture — declared taxonomy, type filtering, deny-l
   it("filters by a declared type from the reproduced taxonomy", async () => {
     const soloAdr = await harness.search.execute({ query: "architecture decision", type: "adr", k: 10 });
     expect(soloAdr.results.length).toBeGreaterThan(0);
-    expect(soloAdr.results.every((r) => r.path === "decision-redis-cache.md")).toBe(true);
+    expect(soloAdr.results.every((r) => r.path === "docs/decision-redis-cache.md")).toBe(true);
   });
 
   it("excludes the declared draft/deprecated statuses from search by default", async () => {
     const porDefecto = await harness.search.execute({ query: "inventory alerts test plan", k: 10 });
-    expect(porDefecto.results.map((r) => r.path)).not.toContain("test-plan-inventory-alerts.md");
+    expect(porDefecto.results.map((r) => r.path)).not.toContain("docs/test-plan-inventory-alerts.md");
 
     const conTodos = await harness.search.execute({
       query: "inventory alerts test plan",
       k: 10,
       includeExcluded: true,
     });
-    expect(conTodos.results.map((r) => r.path)).toContain("test-plan-inventory-alerts.md");
+    expect(conTodos.results.map((r) => r.path)).toContain("docs/test-plan-inventory-alerts.md");
   });
 });
 
@@ -319,6 +322,35 @@ describe("IndexDocuments — loose mode never skips for metadata reasons", () =>
     expect(doc).not.toBeNull();
     expect(doc!.type).toBeUndefined();
     expect(doc!.status).toBeUndefined();
+    store.close();
+  });
+});
+
+describe("IndexDocuments — alias-aware module inference across roots (design.md Decision 7, Gate 3)", () => {
+  it("byModule has no bucket for a root's own alias; a nested root's file infers its real folder, not the alias", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    const source = new StaticSource([
+      { path: "docs/documentation-convention.md", content: "# Doc\n\nText.\n" },
+      { path: "openspec/specs/indexing/spec.md", content: "# Spec\n\nText.\n" },
+    ]);
+    const indexer = new IndexDocuments(
+      source,
+      new RemarkMarkdownParser(),
+      store,
+      null,
+      createConventionPolicy(LOOSE, ["docs", "openspec"]),
+      { chunking: { minTokens: 10, maxTokens: 800 }, noChunking: [] },
+    );
+    const report = await indexer.execute();
+    expect(report.skipped).toEqual([]);
+
+    expect(store.getDocumentByPath("docs/documentation-convention.md")!.module).toBeUndefined();
+    expect(store.getDocumentByPath("openspec/specs/indexing/spec.md")!.module).toBe("specs");
+
+    const overview = new GetOverview(store).execute();
+    expect(overview.byModule).not.toHaveProperty("docs");
+    expect(overview.byModule).not.toHaveProperty("openspec");
+    expect(overview.byModule).toEqual({ specs: 1 });
     store.close();
   });
 });
@@ -799,6 +831,52 @@ describe("SyncIndex — self-heals a previously mis-decoded document via increme
     } finally {
       store.close();
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// --- Multi-root integration: two declared roots, through real createContainer wiring ---
+
+describe("multi-root integration — two declared roots, index -> search -> read_doc round trip", () => {
+  it("indexes both roots under their own alias prefix, searches across both, and round-trips a second-root path through read_doc", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "compendio-multiroot-"));
+    try {
+      await mkdir(join(projectDir, "alpha"), { recursive: true });
+      await mkdir(join(projectDir, "beta"), { recursive: true });
+      await writeFile(
+        join(projectDir, "alpha", "one.md"),
+        "# Alpha One\n\nContenido exclusivo de la raiz alpha: PALABRAALFA.\n",
+        "utf8",
+      );
+      await writeFile(
+        join(projectDir, "beta", "two.md"),
+        "# Beta Two\n\nContenido exclusivo de la raiz beta: PALABRABETA.\n",
+        "utf8",
+      );
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ docsDir: ["alpha", "beta"] }),
+        "utf8",
+      );
+
+      const container = createContainer({ root: projectDir, forceLexical: true });
+      try {
+        const report = await container.indexDocuments.execute();
+        expect(report.skipped).toEqual([]);
+        expect(report.indexed.map((d) => d.path).sort()).toEqual(["alpha/one.md", "beta/two.md"]);
+
+        const hit = await container.searchDocuments.execute({ query: "PALABRABETA" });
+        expect(hit.results.map((r) => r.path)).toContain("beta/two.md");
+
+        const read = container.readDocument.execute({ path: "beta/two.md" });
+        expect(read.type).toBe("document");
+        if (read.type !== "document") return;
+        expect(read.content).toContain("PALABRABETA");
+      } finally {
+        container.close();
+      }
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
     }
   });
 });

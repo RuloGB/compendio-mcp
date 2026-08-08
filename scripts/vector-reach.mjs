@@ -92,7 +92,7 @@ import { resolve } from "node:path";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import { estimateTokens } from "../dist/domain/tokens.js";
-import { loadConfig } from "../dist/infrastructure/config.js";
+import { loadConfig, resolveRoots } from "../dist/infrastructure/config.js";
 import { TransformersEmbeddings } from "../dist/infrastructure/embeddings/transformers-embeddings.js";
 import { SqliteIndexStore } from "../dist/infrastructure/sqlite/sqlite-index-store.js";
 
@@ -200,8 +200,17 @@ try {
     // Truncation probe: the marker DOCUMENT's first 384 words (read from the
     // raw file, not the indexed chunk — the two diverge once the splitter
     // lands) against the marker CHUNK's own STORED vector.
+    //
+    // `markerChunk.path` is already root-alias-prefixed (design.md Decision
+    // 1), so it cannot be joined onto `config.docsDir` directly — that both
+    // throws (docsDir is an array, not a directory string) and double-counts
+    // the prefix even if it didn't. Calling the same `resolveRoots` production
+    // wiring uses (design.md Decision 11) keeps this script from carrying a
+    // second, divergence-prone implementation of root resolution.
     const config = loadConfig(root);
-    const docPath = resolve(root, config.docsDir, markerChunk.path);
+    const roots = resolveRoots(root, config.docsDir);
+    const owner = roots.find((r) => markerChunk.path.startsWith(`${r.prefix}/`)) ?? roots[0];
+    const docPath = resolve(owner.dir, markerChunk.path.slice(owner.prefix.length + 1));
     const docText = readFileSync(docPath, "utf8");
     const probeText = firstWords(docText, PROBE_WORDS);
     const [probeVector] = await embeddings.embed([`passage: ${probeText}`]);

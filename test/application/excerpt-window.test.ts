@@ -14,11 +14,11 @@ describe("excerpt-window fixture — self-asserted preconditions", () => {
     const harness = buildHarness(null, EXAMPLES_CONVENTION, EXCERPT_WINDOW_DOCS);
     try {
       const report = await harness.index.execute();
-      const doc = report.indexed.find((d) => d.path === "window.md");
+      const doc = report.indexed.find((d) => d.path === "docs/window.md");
       expect(doc).toBeDefined();
       expect(doc!.chunks).toBe(1);
 
-      const indexed = harness.store.getDocumentByPath("window.md");
+      const indexed = harness.store.getDocumentByPath("docs/window.md");
       expect(indexed).not.toBeNull();
       const chunks = harness.store.getChunksByDocument(indexed!.id);
       expect(chunks).toHaveLength(1);
@@ -39,7 +39,7 @@ describe("excerpt-window fixture — self-asserted preconditions", () => {
     const harness = buildHarness(null, EXAMPLES_CONVENTION, EXCERPT_WINDOW_DOCS);
     try {
       await harness.index.execute();
-      const indexed = harness.store.getDocumentByPath("stopword-trap.md");
+      const indexed = harness.store.getDocumentByPath("docs/stopword-trap.md");
       expect(indexed).not.toBeNull();
       const chunks = harness.store.getChunksByDocument(indexed!.id);
       expect(chunks).toHaveLength(1);
@@ -79,7 +79,7 @@ describe("Gate 1 — the window reaches the answer (inverted; real assertion)", 
       const response = await harness.search.execute({ query: WINDOW_QUERY, k: 5 });
       expect(response.results.length).toBeGreaterThan(0);
       const lead = response.results[0]!;
-      expect(lead.path).toBe("window.md");
+      expect(lead.path).toBe("docs/window.md");
       expect(lead.excerpt).toContain(WINDOW_MARKER);
       // The window clamps to [200, 1600] on this fixture (design.md task
       // 9.1): a leading ellipsis (start > 0) and no trailing one (end
@@ -100,7 +100,7 @@ describe("Gate 3 — the stopword trap", () => {
       const response = await harness.search.execute({ query: TRAP_QUERY, k: 5 });
       expect(response.results.length).toBeGreaterThan(0);
       const lead = response.results[0]!;
-      expect(lead.path).toBe("stopword-trap.md");
+      expect(lead.path).toBe("docs/stopword-trap.md");
       expect(lead.excerpt).toContain(TRAP_MARKER);
       // A first-hit implementation would centre on offset 0, where "the"
       // first occurs, and open with the document's opening words.

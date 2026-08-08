@@ -35,7 +35,7 @@ describe("Gate 1 / Gate 3 — heading-less document round trip", () => {
     const report = await harness.index.execute();
     expect(report.skipped).toEqual([]);
 
-    const doc = harness.store.getDocumentByPath("manual-extenso.md");
+    const doc = harness.store.getDocumentByPath("docs/manual-extenso.md");
     expect(doc).not.toBeNull();
     if (doc === null) return;
     const chunks = harness.store.getChunksByDocument(doc.id);
@@ -48,13 +48,13 @@ describe("Gate 1 / Gate 3 — heading-less document round trip", () => {
     // fixture documents (CLAUDE.md's Gate 1b procedure), so a lexical-only
     // search for it identifies this document without ambiguity.
     const response = await harness.search.execute({ query: "QUETZAL-7731" });
-    const hit = response.results.find((r) => r.path === "manual-extenso.md");
+    const hit = response.results.find((r) => r.path === "docs/manual-extenso.md");
     expect(hit).toBeDefined();
     expect(hit!.section).toBe("Manual extenso");
 
     // Gate 3: the exact `section` string search_docs returned, passed back
     // verbatim to read_doc, must resolve -- never section-not-found.
-    const read = harness.read.execute({ path: "manual-extenso.md", section: hit!.section });
+    const read = harness.read.execute({ path: "docs/manual-extenso.md", section: hit!.section });
     expect(read.type).toBe("section");
   });
 });

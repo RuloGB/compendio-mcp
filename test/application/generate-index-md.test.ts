@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { GenerateIndexMd } from "../../src/application/generate-index-md";
 import { createIndexComparator, createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
+import { INDEX_FILE } from "../../src/domain/index-markdown";
 import type {
   DiscoverResult,
   DocumentFile,
@@ -13,6 +14,8 @@ import type {
   IndexWriteResult,
   ReadError,
 } from "../../src/domain/ports";
+import { resolveRoots } from "../../src/infrastructure/config";
+import { CompositeDocumentSource } from "../../src/infrastructure/fs/composite-document-source";
 import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 
@@ -71,12 +74,13 @@ const VALID_DOC: DocumentFile = {
 function buildUseCase(
   source: DocumentSource,
   convention: ConventionConfig = LOOSE,
+  selfPath: string = INDEX_FILE,
 ): { useCase: GenerateIndexMd; writer: MemoryIndexWriter } {
   const writer = new MemoryIndexWriter();
   const policy = createConventionPolicy(convention);
   const compare = createIndexComparator(convention);
   return {
-    useCase: new GenerateIndexMd(source, new RemarkMarkdownParser(), writer, policy, compare),
+    useCase: new GenerateIndexMd(source, new RemarkMarkdownParser(), writer, policy, compare, selfPath),
     writer,
   };
 }
@@ -268,6 +272,110 @@ describe("GenerateIndexMd — undecodable content, real decodeText rejection mes
       expect(report.skipped[0]!.errors[0]).toContain("windows-1252");
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// design.md Decision 9 (tasks.md Phase 14): under root-prefixing, the three
+// equality checks in generate-index-md.ts (readErrors filter, entries filter,
+// encodingNotices filter) compared against the literal "INDEX.md" go dead —
+// they never match a prefixed self path like "docs/INDEX.md". `selfPath`
+// retargets all three. Each is pinned individually here (unit level, over
+// fakes) and then together end to end (Gate 6, real FileDocumentSource +
+// CompositeDocumentSource, `exclude: []` — the only config that reaches these
+// checks at all, since the default `exclude: [INDEX_FILE]` basename clause
+// would otherwise filter "INDEX.md" out before GenerateIndexMd ever sees it).
+describe("GenerateIndexMd — selfPath retargets self-exclusion under a prefixed path (design.md Decision 9)", () => {
+  const PREFIXED_SELF = "docs/INDEX.md";
+  const PREFIXED_DOC: DocumentFile = { ...VALID_DOC, path: "docs/guides/transversal-valid.md" };
+
+  it("excludes the prefixed self-path from the listed entries, not just the bare literal", async () => {
+    const { useCase, writer } = buildUseCase(
+      new StaticSource([{ path: PREFIXED_SELF, content: "# Old index\n" }, PREFIXED_DOC]),
+      LOOSE,
+      PREFIXED_SELF,
+    );
+    const report = await useCase.execute();
+
+    expect(report.documents).toBe(1);
+    expect(writer.content).not.toContain(`] ${PREFIXED_SELF}`);
+    expect(writer.content).toContain(PREFIXED_DOC.path);
+  });
+
+  it("filters the prefixed self-path out of the readErrors-derived skipped list", async () => {
+    const { useCase } = buildUseCase(
+      new StaticSource([PREFIXED_DOC], [{ path: PREFIXED_SELF, error: "stale lock, should never surface" }]),
+      LOOSE,
+      PREFIXED_SELF,
+    );
+    const report = await useCase.execute();
+
+    expect(report.skipped).toEqual([]);
+  });
+
+  it("filters the prefixed self-path out of encodingNotices", async () => {
+    const { useCase } = buildUseCase(
+      new SourceWithEncodingNotices(
+        [PREFIXED_DOC],
+        [
+          { path: PREFIXED_DOC.path, encoding: "windows-1252" },
+          { path: PREFIXED_SELF, encoding: "windows-1252" },
+        ],
+      ),
+      LOOSE,
+      PREFIXED_SELF,
+    );
+    const report = await useCase.execute();
+
+    expect(report.encodingNotices).toEqual([{ path: PREFIXED_DOC.path, encoding: "windows-1252" }]);
+  });
+});
+
+describe("GenerateIndexMd — combined index across declared roots, exclude: [] (design.md Decision 9, Gate 6)", () => {
+  it("excludes the generated INDEX.md from itself and lists prefixed entries from every root", async () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), "compendio-indexmd-multiroot-"));
+    const docsDir = join(projectRoot, "docs");
+    const openspecDir = join(projectRoot, "openspec");
+    mkdirSync(docsDir);
+    mkdirSync(openspecDir);
+    // A stale INDEX.md from a previous run: with `exclude: []` nothing filters
+    // it out before GenerateIndexMd sees it, so self-exclusion is entirely
+    // `selfPath`'s job here — the only config that reaches lines 41/46/77.
+    writeFileSync(join(docsDir, "INDEX.md"), "# Stale index\n\nfrom a previous run.\n");
+    writeFileSync(join(docsDir, "guide.md"), VALID_DOC.content);
+    writeFileSync(
+      join(openspecDir, "spec.md"),
+      "---\ntype: guide\nmodule: transversal\nstatus: current\n---\n\n# Spec doc\n\nSpec summary.\n",
+    );
+
+    try {
+      const roots = resolveRoots(projectRoot, ["docs", "openspec"]);
+      const source = new CompositeDocumentSource(
+        roots.map((root) => ({ ...root, source: new FileDocumentSource(root.dir, [], root.prefix) })),
+      );
+      const writer = new MemoryIndexWriter();
+      const policy = createConventionPolicy(
+        LOOSE,
+        roots.map((r) => r.prefix),
+      );
+      const compare = createIndexComparator(LOOSE);
+      const useCase = new GenerateIndexMd(
+        source,
+        new RemarkMarkdownParser(),
+        writer,
+        policy,
+        compare,
+        `${roots[0]!.prefix}/${INDEX_FILE}`,
+      );
+
+      const report = await useCase.execute();
+
+      expect(report.documents).toBe(2);
+      expect(writer.content).not.toContain(`] ${roots[0]!.prefix}/${INDEX_FILE}`);
+      expect(writer.content).toContain("docs/guide.md");
+      expect(writer.content).toContain("openspec/spec.md");
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
     }
   });
 });

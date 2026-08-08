@@ -1,22 +1,31 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { IndexDocuments } from "../../src/application/index-documents";
 import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
 import type { ProgressEvent, ProgressReporter } from "../../src/domain/progress";
 import type { DiscoverResult, DocumentFile, DocumentSource, EmbeddingsProvider } from "../../src/domain/ports";
-import { DEFAULT_CONFIG, NO_CHUNKING } from "../../src/infrastructure/config";
+import { DEFAULT_CONFIG, NO_CHUNKING, resolveRoots } from "../../src/infrastructure/config";
 import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 import { EXAMPLES_CONVENTION, EXAMPLES_DOCS } from "../helpers/build";
 import { BrokenEmbeddings, FakeEmbeddings } from "../helpers/fake-embeddings";
 
+// es-frozen: cites the real `ejemplos/` corpus name, not a leftover translation.
+const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+
 function buildExamplesIndexer(
   embeddings: EmbeddingsProvider | null,
   onProgress: ProgressReporter,
 ): { indexer: IndexDocuments; store: SqliteIndexStore } {
+  // This helper asserts progress events, not paths, so it needs no behavioral
+  // change here — but it is the second harness-shaped divergence from
+  // production wiring (build.ts's buildHarness is the first), prefixed in
+  // the same commit for the same reason (design.md Decision 13).
+  const [root] = resolveRoots(REPO_ROOT, [EXAMPLES_DOCS]);
   const store = new SqliteIndexStore(":memory:");
   const indexer = new IndexDocuments(
-    new FileDocumentSource(EXAMPLES_DOCS, ["INDEX.md"]),
+    new FileDocumentSource(root!.dir, ["INDEX.md"], root!.prefix),
     new RemarkMarkdownParser(),
     store,
     embeddings,

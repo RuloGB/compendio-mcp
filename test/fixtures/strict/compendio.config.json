@@ -1,5 +1,5 @@
 {
-  "docsDir": "docs",
+  "docsDir": ["docs"],
   "convention": {
     "mode": "strict",
     "types": ["functional", "adr", "api", "qa", "guide"],

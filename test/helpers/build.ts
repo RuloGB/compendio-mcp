@@ -6,10 +6,14 @@ import { ReadDocument } from "../../src/application/read-document";
 import { SearchDocuments } from "../../src/application/search-documents";
 import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
 import type { EmbeddingsProvider } from "../../src/domain/ports";
-import { DEFAULT_CONFIG, NO_CHUNKING } from "../../src/infrastructure/config";
+import { DEFAULT_CONFIG, NO_CHUNKING, resolveRoots } from "../../src/infrastructure/config";
 import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
 import { RemarkMarkdownParser } from "../../src/infrastructure/markdown/remark-markdown-parser";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
+
+// es-frozen: cites the real `ejemplos/` corpus name, not a leftover translation.
+/** Project root, for `resolveRoots`'s alias derivation (design.md Decision 13). */
+const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
 // es-frozen: path into the Spanish `ejemplos/` reference corpus, which stays
 // Spanish as the retrieval regression suite.
@@ -77,16 +81,28 @@ export interface TestHarness {
   close(): void;
 }
 
-/** In-memory composition over a docs corpus, mirroring production wiring. */
+/**
+ * In-memory composition over a docs corpus, mirroring production wiring.
+ *
+ * Calls the real `resolveRoots` (not a reimplemented `basename(docsDir)`) so
+ * this harness's alias derivation can never drift from production's — the
+ * same argument as `scripts/vector-reach.mjs` calling it too (Decision 11).
+ * Every corpus constant in this file resolves to a directory literally named
+ * `docs`, so every harness-emitted path is prefixed `docs/...`.
+ */
 export function buildHarness(
   embeddings: EmbeddingsProvider | null,
   convention: ConventionConfig = EXAMPLES_CONVENTION,
   docsDir: string = EXAMPLES_DOCS,
 ): TestHarness {
+  const [root] = resolveRoots(REPO_ROOT, [docsDir]);
   const store = new SqliteIndexStore(":memory:");
-  const policy = createConventionPolicy(convention);
+  // Mirrors production wiring (composition.ts): rootPrefixes threaded in
+  // unconditionally, so module inference strips the alias the same way here
+  // as it does in `createContainer` (design.md Decision 7, Decision 13).
+  const policy = createConventionPolicy(convention, [root!.prefix]);
   const index = new IndexDocuments(
-    new FileDocumentSource(docsDir, ["INDEX.md"]),
+    new FileDocumentSource(root!.dir, ["INDEX.md"], root!.prefix),
     new RemarkMarkdownParser(),
     store,
     embeddings,

@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createContainer } from "../../src/composition";
 import { IndexDocuments } from "../../src/application/index-documents";
 import { formatFrontmatter, ReadDocument } from "../../src/application/read-document";
 import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
@@ -27,19 +28,21 @@ describe("ReadDocument over the ejemplos corpus", () => {
   });
 
   it("returns the full document with its H1 restored", () => {
-    const result = harness.read.execute({ path: "leadsviewer/validacion-formulario.md" });
+    const result = harness.read.execute({ path: "docs/leadsviewer/validacion-formulario.md" });
     expect(result.type).toBe("document");
     if (result.type !== "document") return;
     expect(result.content.startsWith("# Validación del formulario de alta de leads")).toBe(true);
     expect(result.content).toContain("## Reglas de negocio");
-    // Zero-config document (no frontmatter): module comes from folder inference.
+    // Alias-aware `inferModule` (design.md Decision 7, tasks.md Phase 12):
+    // the root's own alias ("docs") is stripped before folder inference, so
+    // this resolves to the real containing folder, not the root alias.
     expect(result.meta.module).toBe("leadsviewer");
   });
 
   // es-frozen: "glosario.md"/"Glosario" are the real frozen `ejemplos/` corpus
   // filename and its real H1, not a leftover translation.
   it("does not duplicate the H1 of documents indexed as a single chunk", () => {
-    const result = harness.read.execute({ path: "glosario.md" });
+    const result = harness.read.execute({ path: "docs/glosario.md" });
     expect(result.type).toBe("document");
     if (result.type !== "document") return;
     expect(result.content.match(/^# Glosario/gm)).toHaveLength(1);
@@ -47,7 +50,7 @@ describe("ReadDocument over the ejemplos corpus", () => {
 
   it("finds a section by partial, accent-insensitive heading", () => {
     const result = harness.read.execute({
-      path: "leadsviewer/validacion-formulario.md",
+      path: "docs/leadsviewer/validacion-formulario.md",
       section: "reglas de duplicidad",
     });
     expect(result.type).toBe("section");
@@ -55,22 +58,35 @@ describe("ReadDocument over the ejemplos corpus", () => {
     expect(result.content).toContain("Un lead se considera duplicado");
   });
 
-  it("tolerates a leading docs-dir segment on the path", () => {
-    // A caller that just saw the file on disk holds "docs/leadsviewer/x.md",
-    // while indexed paths are docs-relative. Both name one document, and
-    // rejecting the first costs a failed call per read.
+  it("resolves a path that already carries its root's alias directly, as an exact hit", () => {
+    // Before root-prefixing, indexed paths were docs-relative and a caller
+    // holding the on-disk path ("docs/leadsviewer/x.md") needed the
+    // one-leading-segment strip fallback below. Every indexed path now
+    // already carries its root's alias, so this on-disk path IS the exact
+    // indexed path (design.md Decision 12: "the motivating case becomes the
+    // exact branch"). Genuine over-prefixing tolerance is Phase 15 (PR 4).
     const result = harness.read.execute({ path: "docs/leadsviewer/validacion-formulario.md" });
     expect(result.type).toBe("document");
     if (result.type !== "document") return;
-    expect(result.meta.path).toBe("leadsviewer/validacion-formulario.md");
+    expect(result.meta.path).toBe("docs/leadsviewer/validacion-formulario.md");
+  });
+
+  it("tolerates one genuinely over-prefixed leading segment on the path", () => {
+    // A caller holding a project-relative path one level deeper than the
+    // indexed one ("repo/docs/leadsviewer/x.md") still resolves: the literal
+    // match misses, and the one-leading-segment strip fallback recovers it.
+    const result = harness.read.execute({ path: "repo/docs/leadsviewer/validacion-formulario.md" });
+    expect(result.type).toBe("document");
+    if (result.type !== "document") return;
+    expect(result.meta.path).toBe("docs/leadsviewer/validacion-formulario.md");
   });
 
   it("prefers a real document over stripping a segment off the request", () => {
     // Stripping must never shadow an exact hit: only a miss triggers the retry.
-    const result = harness.read.execute({ path: "leadsviewer/validacion-formulario.md" });
+    const result = harness.read.execute({ path: "docs/leadsviewer/validacion-formulario.md" });
     expect(result.type).toBe("document");
     if (result.type !== "document") return;
-    expect(result.meta.path).toBe("leadsviewer/validacion-formulario.md");
+    expect(result.meta.path).toBe("docs/leadsviewer/validacion-formulario.md");
   });
 
   it("still reports a genuinely unknown path after the prefix retry", () => {
@@ -83,17 +99,90 @@ describe("ReadDocument over the ejemplos corpus", () => {
     expect(result.type).toBe("path-not-found");
     if (result.type !== "path-not-found") return;
     expect(result.suggestions).toHaveLength(3);
-    expect(result.suggestions[0]).toBe("leadsviewer/validacion-formulario.md");
+    expect(result.suggestions[0]).toBe("docs/leadsviewer/validacion-formulario.md");
   });
 
   it("lists available sections when the requested one does not exist", () => {
     const result = harness.read.execute({
-      path: "leadsviewer/validacion-formulario.md",
+      path: "docs/leadsviewer/validacion-formulario.md",
       section: "made-up section",
     });
     expect(result.type).toBe("section-not-found");
     if (result.type !== "section-not-found") return;
     expect(result.availableSections.length).toBeGreaterThan(0);
+  });
+});
+
+// design.md Decision 12 / tasks.md Phase 15: `ReadDocument.resolve` needs no
+// edit here — its exact-then-strip-fallback order already covers both cases
+// below by construction (`read-document.ts:44-50`, unchanged by this PR, see
+// 15.2). These two tests pin what the design predicted rather than change
+// anything: the aliased-collision residual case (a miss whose stripped form
+// happens to name a real document under a different root) and the
+// bare-basename miss (a single-segment request the strip cannot reduce any
+// further). The other two cases Phase 15 lists — exact prefixed-path hit and
+// genuine over-prefixed hit — are already covered above ("resolves a path
+// that already carries its root's alias directly" / "tolerates one genuinely
+// over-prefixed leading segment").
+describe("ReadDocument — the one-leading-segment tolerance's edge cases under multiple declared roots (design.md Decision 12)", () => {
+  let bareBasenameHarness: TestHarness;
+
+  beforeAll(async () => {
+    bareBasenameHarness = buildHarness(new FakeEmbeddings());
+    await bareBasenameHarness.index.execute();
+  });
+
+  afterAll(() => {
+    bareBasenameHarness.close();
+  });
+
+  it("a miss whose stripped form names another root's document resolves to that document, never as a false negative", async () => {
+    // docsDir: ["docs", "adr"] — "docs" has no adr/ subfolder at all, so no
+    // document is ever indexed as "docs/adr/x.md". The literal request
+    // therefore misses, the one-segment strip yields "adr/x.md", and that
+    // IS a real document — the mechanism cannot distinguish this from the
+    // over-prefixed case it exists to serve (mcp-contract delta, documented
+    // non-guarantee).
+    const projectDir = mkdtempSync(join(tmpdir(), "compendio-read-collision-"));
+    try {
+      mkdirSync(join(projectDir, "docs"));
+      mkdirSync(join(projectDir, "adr"));
+      writeFileSync(join(projectDir, "docs", "unrelated.md"), "# Unrelated\n\nNothing to do with adr.\n");
+      writeFileSync(join(projectDir, "adr", "x.md"), "# ADR X\n\nThe real top-of-root document.\n");
+      writeFileSync(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ docsDir: ["docs", "adr"] }),
+        "utf8",
+      );
+
+      const container = createContainer({ root: projectDir, forceLexical: true });
+      try {
+        const report = await container.indexDocuments.execute();
+        expect(report.indexed.map((d) => d.path).sort()).toEqual(["adr/x.md", "docs/unrelated.md"]);
+
+        const result = container.readDocument.execute({ path: "docs/adr/x.md" });
+        expect(result.type).toBe("document");
+        if (result.type !== "document") return;
+        expect(result.meta.path).toBe("adr/x.md");
+        expect(result.content).toContain("The real top-of-root document.");
+      } finally {
+        container.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("a bare basename does not recover a root prefix — the tolerance never adds a segment", () => {
+    // The tolerance only ever strips; it cannot turn "x.md" into "docs/x.md".
+    // A single-segment path has no "/" to strip in the first place
+    // (`separator === -1` at read-document.ts:47-48), so the literal miss
+    // falls straight through to path-not-found with the closest matches.
+    const result = bareBasenameHarness.read.execute({ path: "glosario.md" });
+    expect(result.type).toBe("path-not-found");
+    if (result.type !== "path-not-found") return;
+    expect(result.suggestions).toHaveLength(3);
+    expect(result.suggestions).toContain("docs/glosario.md");
   });
 });
 
