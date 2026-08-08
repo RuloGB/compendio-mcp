@@ -1,9 +1,9 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { SearchDocuments } from "../../src/application/search-documents";
-import { DEFAULT_CONFIG, loadConfig } from "../../src/infrastructure/config";
+import { DEFAULT_CONFIG, loadConfig, resolveRoots } from "../../src/infrastructure/config";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
 describe("loadConfig", () => {
@@ -39,7 +39,7 @@ describe("loadConfig", () => {
     const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-nochunk-"));
     await writeFile(
       join(projectDir, "compendio.config.json"),
-      JSON.stringify({ docsDir: "documentation" }),
+      JSON.stringify({ docsDir: ["documentation"] }),
       "utf8",
     );
     const config = loadConfig(projectDir);
@@ -63,11 +63,11 @@ describe("loadConfig", () => {
     const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-docsdir-"));
     await writeFile(
       join(projectDir, "compendio.config.json"),
-      JSON.stringify({ docsDir: "documentation" }),
+      JSON.stringify({ docsDir: ["documentation"] }),
       "utf8",
     );
     const config = loadConfig(projectDir);
-    expect(config.docsDir).toBe("documentation");
+    expect(config.docsDir).toEqual(["documentation"]);
     expect(config.convention.mode).toBe("loose");
     expect(config.convention.excludedStatuses).toEqual([]);
     await rm(projectDir, { recursive: true, force: true });
@@ -151,6 +151,10 @@ describe("loadConfig", () => {
     });
   });
 
+  it("DEFAULT_CONFIG.docsDir is a single-element array, not a string", () => {
+    expect(DEFAULT_CONFIG.docsDir).toEqual(["docs"]);
+  });
+
   it("defaults sync.throttleMs to 30000 when no sync block is declared", () => {
     const config = loadConfig(join(dir, "no-such-project-sync"));
     expect(config.sync).toEqual({ throttleMs: 30000 });
@@ -192,5 +196,85 @@ describe("loadConfig", () => {
     const config = loadConfig(projectDir);
     expect(config.sync.throttleMs).toBe(100);
     await rm(projectDir, { recursive: true, force: true });
+  });
+});
+
+describe("resolveRoots", () => {
+  const PROJECT = resolve(sep === "\\" ? "C:\\project" : "/project");
+
+  it("normalizes a single declared root: trailing slash, leading './', and bare form all yield the same alias", () => {
+    for (const declared of ["docs/", "./docs", "docs"]) {
+      const [root] = resolveRoots(PROJECT, [declared]);
+      expect(root!.declared).toBe(declared);
+      expect(root!.dir).toBe(resolve(PROJECT, "docs"));
+      expect(root!.prefix).toBe("docs");
+    }
+  });
+
+  it("derives one alias per root for a two-root array, in declaration order", () => {
+    const roots = resolveRoots(PROJECT, ["docs", "openspec"]);
+    expect(roots.map((r) => r.prefix)).toEqual(["docs", "openspec"]);
+    expect(roots.map((r) => r.declared)).toEqual(["docs", "openspec"]);
+  });
+
+  it("rejects a non-array docsDir", () => {
+    // @ts-expect-error -- exercising the runtime guard against a wrong-shaped
+    // value a config author could actually write, deliberately outside the type
+    expect(() => resolveRoots(PROJECT, "docs")).toThrow(
+      "docsDir must be an array of documentation root paths",
+    );
+  });
+
+  it("rejects an empty array", () => {
+    expect(() => resolveRoots(PROJECT, [])).toThrow(
+      "docsDir must declare at least one documentation root",
+    );
+  });
+
+  it("rejects a non-string entry, naming its index and typeof", () => {
+    // @ts-expect-error -- exercising the runtime guard against a wrong-shaped
+    // entry a config author could actually write, deliberately outside the type
+    expect(() => resolveRoots(PROJECT, ["docs", 42])).toThrow(
+      "docsDir entries must be strings; entry 1 is number",
+    );
+  });
+
+  it("rejects duplicate entries, naming both declared strings", () => {
+    expect(() => resolveRoots(PROJECT, ["docs", "docs"])).toThrow(
+      /docsDir declares the same documentation root twice: "docs" and "docs" both resolve to/,
+    );
+  });
+
+  it.skipIf(process.platform !== "win32")(
+    "rejects a case-differing duplicate on a case-insensitive filesystem (win32)",
+    () => {
+      expect(() => resolveRoots(PROJECT, ["Docs", "docs"])).toThrow(
+        /docsDir declares the same documentation root twice: "Docs" and "docs" both resolve to/,
+      );
+    },
+  );
+
+  it("rejects nested roots, outer root declared first", () => {
+    expect(() => resolveRoots(PROJECT, ["docs", "docs/adr"])).toThrow(
+      /docsDir declares nested documentation roots: "docs\/adr" .* lies inside "docs"/,
+    );
+  });
+
+  it("rejects nested roots, inner root declared first — the one-directional-sweep escape", () => {
+    // A predicate that only tests one declaration order would miss this case
+    // (design.md's measured `relative('...docs\\adr', '...docs')` -> "..").
+    expect(() => resolveRoots(PROJECT, ["docs/adr", "docs"])).toThrow(
+      /docsDir declares nested documentation roots: "docs\/adr" .* lies inside "docs"/,
+    );
+  });
+
+  it("rejects an alias clash between two differently-located roots sharing a basename", () => {
+    expect(() => resolveRoots(PROJECT, ["a/docs", "b/docs"])).toThrow(
+      /docsDir declares two roots with the same directory name: "a\/docs" and "b\/docs" both use the path prefix "docs"/,
+    );
+  });
+
+  it("accepts a valid, non-colliding two-root array", () => {
+    expect(() => resolveRoots(PROJECT, ["docs", "openspec"])).not.toThrow();
   });
 });

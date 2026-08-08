@@ -27,19 +27,23 @@ describe("ReadDocument over the ejemplos corpus", () => {
   });
 
   it("returns the full document with its H1 restored", () => {
-    const result = harness.read.execute({ path: "leadsviewer/validacion-formulario.md" });
+    const result = harness.read.execute({ path: "docs/leadsviewer/validacion-formulario.md" });
     expect(result.type).toBe("document");
     if (result.type !== "document") return;
     expect(result.content.startsWith("# Validación del formulario de alta de leads")).toBe(true);
     expect(result.content).toContain("## Reglas de negocio");
-    // Zero-config document (no frontmatter): module comes from folder inference.
-    expect(result.meta.module).toBe("leadsviewer");
+    // PR 2 intermediate state (design.md tasks.md Phase 12): `inferModule` is
+    // not yet alias-aware, so the first path segment is the root's own alias
+    // ("docs") rather than the real containing folder ("leadsviewer"). Fixed
+    // in PR 3 (Decision 7) — this asserts today's actual, naive value rather
+    // than the pre-change one.
+    expect(result.meta.module).toBe("docs");
   });
 
   // es-frozen: "glosario.md"/"Glosario" are the real frozen `ejemplos/` corpus
   // filename and its real H1, not a leftover translation.
   it("does not duplicate the H1 of documents indexed as a single chunk", () => {
-    const result = harness.read.execute({ path: "glosario.md" });
+    const result = harness.read.execute({ path: "docs/glosario.md" });
     expect(result.type).toBe("document");
     if (result.type !== "document") return;
     expect(result.content.match(/^# Glosario/gm)).toHaveLength(1);
@@ -47,7 +51,7 @@ describe("ReadDocument over the ejemplos corpus", () => {
 
   it("finds a section by partial, accent-insensitive heading", () => {
     const result = harness.read.execute({
-      path: "leadsviewer/validacion-formulario.md",
+      path: "docs/leadsviewer/validacion-formulario.md",
       section: "reglas de duplicidad",
     });
     expect(result.type).toBe("section");
@@ -55,22 +59,35 @@ describe("ReadDocument over the ejemplos corpus", () => {
     expect(result.content).toContain("Un lead se considera duplicado");
   });
 
-  it("tolerates a leading docs-dir segment on the path", () => {
-    // A caller that just saw the file on disk holds "docs/leadsviewer/x.md",
-    // while indexed paths are docs-relative. Both name one document, and
-    // rejecting the first costs a failed call per read.
+  it("resolves a path that already carries its root's alias directly, as an exact hit", () => {
+    // Before root-prefixing, indexed paths were docs-relative and a caller
+    // holding the on-disk path ("docs/leadsviewer/x.md") needed the
+    // one-leading-segment strip fallback below. Every indexed path now
+    // already carries its root's alias, so this on-disk path IS the exact
+    // indexed path (design.md Decision 12: "the motivating case becomes the
+    // exact branch"). Genuine over-prefixing tolerance is Phase 15 (PR 4).
     const result = harness.read.execute({ path: "docs/leadsviewer/validacion-formulario.md" });
     expect(result.type).toBe("document");
     if (result.type !== "document") return;
-    expect(result.meta.path).toBe("leadsviewer/validacion-formulario.md");
+    expect(result.meta.path).toBe("docs/leadsviewer/validacion-formulario.md");
+  });
+
+  it("tolerates one genuinely over-prefixed leading segment on the path", () => {
+    // A caller holding a project-relative path one level deeper than the
+    // indexed one ("repo/docs/leadsviewer/x.md") still resolves: the literal
+    // match misses, and the one-leading-segment strip fallback recovers it.
+    const result = harness.read.execute({ path: "repo/docs/leadsviewer/validacion-formulario.md" });
+    expect(result.type).toBe("document");
+    if (result.type !== "document") return;
+    expect(result.meta.path).toBe("docs/leadsviewer/validacion-formulario.md");
   });
 
   it("prefers a real document over stripping a segment off the request", () => {
     // Stripping must never shadow an exact hit: only a miss triggers the retry.
-    const result = harness.read.execute({ path: "leadsviewer/validacion-formulario.md" });
+    const result = harness.read.execute({ path: "docs/leadsviewer/validacion-formulario.md" });
     expect(result.type).toBe("document");
     if (result.type !== "document") return;
-    expect(result.meta.path).toBe("leadsviewer/validacion-formulario.md");
+    expect(result.meta.path).toBe("docs/leadsviewer/validacion-formulario.md");
   });
 
   it("still reports a genuinely unknown path after the prefix retry", () => {
@@ -83,12 +100,12 @@ describe("ReadDocument over the ejemplos corpus", () => {
     expect(result.type).toBe("path-not-found");
     if (result.type !== "path-not-found") return;
     expect(result.suggestions).toHaveLength(3);
-    expect(result.suggestions[0]).toBe("leadsviewer/validacion-formulario.md");
+    expect(result.suggestions[0]).toBe("docs/leadsviewer/validacion-formulario.md");
   });
 
   it("lists available sections when the requested one does not exist", () => {
     const result = harness.read.execute({
-      path: "leadsviewer/validacion-formulario.md",
+      path: "docs/leadsviewer/validacion-formulario.md",
       section: "made-up section",
     });
     expect(result.type).toBe("section-not-found");

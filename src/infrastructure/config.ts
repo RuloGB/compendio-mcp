@@ -1,10 +1,16 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ConventionConfig } from "../domain/convention.js";
 import { INDEX_FILE } from "../domain/index-markdown.js";
 
 export interface CompendioConfig {
-  docsDir: string;
+  /**
+   * Declared documentation roots. Non-empty, always an array — there is no
+   * single-string form and no "multi-root mode". Every discovered document
+   * `path` is prefixed with its root's alias (see `resolveRoots`), including
+   * with the single-element default.
+   */
+  docsDir: string[];
   exclude: string[];
   db: string;
   embeddings: {
@@ -51,7 +57,7 @@ export const NO_CHUNKING = ["glosario.md"];
 export const DEFAULT_THROTTLE_MS = 30000;
 
 export const DEFAULT_CONFIG: CompendioConfig = {
-  docsDir: "docs",
+  docsDir: ["docs"],
   exclude: [INDEX_FILE],
   db: ".compendio/compendio.db",
   embeddings: { provider: "local", model: "Xenova/multilingual-e5-small" },
@@ -130,4 +136,84 @@ function mergeConvention(
     excludedStatuses: override?.excludedStatuses ?? base.excludedStatuses,
     frontmatterFields: { ...base.frontmatterFields, ...override?.frontmatterFields },
   };
+}
+
+/** One declared documentation root, normalized and given its path-prefix alias. */
+export interface ResolvedRoot {
+  /** Exactly as written in config or `--dir`. */
+  declared: string;
+  /** Absolute, `resolve(projectRoot, declared)`. */
+  dir: string;
+  /** The alias every document under this root is prefixed with: `basename(dir)`. Never empty. */
+  prefix: string;
+}
+
+/**
+ * Normalizes and validates a declared `docsDir` array in one pass: resolves
+ * each entry to an absolute directory and derives its path-prefix alias
+ * (`basename` of the resolved path), then rejects — before any document is
+ * discovered or written — a set that is empty, wrongly typed, contains a
+ * duplicate or nested pair (checked as an ordered pair in both directions,
+ * via `path.relative` rather than string equality of resolved paths — see
+ * design.md Decision 5), or derives a colliding alias.
+ *
+ * Returns at least one `ResolvedRoot`; `roots[0]` is the first declared root
+ * (the `INDEX.md` target, see design.md Decision 9).
+ */
+export function resolveRoots(projectRoot: string, docsDir: string[]): ResolvedRoot[] {
+  if (!Array.isArray(docsDir)) {
+    throw new Error("docsDir must be an array of documentation root paths");
+  }
+  if (docsDir.length === 0) {
+    throw new Error("docsDir must declare at least one documentation root");
+  }
+  docsDir.forEach((entry: unknown, index) => {
+    if (typeof entry !== "string") {
+      throw new Error(`docsDir entries must be strings; entry ${index} is ${typeof entry}`);
+    }
+  });
+
+  const roots: ResolvedRoot[] = docsDir.map((declared) => {
+    const dir = resolve(projectRoot, declared);
+    const prefix = basename(dir);
+    if (prefix === "") {
+      throw new Error(
+        `docsDir root "${declared}" resolves to a filesystem root (${dir}) and has no directory name to use as a path prefix`,
+      );
+    }
+    return { declared, dir, prefix };
+  });
+
+  // Ordered-pair sweep, both directions: a one-directional containment check
+  // misses the inner-root-declared-first case (design.md Decision 5, P1).
+  for (const a of roots) {
+    for (const b of roots) {
+      if (a === b) continue;
+      const rel = relative(a.dir, b.dir);
+      if (rel === "") {
+        throw new Error(
+          `docsDir declares the same documentation root twice: "${a.declared}" and "${b.declared}" both resolve to ${a.dir}`,
+        );
+      }
+      if (!isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`)) {
+        throw new Error(
+          `docsDir declares nested documentation roots: "${b.declared}" (${b.dir}) lies inside "${a.declared}" (${a.dir}); every file under the inner root would be discovered twice under the same path`,
+        );
+      }
+    }
+  }
+
+  for (let i = 0; i < roots.length; i += 1) {
+    for (let j = i + 1; j < roots.length; j += 1) {
+      const a = roots[i]!;
+      const b = roots[j]!;
+      if (a.prefix === b.prefix) {
+        throw new Error(
+          `docsDir declares two roots with the same directory name: "${a.declared}" and "${b.declared}" both use the path prefix "${a.prefix}"`,
+        );
+      }
+    }
+  }
+
+  return roots;
 }
