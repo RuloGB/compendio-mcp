@@ -97,3 +97,19 @@ The system MUST extend `exclude` entry matching beyond exact path/basename equal
 - GIVEN `exclude: ["INDEX.md"]` (the default)
 - WHEN a file named `INDEX.md` is discovered at any depth under any declared root
 - THEN it is excluded, matching current behavior
+
+### Requirement: `--dir` Replaces the Declared Root Set With One Directory
+
+The `--dir <path>` CLI flag MUST normalize to a one-element root set, replacing whatever `docsDir` a project's `compendio.config.json` declares — it MUST NOT be merged with, or added to, the configured roots. The resulting single root MUST go through the same `docsDir` root-resolution and validation as any other declared root set, producing the same root-alias-prefixed `path` shape (`<dirname>/<root-relative path>`) it would if `--dir <path>`'s value had instead been declared as `docsDir: ["<path>"]`.
+
+#### Scenario: `--dir` overrides a multi-root config with a single directory
+
+- GIVEN a project whose `compendio.config.json` declares `docsDir: ["docs", "openspec"]`
+- WHEN `compendio index --dir notes` runs
+- THEN only `notes/` is indexed — `docs/` and `openspec/` are not consulted at all — and every indexed `path` carries the `notes/` prefix
+
+#### Scenario: `--dir` produces the identical path shape as an equivalent one-element `docsDir`
+
+- GIVEN a project with no config file
+- WHEN `compendio index --dir docs` runs
+- THEN the resulting indexed paths are identical in shape to running `compendio index` against a project whose `compendio.config.json` declares `docsDir: ["docs"]`
