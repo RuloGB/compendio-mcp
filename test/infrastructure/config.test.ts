@@ -268,6 +268,20 @@ describe("resolveRoots", () => {
     );
   });
 
+  it("rejects a nested root whose directory name begins with two dots — the strict-vs-loose predicate escape", () => {
+    // design.md Decision 5 / P1 (measured 2026-08-07, win32, Node v22.22.0):
+    // relative('C:\\A\\docs', 'C:\\A\\docs\\..cache') -> "..cache". The loose
+    // predicate `!rel.startsWith("..")` reads that as NOT contained (wrong —
+    // "..cache" is a single path segment, a literal directory name, not a
+    // parent-traversal marker); the strict form this project's `resolveRoots`
+    // actually uses (`rel !== ".." && !rel.startsWith(`..${sep}`)`) reads it
+    // correctly as contained. Verify-report.md's WARNING #1: implementation
+    // was correct by inspection, with zero automated coverage until this test.
+    expect(() => resolveRoots(PROJECT, ["docs", "docs/..cache"])).toThrow(
+      /docsDir declares nested documentation roots: "docs\/\.\.cache" .* lies inside "docs"/,
+    );
+  });
+
   it("rejects an alias clash between two differently-located roots sharing a basename", () => {
     expect(() => resolveRoots(PROJECT, ["a/docs", "b/docs"])).toThrow(
       /docsDir declares two roots with the same directory name: "a\/docs" and "b\/docs" both use the path prefix "docs"/,

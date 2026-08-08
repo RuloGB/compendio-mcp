@@ -609,10 +609,15 @@ By module: transversal (1), changes (9), specs (6)
 ```
 
 No `docs`/`openspec` bucket in either run's "after" — `changes (9)` and `specs (6)` are the real
-`openspec/changes/*` and `openspec/specs/*` folders (9 + 6 + 1 transversal = 16, plus the one root-level
-`docs/documentation-convention.md` with no module at all = 17 total, matching Gate 3's exact prediction
-in design.md's table). Chunk count identical (284) between before/after, confirming this change touches
-only `module` classification, nothing about chunking or content.
+`openspec/changes/*` and `openspec/specs/*` folders. **Correction (verify-report.md WARNING #2,
+2026-08-08):** the `transversal (1)` bucket is `docs/documentation-convention.md`'s own pre-existing
+frontmatter (`module: transversal`), which correctly wins over inference — it was never a
+no-module example, with or without this change, and is not what makes `9 + 6 + 1 = 16` work out.
+The real root-level-with-no-module document is `openspec/testing-capabilities.md` (no frontmatter
+block at all, sitting directly under the `openspec` root), which is exactly the 17th document:
+`changes (9) + specs (6) + transversal (1) + testing-capabilities.md (no module) = 17`, matching
+Gate 3's exact prediction in design.md's table. Chunk count identical (284) between before/after,
+confirming this change touches only `module` classification, nothing about chunking or content.
 
 **Manual Gate 4 — a missing root does not crash; every root missing still throws.**
 
@@ -710,11 +715,412 @@ for are already covered by Batch 2's Deviation #2, so Phase 15 there only owns t
 residual case and the bare-basename-miss case), Phase 16 (`vector-reach.mjs` + docs), Phase 17 (spec +
 final verification).
 
-## Remaining Tasks (PR 4 — not started)
+## Batch 4 — PR 4 (this batch)
 
-- [ ] Phase 14: Combined `INDEX.md`
-- [ ] Phase 15: `read_doc` tolerance — tests only (exact-hit and over-prefixed-hit already covered by
-      Batch 2's Deviation #2; Phase 15 still owns the aliased-collision residual case and the
-      bare-basename-miss case)
-- [ ] Phase 16: `vector-reach.mjs` + docs
-- [ ] Phase 17: Spec + final verification (PR 4)
+**Scope**: `tasks.md` §"PR 4 — surface and documentation" — Phase 14 (combined `INDEX.md`), Phase 15
+(`read_doc` tolerance tests), Phase 16 (`vector-reach.mjs` + docs), Phase 17 (spec + final
+verification). Branch `feat/multiple-doc-roots-04-surface-and-docs`, off PR 3's branch
+(`feat/multiple-doc-roots-03-behavioural-companions`), per Feature Branch Chain. This is the final PR
+in the chain — after this batch, all 70 tasks across all four PRs are complete.
+
+**Additionally in scope, per explicit instruction**: closing the three WARNINGs recorded in
+`verify-report.md` (the untested `..`-prefixed nested-root edge case, the PR 3 Gate 3 narrative
+misattribution, and the missing `--dir` spec requirement) — folded into this batch rather than left
+for a PR 5, since this is the last slice before archive.
+
+### Completed Tasks
+
+- [x] 14.1 [RED] `test/application/generate-index-md.test.ts`: added a `selfPath` parameter to the
+      shared `buildUseCase` test helper (always passed, defaulting to `INDEX_FILE`) and three new
+      describe blocks — three focused unit tests over fakes (readErrors filter, entries filter,
+      encodingNotices filter, each with a prefixed `selfPath`) plus one end-to-end test through real
+      `resolveRoots` + `CompositeDocumentSource` + `FileDocumentSource` over two temp-directory roots
+      with `exclude: []`. Confirmed genuine RED both ways: `npx tsc -p tsconfig.test.json --noEmit`
+      failed with `TS2554: Expected 5 arguments, but got 6` (two call sites), and `vitest` failed 4/4
+      new assertions at runtime (JS silently ignores the unused 6th argument, so the pre-existing 11
+      tests kept passing unaffected — a clean safety net).
+- [x] 14.2 [GREEN] `src/application/generate-index-md.ts`: added the 6th constructor parameter
+      `selfPath: string = INDEX_FILE`; retargeted all three equality checks (`readErrors` filter,
+      entries filter, `encodingNotices` filter) from the literal `INDEX_FILE` to `this.selfPath`.
+      Confirmed GREEN: 15/15 in the file.
+- [x] 14.3 `composition.ts`: passed `` `${roots[0]!.prefix}/${INDEX_FILE}` `` as the 6th argument;
+      writer target unchanged (`new FileIndexWriter(roots[0]!.dir, INDEX_FILE)`); removed the PR
+      2-era deferral comment now that `selfPath` is wired.
+- [x] 14.4 [invert] 14.1's new tests all green after 14.2-14.3 — Gate 6 (self-exclusion holds under
+      `exclude: []`, the only config that reaches the three checks at all).
+- [x] 15.1 `test/application/read-document.test.ts`: added two new tests, covering exactly the two
+      cases not already covered by Batch 2's Deviation #2 (exact-hit and over-prefixed-hit were
+      already landed there) — the aliased-collision residual case (`docsDir: ["docs","adr"]`, a
+      request for the non-existent `docs/adr/x.md` strips to the real `adr/x.md`, through a real
+      `createContainer` over a temp two-root project) and the bare-basename miss (`read_doc({ path:
+      "glosario.md" })` against a corpus where only `docs/glosario.md` is indexed → `path-not-found`
+      with 3 suggestions including `docs/glosario.md`).
+- [x] 15.2 Confirmed `read-document.ts:44-50` needs zero edits — `git diff --stat` on
+      `src/application/read-document.ts` is empty (no output at all), matching design.md Decision 12's
+      "a test, not an edit."
+- [x] 16.1 `scripts/vector-reach.mjs:204`: imported `resolveRoots` alongside the existing `loadConfig`
+      import from the same compiled module; replaced the pre-array-only `resolve(root, config.docsDir,
+      markerChunk.path)` join with `roots = resolveRoots(root, config.docsDir)`, `owner =
+      roots.find(r => markerChunk.path.startsWith(\`${r.prefix}/\`)) ?? roots[0]`, then
+      `resolve(owner.dir, markerChunk.path.slice(owner.prefix.length + 1))` — calling the same
+      production function rather than re-deriving root resolution a second time (design.md Decision
+      11's stated rationale).
+- [x] 16.2 Ran end to end: `node dist/cli.js --root test/fixtures/vector-reach index` (6 documents, 19
+      chunks — model cache mostly warm, a small residual download completed), then `node
+      scripts/vector-reach.mjs test/fixtures/vector-reach "código de verificación interna QUETZAL"`.
+      Completed with no crash, no `TypeError`, no `ENOENT`; Criterion A rank 1, Criterion B cosine
+      0.8841 (above the filler band `[0.8336, 0.8420]`), Criterion C 0.9408 (reported, not gated). The
+      script's own monotonicity self-check passed silently (no violation printed). Independently
+      verified the resolved absolute path is identical to pre-change: a one-off script computed both
+      the new resolution (`owner.dir` + sliced path) and the pre-change resolution (`resolve(root,
+      "docs", "manual-extenso.md")`, the string form this single-root fixture's `docsDir` used to be)
+      — byte-identical. See Manual Verification below for the full transcript.
+- [x] 16.3 `README.md`: `docsDir` example changed from `"docs"` to `["docs"]`; the `docsDir`/`exclude`
+      table rows rewritten for the array shape and the three-clause directory-prefix `exclude`; a new
+      "Multiple documentation roots" subsection added (alias derivation, collision rejection, the
+      unreadable-root-continues/all-fail-throws behavior, removing a root purges its documents); the
+      CLI table's `index-md` row and the global-options line updated for the combined-index and
+      `--dir`-replaces-not-adds semantics.
+- [x] 16.4 `CLAUDE.md`: four new bullets in "Non-obvious decisions" (`docsDir` array-only + prefixing +
+      collision guard; the three-clause `exclude` rule; the unreadable-vs-removed-root contrast,
+      Decision 4, stated as its own bullet exactly as the task asked; alias-aware `module` inference);
+      rewrote the existing `read_doc`-tolerance bullet for the prefixed shape, the aliased-collision
+      residual non-guarantee, and the bare-basename-miss consequence; updated the "Documents live
+      under..." bullet in Working Conventions for the array default and this repo's own implicit
+      `docsDir: ["docs"]`.
+- [x] 17.1 Cross-checked `specs/index-md/spec.md`'s two ADDED requirements ("One Combined `INDEX.md`
+      Across All Declared Roots", "`INDEX.md` Never Lists Itself, Under Any Root Count") against
+      14.1-14.4: the writer-target-is-`roots[0]` half was already correct since PR 2 (task 6.2); the
+      self-exclusion-under-`exclude: []` half is exactly what Phase 14's new tests pin. All scenarios
+      covered, no edit needed to the delta file. Cross-checked `specs/mcp-contract/spec.md`'s
+      "`read_doc` Tolerates Exactly One Extra Leading Path Segment" requirement against 15.1-15.2: all
+      four scenarios (exact-prefixed-hit, over-prefixed-hit, aliased-collision-residual,
+      bare-basename-miss) now have a covering test, split across Batch 2 (first two) and this batch
+      (last two). No edit needed.
+- [x] 17.2 Checked `openspec/specs/search/spec.md` for stale path-shape claims. **None found**: `grep
+      -c "path"` against the file returns `0` — the word "path" does not appear anywhere in it, so
+      there is nothing to amend. Noted explicitly here rather than silently skipped.
+- [x] 17.3 Gate 7 — see Verification below for full command output. `npm test` 648/648, `npm run
+      typecheck` clean, `npm run build` clean. `git diff main -- src/application/sync-index.ts` and
+      `git diff main -- src/infrastructure/sqlite/sqlite-index-store.ts` both `0` lines — diffed
+      against `main`, i.e. across the whole 4-PR chain, not just this batch, per the explicit
+      instruction. `grep` (ripgrep, via the Grep tool, not the shell `grep` builtin — see Deviations
+      #1 below) for the literal `string | string[]` across all of `src/` — zero matches.
+- [x] 17.4 Recorded observations, into `verify-report.md`'s successor content here (this project's
+      `verify-report.md` for PR 1-3 is itself an `sdd-verify` artifact regenerated at that phase, not
+      hand-edited during apply — see Batch 2's note on this same point): byte/estimated-token weight
+      per root for the Gate 2 corpus, and whether any Gate-2-corpus `search_docs` query returns a
+      spec-delta file over the active spec. Both recorded in Manual Verification below with real
+      output.
+- [x] 17.5 Final Gate 2 pass (a, b, d, e) — see Manual Verification below. `indexed = 18`, matching the
+      formula (`docs` 2 `.md` files + `openspec` 17 non-archived `.md` files − 1 for `INDEX.md` = 18)
+      computed independently via `find` before the run, then confirmed identical to the actual
+      `IndexDocuments` output.
+
+### Closing the three `verify-report.md` WARNINGs
+
+- [x] **WARNING #1 — the `..`-prefixed nested-root edge case had zero test coverage.**
+      `test/infrastructure/config.test.ts`: added
+      `resolveRoots(PROJECT, ["docs", "docs/..cache"])` → throws the nested-roots message. Confirmed
+      GREEN immediately (implementation was already correct, exactly as verify-report.md's static
+      inspection found) — then **empirically falsified**, not just reasoned about: temporarily
+      replaced `src/infrastructure/config.ts`'s strict predicate (`rel !== ".." &&
+      !rel.startsWith(\`..${sep}\`)`) with the loose form (`!rel.startsWith("..")`) design.md's P1
+      section warned against, reran, confirmed **exactly this one new test** failed (`expected
+      [Function] to throw an error`) while the other 25 in the file stayed green, then reverted.
+      `git diff --stat src/infrastructure/config.ts` after the revert: empty — no source change, per
+      the warning's own finding that the implementation was already correct.
+- [x] **WARNING #2 — `apply-progress.md`'s PR 3 Gate 3 narrative misattributed the "root-level,
+      no-module" example to `docs/documentation-convention.md`.** Corrected in place (see the "Manual
+      Gate 3" section of Batch 3 above): that file carries pre-existing `module: transversal`
+      frontmatter (confirmed by reading it directly — `head -10 docs/documentation-convention.md`
+      shows the frontmatter block), which correctly wins over inference per the "Frontmatter wins over
+      inference" requirement, so it was never a no-module example. The real demonstrating document is
+      `openspec/testing-capabilities.md` (confirmed to carry no frontmatter block at all — the file
+      starts directly with `# Testing Capabilities`). The correction states the arithmetic explicitly
+      (`changes (9) + specs (6) + transversal (1) + testing-capabilities.md (no module) = 17`) so the
+      fix is self-checking, not just an assertion. All previously-reported numbers were already
+      correct; only the document attribution was wrong, and only that is changed.
+- [x] **WARNING #3 — the `--dir` requirement was missing from `specs/configuration/spec.md`.** Added
+      a new "`--dir` Replaces the Declared Root Set With One Directory" requirement with two scenarios
+      (override replaces a multi-root config entirely; produces the identical path shape as an
+      equivalent one-element `docsDir`), matching the file's existing Given/When/Then + RFC 2119
+      conventions. **Found and closed a related gap while doing this**: zero test in the whole suite
+      exercised `ContainerOptions.docsDir` (the `--dir` override) at any layer — `grep` for
+      `docsDir:\s*"` and for `--dir` across `test/` both returned no matches. Added two tests to
+      `test/composition.test.ts` (indexes only the overriding directory, ignoring a multi-root config
+      entirely; produces the identical prefixed path shape as declaring the same directory in
+      `docsDir`). Confirmed GREEN immediately (9/9, implementation unchanged since PR 2's task 6.1),
+      then **empirically falsified**: temporarily replaced `composition.ts`'s override-aware
+      `resolveRoots` call with the unconditional `resolveRoots(options.root, config.docsDir)`, reran,
+      confirmed **exactly these two new tests** failed (one showing `docs/a.md`+`openspec/b.md`
+      instead of `notes/c.md`; the other throwing `no documentation root could be read: "docs"...`
+      because the temp project's `notes/` directory only exists in the override-only first test's
+      setup), then reverted. `git diff --stat src/composition.ts` after the revert: `8 +++++---`,
+      identical to its pre-falsification state (the intentional Phase 14 `selfPath` change only).
+
+### TDD Cycle Evidence (PR 4)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 14.1-14.4 | `test/application/generate-index-md.test.ts` | Unit/Integration | ✅ 27/27 (this file + read-document.test.ts, pre-change) | ✅ Written — confirmed `TS2554` (2 call sites) and 4/4 new runtime failures against unmodified code | ✅ 15/15 passed after `selfPath` | ✅ 4 cases: readErrors filter, entries filter, encodingNotices filter (each unit-level over a fake), plus one end-to-end two-root real-filesystem case | ➖ None needed — a single new constructor parameter |
+| 15.1-15.2 | `test/application/read-document.test.ts` | Container/Integration | ✅ 18/18 (pre-change, this file alone) | ➖ No production change expected (Decision 12) — falsifiability confirmed **empirically**: temporarily disabled the strip-fallback branch in `read-document.ts`, reran, confirmed exactly the 2 tests depending on it failed (this new aliased-collision test, plus the pre-existing "tolerates one genuinely over-prefixed..." test from Batch 2), while the new bare-basename test correctly stayed green (it doesn't exercise the strip branch), then reverted | ✅ 18/18 (16 pre-existing + 2 new) | ✅ 2 new cases, each a distinct property (residual-collision-resolves, bare-basename-does-not) | ➖ None needed — no production code touched, `git diff` on `read-document.ts` is empty |
+| 16.1-16.2 | `scripts/vector-reach.mjs` (manual gate, not a vitest file) | Manual/E2E | N/A (script, no pre-existing automated test) | N/A — this is a one-off diagnostic script, not unit-tested; verified instead by actually running it end to end (see Completed Tasks and Manual Verification) | ✅ Ran clean: no crash, Criterion A rank 1, monotonicity self-check silent (no violation) | ➖ N/A | ➖ None needed — a 4-line change, already minimal |
+| 16.3-16.4 | `README.md`, `CLAUDE.md` | Docs | N/A | N/A — prose, not testable by a test runner | ➖ N/A | ➖ N/A | ➖ N/A |
+| Warning #1 | `test/infrastructure/config.test.ts` | Unit | ✅ 26/26 (pre-change) | ➖ No production change expected — falsifiability confirmed **empirically**: temporarily swapped the strict nesting predicate for the loose one design.md's P1 section warned against, reran, confirmed exactly this 1 new test failed, then reverted | ✅ 26/26 (25 pre-existing + 1 new) | ➖ Single scenario (the specific measured edge case) | ➖ None needed — `git diff` on `config.ts` is empty |
+| Warning #3 | `test/composition.test.ts` | Container | ✅ 9/9 (pre-change, this file's collision-guard block) | ➖ No production change expected — falsifiability confirmed **empirically**: temporarily made the override wiring unconditional (always `config.docsDir`), reran, confirmed exactly these 2 new tests failed, then reverted | ✅ 11/11 (9 pre-existing + 2 new) | ✅ 2 cases: override-replaces-multi-root, override-produces-identical-shape-to-equivalent-config | ➖ None needed — `git diff --stat` on `composition.ts` shows only the intentional Phase 14 change |
+
+### Test Summary (PR 4)
+
+- **Total tests written**: 9 new (`generate-index-md.test.ts`: 4; `read-document.test.ts`: 2;
+  `config.test.ts`: 1; `composition.test.ts`: 2)
+- **Total tests passing**: 648/648 (0 skipped) — full suite, up from 639 passed / 0 skipped at the end
+  of PR 3 (639 → 648 is +9, matching the count above exactly)
+- **Layers used**: Unit (generate-index-md fakes, config: 5), Container (composition: 2),
+  Integration (generate-index-md multi-root end-to-end, read-document aliased-collision and
+  bare-basename: 3)
+- **Approval/characterization tests**: 0 traditional RED-then-GREEN cycles this batch — every
+  production-code-adjacent task in Phase 15-17 and both warnings involved code design.md/the warning
+  already asserted was correct, so each was pinned by writing the test, confirming immediate GREEN,
+  then **empirically falsifying** (breaking the specific property, confirming the exact predicted
+  test(s) fail and nothing else, reverting) rather than a traditional pre-code RED. This is the same
+  pattern PR 2's task 7.1 and PR 3's Gate 4b used, applied four more times this batch (Phase 15,
+  Warning #1, Warning #3) plus once implicitly for the `search/spec.md` no-op check (17.2).
+- **Genuine RED-then-GREEN cycles**: 1 (Phase 14's `selfPath` — the only task this batch requiring an
+  actual production code addition before the test could pass)
+- **Empirical falsifications performed** (beyond the standard RED/GREEN cycle): 3 — Phase 15's
+  strip-fallback disable, Warning #1's loose-predicate swap, Warning #3's unconditional-override swap
+- **Pure functions modified**: 0 (Phase 14 added a constructor parameter to an existing class, not a
+  new pure function; `scripts/vector-reach.mjs`'s change is a diagnostic script, outside `src/`)
+
+### Files Changed (PR 4)
+
+| File | Action | What Was Done |
+|------|--------|----------------|
+| `src/application/generate-index-md.ts` | Modified | `selfPath` constructor parameter (default `INDEX_FILE`); all three equality checks retargeted |
+| `src/composition.ts` | Modified | Passes `` `${roots[0]!.prefix}/${INDEX_FILE}` `` as `selfPath`; removed the PR 2-era deferral comment |
+| `scripts/vector-reach.mjs` | Modified | Imports and calls `resolveRoots`; resolves the marker document's owning root and slices its alias off before joining |
+| `test/application/generate-index-md.test.ts` | Modified | `buildUseCase` gained a `selfPath` parameter; 4 new tests across 2 new describe blocks |
+| `test/application/read-document.test.ts` | Modified | 2 new tests (aliased-collision residual, bare-basename miss) in 1 new describe block |
+| `test/infrastructure/config.test.ts` | Modified | 1 new test for the `..`-prefixed nested-root edge case (Warning #1) |
+| `test/composition.test.ts` | Modified | 2 new tests for the `--dir` override / replaces-not-adds semantics, in 1 new describe block (Warning #3) |
+| `README.md` | Modified | `docsDir` example and table rows for the array shape; new "Multiple documentation roots" subsection; `index-md`/`--dir` CLI documentation |
+| `CLAUDE.md` | Modified | 4 new bullets (array-only `docsDir`, three-clause `exclude`, unreadable-vs-removed-root contrast, alias-aware `module`); rewrote the `read_doc`-tolerance bullet; updated the "Documents live under..." bullet |
+| `openspec/changes/multiple-doc-roots/specs/configuration/spec.md` | Modified | New "`--dir` Replaces the Declared Root Set With One Directory" requirement with 2 scenarios (Warning #3) |
+| `openspec/changes/multiple-doc-roots/apply-progress.md` | Modified | This Batch 4 section; PR 3's Gate 3 narrative corrected in place (Warning #2) |
+| `openspec/changes/multiple-doc-roots/tasks.md` | Modified | Phase 14-17 marked `[x]`; 17.2's "none found" and the formula check noted inline |
+
+### Deviations from Design
+
+None that change the architecture or the decisions. Two clarifications:
+
+1. **The shell `grep` builtin misparses the Gate 7 union-type check.** Running `grep "string \|
+   string\[\]"` through this environment's Bash tool (GNU grep, Git Bash on Windows) treats the
+   escaped `\|` as GNU's basic-regex alternation extension, not a literal pipe — so the pattern
+   actually searches for lines containing `"string "` OR `" string[]"` (two independent alternatives),
+   which matches nearly every line in `src/` that mentions the word "string" at all (hundreds of false
+   positives, none of them a real `docsDir?: string | string[]` union). Re-ran with the Grep tool
+   (ripgrep-backed, proper escaping of a literal pipe): zero matches, the correct and intended result.
+   Recorded here because a shell-quoting mistake in the gate's own execution is exactly the kind of
+   "verify the verifier" trap this project has been burned by before (`MEMORY.md`'s
+   `compendio-agentes-reportan-verde-falso` entry) — the false-positive-laden `grep` output was
+   reviewed and rejected rather than acted on.
+2. **Three of this batch's tasks (Phase 15, Warning #1, Warning #3) predicted GREEN-on-first-write
+   rather than a traditional RED**, because the design and the verify-report finding both already
+   asserted the underlying production code was correct — the whole point of Phase 15
+   (`read-document.ts:44-50` "needs zero edits") and both warnings (static inspection already
+   confirmed correctness) is that no code change was expected. Each was still falsified for real
+   before being accepted: the property under test was temporarily broken in production code, the
+   exact predicted test(s) — and only those — were confirmed to fail, then the code was reverted and
+   `git diff --stat` confirmed empty. This is stronger evidence than a traditional RED (which only
+   proves the test *can* fail, not that it fails *for the reason the test claims*) and matches this
+   project's own established practice (PR 2's task 7.1, PR 3's Gate 4b).
+
+### Issues Found
+
+None.
+
+### Manual Verification (real output, not inferred)
+
+**Task 16.2 — `scripts/vector-reach.mjs` end to end, against the fixture with its now-implicit
+`docsDir: ["docs"]` (no config file present).**
+
+```
+node dist/cli.js --root test/fixtures/vector-reach index
+Discovering documents
+Indexing 6 documents
+[1/6] docs/distractor-01.md
+[2/6] docs/distractor-02.md
+[3/6] docs/distractor-03.md
+[4/6] docs/distractor-04.md
+[5/6] docs/distractor-05.md
+[6/6] docs/manual-extenso.md
+Embedding 19 chunks in 2 batches
+Indexed 6 documents (19 chunks) in 2731 ms [mode hybrid]
+
+node scripts/vector-reach.mjs test/fixtures/vector-reach "código de verificación interna QUETZAL"
+...
+Marker chunk 16 (docs/manual-extenso.md)
+Criterion A — rank of the marker chunk in the vector-only ranking: 1 of 10
+Criterion B — marker chunk cosine vs query: 0.8841
+Criterion C — truncation probe (first 384 words of the document vs the marker chunk): 0.9408
+Diagnostics — marker string offset inside its chunk: 1164 chars; chunk length: 1681 chars
+```
+
+No crash, no `TypeError`, no `ENOENT`. The script's monotonicity self-check printed nothing (a
+violation would print a clearly-marked `!`-bordered error and exit non-zero — it did not). Resolved
+absolute path independently verified identical to pre-change, via a one-off script computing both:
+
+```
+new: C:\Users\Raul\Workspace\compendio-mcp\test\fixtures\vector-reach\docs\manual-extenso.md
+old: C:\Users\Raul\Workspace\compendio-mcp\test\fixtures\vector-reach\docs\manual-extenso.md
+identical: true
+```
+
+`git status --short test/fixtures/vector-reach/` after the run: empty — `.compendio/` there is
+gitignored, no tracked changes.
+
+**Tasks 17.4-17.5 — Gate 2 final pass (a, b, d, e) plus the two recorded observations, on this
+repository.**
+
+A temporary `compendio.config.json` (`{ "docsDir": ["docs", "openspec"], "exclude": ["INDEX.md",
+"openspec/changes/archive"] }`) was written at the repo root. Formula computed independently
+**before** running the indexer: `find docs -name "*.md" | wc -l` → 2; `find openspec -name "*.md"
+-not -path "openspec/changes/archive/*" | wc -l` → 17; `2 + 17 - 1 (INDEX.md) = 18`.
+
+```
+node dist/cli.js index --lexical
+Discovering documents
+Indexing 18 documents
+[1/18] docs/documentation-convention.md
+...
+[18/18] openspec/testing-capabilities.md
+WARNING indexed without embeddings (provider unavailable): search runs in lexical mode
+Indexed 18 documents (323 chunks) in 237 ms [mode lexical]
+```
+
+Matches the formula exactly: **18 = 18**. SQL checks against the resulting `.compendio/compendio.db`
+(Gate 2a/b/d):
+
+```sql
+SELECT count(*) FROM documents WHERE path LIKE 'openspec/changes/archive/%';               -- 0
+SELECT count(*) FROM documents;                                                            -- 18
+SELECT path FROM documents WHERE path NOT LIKE 'docs/%' AND path NOT LIKE 'openspec/%';     -- 0 rows
+```
+
+Gate 2e (round trip): `compendio search "chunk boundary changes require a full reindex" --lexical`
+returned `openspec/specs/indexing/spec.md` as its rank-1 result (a term unique to content under
+`openspec/`), demonstrating the prefixed `path` is a usable, round-trippable address.
+
+**Recorded observation 1 — byte/estimated-token weight per root** (a one-off script, `.md` files only,
+`INDEX.md` excluded, `openspec/changes/archive/` excluded):
+
+```
+docs:     1 file,  16 518 bytes, ~ 4 130 est. tokens
+openspec: 17 files, 375 019 bytes, ~ 93 755 est. tokens
+ratio openspec/docs (bytes): 22.7x
+```
+
+Settles the exploration's file-count-only measurement with an actual weight figure: `openspec/`
+outweighs `docs/` even more heavily by bytes (22.7x) than by raw file count (17:1), since several
+`openspec/` documents (`design.md`, `verify-report.md`) are individually large. Recorded as an
+observation per the proposal's own framing — not acted on, `exclude` is the tool a project reaches
+for if this dilution matters to it.
+
+**Recorded observation 2 — does a `search_docs` query ever prefer a spec-delta file over the active
+spec?** Two queries run against the same 18-document index. The first ("chunk boundary changes
+require a full reindex", above) returned only pre-existing, unrelated `bounded-chunk-size` content —
+no delta-vs-active tension, since that topic predates this change entirely. The second, deliberately
+chosen to probe a topic **both** an active base spec and this change's own delta discuss ("module
+inference from the first path segment under docsDir"):
+
+```
+#1  openspec/specs/indexing/spec.md                              score 0.0164  (ACTIVE spec)
+#2  openspec/changes/multiple-doc-roots/specs/indexing/spec.md    score 0.0161  (this change's DELTA)
+#3  openspec/changes/multiple-doc-roots/specs/indexing/spec.md    score 0.0159  (delta, 2nd chunk)
+```
+
+The active spec narrowly wins rank 1 here (0.0164 vs 0.0161 — a 0.0003 margin), but the delta file
+occupies both of the next two ranks. This is the dilution symptom named in proposal.md's Recorded
+Observations, reproduced concretely: a MODIFIED requirement's delta text restates enough of the
+original requirement's wording that the two chunks compete almost head-to-head lexically, with no
+guarantee the active spec wins. **Observed, not acted on** — consistent with the proposal's own
+framing of this as a recorded symptom rather than a gate, and with `sdd-archive`'s job (not apply's)
+being the point at which the delta content merges into the active spec and this specific competition
+disappears on its own.
+
+Temporary config and `.compendio/` deleted immediately after (`rm -f compendio.config.json && rm -rf
+.compendio`); `git status --short` confirmed clean — only the intentional source/doc/test files from
+this batch remained modified.
+
+### Verification (real output, not inferred)
+
+`npm test` — full suite, after all Phase 14-17 work plus the three warnings:
+
+```
+Test Files  43 passed (43)
+     Tests  648 passed (648)
+```
+
+`npm run typecheck`: clean (`tsc --noEmit && tsc -p tsconfig.test.json`, no output, exit 0).
+
+`npm run build`: clean (`tsc`, no output, exit 0).
+
+Gate 7's diff-empty assertions, across the **whole 4-PR chain** (`git diff main -- <file>`, not just
+this batch):
+
+```
+git diff main -- src/application/sync-index.ts | wc -l                        -- 0
+git diff main -- src/infrastructure/sqlite/sqlite-index-store.ts | wc -l      -- 0
+```
+
+Gate 7's union-type grep (via the Grep tool, ripgrep-backed — see Deviations #1 for why the shell
+`grep` builtin's output was rejected): zero matches for the literal `string | string[]` anywhere in
+`src/`.
+
+Real diff stat (`git diff --stat`, working tree against the PR 3 branch tip, before committing):
+
+```
+12 files changed, 362 insertions(+), 37 deletions(-)
+```
+
+399 changed lines before this apply-progress.md update itself is counted (`apply-progress.md`'s own
+diff — the file you are reading — necessarily grows further once this section is added, the same
+self-referential shape every prior batch's apply-progress.md had). Inside the design's own
+`Borderline/No` forecast band for this slice (~260-430) at the code+test level; the docs(sdd) commit
+recording this section is, per this project's established convention, not counted toward the
+reviewable code diff the 400-line budget protects — see PR 1-3's own precedent of reporting "real
+diff stat... everything except this file and tasks.md's checkbox edits."
+
+### Workload / PR Boundary (PR 4)
+
+- Mode: chained PR slice (`feature-branch-chain`) — **final slice in the chain**
+- Current work unit: PR 4 — surface and documentation (combined `INDEX.md`, `read_doc` tolerance
+  tests, `vector-reach.mjs`, README/CLAUDE.md) plus the three `verify-report.md` WARNINGs
+- Boundary: starts from PR 3's branch (`feat/multiple-doc-roots-03-behavioural-companions`); ends with
+  a green, typed, built suite where the feature is fully documented and every scenario in all four
+  spec deltas has a covering test, with no known outstanding gap. This is the last PR before the
+  tracker branch (`feat/multiple-doc-roots`) can be reviewed and merged to `main` as a whole.
+- Estimated review budget impact: 399 changed lines (362 insertions + 37 deletions) at the code+test
+  level — inside the 400-line PR review budget, at the design's own predicted "Borderline/No" edge for
+  this slice, and (unlike PR 2's 793) not requiring further splitting.
+- Branches: tracker `feat/multiple-doc-roots` (off `main`, draft/no-merge, never merges alone); PR 1
+  child `feat/multiple-doc-roots-01-exclude-prefix` (off the tracker); PR 2 child
+  `feat/multiple-doc-roots-02-structural-core` (off the PR 1 branch); PR 3 child
+  `feat/multiple-doc-roots-03-behavioural-companions` (off the PR 2 branch); PR 4 child
+  `feat/multiple-doc-roots-04-surface-and-docs` (off the PR 3 branch, per Feature Branch Chain
+  naming) — this batch's branch.
+- Commits (local only, not pushed): split by work unit per `work-unit-commits` — see the actual commit
+  log for this batch for the exact split and messages.
+
+### Status
+
+PR 1 (Phase 1-3): **9/9 tasks complete.**
+PR 2 (Phase 4-9): **26/26 tasks complete.**
+PR 3 (Phase 10-13): **16/16 tasks complete.**
+PR 4 (Phase 14-17): **19/19 tasks complete** (14.1-14.4, 15.1-15.2, 16.1-16.4, 17.1-17.5).
+
+**70/70 tasks complete across the whole 4-PR chain.** All three `verify-report.md` WARNINGs from the
+PR 1-3 verification are closed in this batch. Nothing remains implemented-but-unstarted; the chain is
+ready for `sdd-verify` on PR 4's own scope, and — pending that — for the tracker branch to be reviewed
+and merged to `main` as a whole per the Feature Branch Chain strategy.
