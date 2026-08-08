@@ -32,18 +32,26 @@ export class GenerateIndexMd {
     private readonly writer: IndexFileWriter,
     private readonly policy: ConventionPolicy,
     private readonly compare: (a: IndexEntry, b: IndexEntry) => number,
+    /** The generated file's own path, root-alias-prefixed in production
+     * (e.g. `docs/INDEX.md`). Self-exclusion below is evaluated against this
+     * value, never against the bare `INDEX_FILE` literal — under a declared
+     * root, every discovered path carries the root's alias, so a literal
+     * comparison would never match and the index would list itself
+     * (design.md Decision 9). Defaults to the bare literal for callers with
+     * no root concept at all. */
+    private readonly selfPath: string = INDEX_FILE,
   ) {}
 
   async execute(): Promise<IndexMdReport> {
     const { files, readErrors, encodingNotices } = await this.source.discover();
     const entries: IndexEntry[] = [];
     const skipped: SkippedFileReport[] = readErrors
-      .filter((e) => e.path !== INDEX_FILE)
+      .filter((e) => e.path !== this.selfPath)
       .map((e) => ({ path: e.path, errors: [e.error] }));
 
     for (const file of files) {
       // The index never lists itself, even if the config exclude was overridden.
-      if (file.path === INDEX_FILE) continue;
+      if (file.path === this.selfPath) continue;
 
       let parsed;
       try {
@@ -74,7 +82,7 @@ export class GenerateIndexMd {
       documents: entries.length,
       skipped,
     };
-    const notices = (encodingNotices ?? []).filter((n) => n.path !== INDEX_FILE);
+    const notices = (encodingNotices ?? []).filter((n) => n.path !== this.selfPath);
     if (notices.length > 0) report.encodingNotices = notices;
     return report;
   }

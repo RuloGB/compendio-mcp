@@ -101,12 +101,14 @@ export function createContainer(options: ContainerOptions): Container {
   const generateIndexMd = new GenerateIndexMd(
     source,
     parser,
-    // Writer target stays the first declared root; `selfPath` (Decision 9)
-    // is PR 4 scope, so the generated INDEX.md keeps its unprefixed
-    // self-exclusion checks until then.
+    // Writer target stays the first declared root (design.md Decision 9).
     new FileIndexWriter(roots[0]!.dir, INDEX_FILE),
     policy,
     comparator,
+    // `selfPath` is the prefixed value of the file this same call writes —
+    // never the bare literal, which no discovered `path` equals once every
+    // root is aliased (design.md Decision 9).
+    `${roots[0]!.prefix}/${INDEX_FILE}`,
   );
   const searchDocuments = new SearchDocuments(store, embeddings, {
     k: config.search.k,
