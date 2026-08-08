@@ -87,7 +87,13 @@ export function createContainer(options: ContainerOptions): Container {
     })),
   );
   const parser = new RemarkMarkdownParser();
-  const policy = createConventionPolicy(config.convention);
+  // rootPrefixes threaded in unconditionally: every discovered path already
+  // carries a root alias, so `module` inference must always strip it first
+  // (design.md Decision 7) -- there is no "undefined" case in production.
+  const policy = createConventionPolicy(
+    config.convention,
+    roots.map((root) => root.prefix),
+  );
   const comparator = createIndexComparator(config.convention);
   const indexDocumentsOptions: IndexDocumentsOptions = { chunking: config.chunk, noChunking: NO_CHUNKING };
   if (onProgress !== undefined) indexDocumentsOptions.onProgress = onProgress;

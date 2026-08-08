@@ -55,6 +55,33 @@ describe("inferModule", () => {
   });
 });
 
+describe("inferModule — alias-aware (design.md Decision 7, tasks.md Phase 12)", () => {
+  it("[baseline] with no rootPrefixes argument, a root-alias-prefixed path infers the alias itself as module (today's naive PR-2 behavior)", () => {
+    expect(inferModule("docs/documentation-convention.md")).toBe("docs");
+  });
+
+  it("strips a matching declared root prefix before taking the first remaining segment", () => {
+    expect(inferModule("docs/auth/login.md", ["docs"])).toBe("auth");
+  });
+
+  it("[invert] a root-level file has no module once its alias prefix is stripped, even though the raw path still has a slash", () => {
+    expect(inferModule("docs/documentation-convention.md", ["docs", "openspec"])).toBeUndefined();
+  });
+
+  it("infers the module from a second, nested root, not the root's own alias", () => {
+    expect(inferModule("openspec/specs/indexing/spec.md", ["docs", "openspec"])).toBe("specs");
+  });
+
+  it("falls through to naive first-segment behavior when no declared prefix matches the path", () => {
+    expect(inferModule("guides/x.md", ["docs", "openspec"])).toBe("guides");
+  });
+
+  it("falls through to naive first-segment behavior when rootPrefixes is omitted or empty", () => {
+    expect(inferModule("docs/auth/login.md")).toBe("docs");
+    expect(inferModule("docs/auth/login.md", [])).toBe("docs");
+  });
+});
+
 describe("createConventionPolicy — loose", () => {
   it("uses the H1 title when present", () => {
     const policy = createConventionPolicy(cfgLoose());
@@ -120,6 +147,44 @@ describe("createConventionPolicy — loose", () => {
     if (!result.ok) return;
     expect(result.meta.type).toBeUndefined();
     expect(result.meta.status).toBeUndefined();
+  });
+});
+
+describe("createConventionPolicy — rootPrefixes threading (design.md Decision 7)", () => {
+  it("loose: strips the alias before folder-inferring module", () => {
+    const policy = createConventionPolicy(cfgLoose(), ["docs"]);
+    const result = policy.resolver({ ...BASE_INPUT, path: "docs/auth/login.md", data: {} });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.meta.module).toBe("auth");
+  });
+
+  it("loose: a root-level file under its own alias has no module", () => {
+    const policy = createConventionPolicy(cfgLoose(), ["docs"]);
+    const result = policy.resolver({ ...BASE_INPUT, path: "docs/readme.md", data: {} });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.meta.module).toBeUndefined();
+  });
+
+  it("loose: with no rootPrefixes argument, module inference stays naive (backward-compatible default)", () => {
+    const policy = createConventionPolicy(cfgLoose());
+    const result = policy.resolver({ ...BASE_INPUT, path: "docs/auth/login.md", data: {} });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.meta.module).toBe("docs");
+  });
+
+  it("strict ignores rootPrefixes entirely — it never infers module, only validates its presence", () => {
+    const policy = createConventionPolicy(cfgStrict({ types: ["guia"] }), ["docs"]);
+    const result = policy.resolver({
+      ...BASE_INPUT,
+      path: "docs/auth/login.md",
+      data: { type: "guia", module: "auth", status: "vigente" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.meta.module).toBe("auth"); // from frontmatter, never from inference
   });
 });
 

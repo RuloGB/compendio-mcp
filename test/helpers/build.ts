@@ -97,7 +97,10 @@ export function buildHarness(
 ): TestHarness {
   const [root] = resolveRoots(REPO_ROOT, [docsDir]);
   const store = new SqliteIndexStore(":memory:");
-  const policy = createConventionPolicy(convention);
+  // Mirrors production wiring (composition.ts): rootPrefixes threaded in
+  // unconditionally, so module inference strips the alias the same way here
+  // as it does in `createContainer` (design.md Decision 7, Decision 13).
+  const policy = createConventionPolicy(convention, [root!.prefix]);
   const index = new IndexDocuments(
     new FileDocumentSource(root!.dir, ["INDEX.md"], root!.prefix),
     new RemarkMarkdownParser(),

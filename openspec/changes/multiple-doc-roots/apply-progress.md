@@ -428,17 +428,293 @@ tolerance + alias-as-`ReadError.path`), Phase 11 (Gate 4b), Phase 12 (alias-awar
 which restores the `index-and-search.test.ts` test skipped in this batch and the `read-document.test.ts`
 module assertion to their real, folder-inferred values), Phase 13 (spec + verification).
 
-## Remaining Tasks (PR 3, PR 4 — not started)
+## Batch 3 — PR 3 (this batch)
 
-- [ ] Phase 10: Composite tolerance + alias-as-`ReadError.path`
-- [ ] Phase 11: Gate 4b — a failed root protects its subtree
-- [ ] Phase 12: Alias-aware `inferModule` (also restores the two PR-2-deferred assertions named in
-      Deviations above: `index-and-search.test.ts`'s skipped "filters by module" test, and
-      `read-document.test.ts`'s `module: "docs"` → `module: "leadsviewer"` assertion)
-- [ ] Phase 13: Spec + verification (PR 3)
+**Scope**: `tasks.md` §"PR 3 — behavioural companions" — Phase 10 (composite per-root tolerance +
+alias-as-`ReadError.path`), Phase 11 (Gate 4b), Phase 12 (alias-aware `inferModule`), Phase 13 (spec +
+verification). Branch `feat/multiple-doc-roots-03-behavioural-companions`, off PR 2's branch
+(`feat/multiple-doc-roots-02-structural-core`), per Feature Branch Chain. Explicitly **not** in scope,
+per instruction and per the design's own PR boundary: combined `INDEX.md`, `read_doc` tolerance tests,
+`vector-reach.mjs`, README/CLAUDE.md updates (Phases 14-17, PR 4).
+
+### Completed Tasks
+
+- [x] 10.1 [RED] Extended `composite-document-source.test.ts`: replaced the two PR-2 "propagates
+      immediately" tests with tolerant-catch equivalents (one root throws → other's files + one
+      `ReadError`; second-root-throws mirror), added a dedicated alias-vs-declared test, an all-roots-fail
+      aggregate-message test, and an N=1-degenerates-to-all-fail test. Confirmed genuine RED: 5/9 tests
+      failed against the unmodified (no-`try`/`catch`) PR 2 implementation before any production edit.
+- [x] 10.2 [GREEN] `composite-document-source.ts`: wrapped each root's `discover()` in `try`/`catch`;
+      on catch, pushes `{ path: root.prefix, error: 'declared documentation root "<declared>" (<dir>)
+      could not be read: <reason>' }` into `readErrors` and continues; after the loop, rethrows one
+      aggregate error (`no documentation root could be read: "<declared>" (<dir>): <reason>; ...`,
+      one clause per failed root) only when every root threw. Confirmed GREEN: 9/9 passed.
+- [x] 10.3 Re-confirmed `file-document-source.test.ts:99` and the 2.3 seeded-prefix test both pass
+      unchanged — `git diff --stat` shows zero changes to `file-document-source.ts` or its test in this
+      batch; both files' 14/14 tests still pass.
+- [x] 11.1 [RED-by-construction] `sync-index.test.ts`: added a dedicated "Gate 4b" describe block —
+      (a) a direct `SyncIndex` protection test with `readErrors: [{ path: "openspec" }]` (the alias)
+      against existing `openspec/**` documents → `deleted` is empty; (b) the inverse, with
+      `readErrors: [{ path: "packages/app/docs" }]` (the declared string) against existing `docs/**`
+      documents → `deleted` includes them (purged, proving why the alias matters); (c) an end-to-end
+      test wiring the REAL `CompositeDocumentSource` over a nested, differently-aliased root
+      (`declared: "packages/app/docs"`, `prefix: "docs"`) into `SyncIndex`, asserting the failed root's
+      subtree survives a second pass. **Empirically falsified, not just reasoned about**: temporarily
+      flipped 10.2's `path: root.prefix` to `path: root.declared`, reran (c) and the alias test from
+      10.1 — both failed exactly as predicted (test (c): `deleted` became `['docs/a.md',
+      'docs/nested/b.md']`, i.e. the whole subtree purged), then reverted and reconfirmed 28/28 green.
+      This is the single most load-bearing property in this PR — kept as its own describe block, never
+      folded into another test, per explicit instruction.
+- [x] 11.2 Confirmed green — satisfied entirely by 10.2, no separate implementation change (19/19 in
+      `sync-index.test.ts`, including the pre-existing 16 unaffected by this batch).
+- [x] 12.1 [baseline] `convention.test.ts`: landed `inferModule("docs/documentation-convention.md")`
+      (no `rootPrefixes` argument) → `"docs"`, confirmed passing on unmodified code — the intermediate
+      PR-2-only naive state, matching the already-existing `read-document.test.ts`/
+      `index-and-search.test.ts` PR-2 deviations named in Batch 2.
+- [x] 12.2 [GREEN] `src/domain/convention.ts`: `inferModule(path, rootPrefixes?: readonly string[])`
+      strips at most one matching `<prefix>/` (via `Array.find`, so "first match wins" — unambiguous
+      only because `resolveRoots` rejects nested roots) before taking the first remaining segment;
+      `createConventionPolicy(cfg, rootPrefixes?)` threads it into `createLoosePolicy`'s resolver;
+      `createStrictPolicy` ignores the parameter entirely (it only validates `module`'s presence, never
+      infers it). RED confirmed first: 5 new assertions failed against the unmodified 1-arg
+      `inferModule`/`createConventionPolicy` (wrong values returned, not a type error, since the extra
+      arg is silently ignored at runtime); GREEN confirmed after: 34/34 in `convention.test.ts`.
+- [x] 12.3 `composition.ts`: `createConventionPolicy(config.convention, roots.map(r => r.prefix))`,
+      unconditional, no branch. Also extended `test/helpers/build.ts`'s `createConventionPolicy` call
+      the same way (not separately named in tasks.md, but required for the un-skip in 12.4 below to be
+      real: `buildHarness` is the harness the "filters by module" test actually runs through, and
+      Decision 13's own argument — "a harness that diverges from production on the most visible
+      contract is what produced finding 2" — applies identically here).
+- [x] 12.4 [invert] Ran the full suite after the wiring change: exactly one pre-existing assertion
+      failed (`read-document.test.ts`'s `module: "docs"`), confirming the wiring reaches production
+      correctly and isolating precisely the deviation that needed restoring. Restored it to `module:
+      "leadsviewer"`. Un-skipped `index-and-search.test.ts`'s "filters by module" test (removed the
+      `it.skip` and its PR-2-deviation comment; restored the original assertion body unweakened). Added
+      a new dedicated test (`IndexDocuments — alias-aware module inference across roots`) proving
+      `docs/documentation-convention.md` → `module` absent, `openspec/specs/indexing/spec.md` → `module:
+      "specs"`, and `GetOverview`'s `byModule` has no `docs`/`openspec` bucket at all (Gate 3, the
+      `byModule` clause tasks.md called for).
+- [x] 13.1 Cross-checked `specs/indexing/spec.md`'s "Read Failures Protect the Affected `path` Subtree
+      From Deletion" MODIFIED requirement against 10.1-11.1: all four scenarios (one-of-several-unreadable,
+      sole-root-degenerates-to-all-fail, every-root-fails, alias-protects-subtree) match the
+      implementation and tests exactly, including the literal `ReadError.path` value named in the
+      fourth scenario. The requirement narrows the pre-existing MUST (root failure is still reported and
+      still protects its subtree) rather than deleting it — confirmed by reading the "Previously:" note,
+      which states the generalization explicitly. No edit needed — already drafted correctly.
+- [x] 13.2 Cross-checked the "Field Inference in `loose` Mode" MODIFIED requirement (`module` relative to
+      the containing root) against 12.1-12.4: every scenario in the delta (empty-string-frontmatter,
+      folder-segment on the default root, root-top-level-has-no-module, frontmatter-wins,
+      deeper-second-root) is satisfied by the implementation. No edit needed.
+- [x] 13.3 Manual Gate 4, both halves — see Manual Verification below for full transcripts (exit 0 /
+      exit 1 with real stdout).
+- [x] 13.4 Manual Gate 3 on this repository — see Manual Verification below for the before/after `By
+      module` transcript, including an empirically reproduced "before" baseline (not just quoted from
+      the task prompt).
+- [x] 13.5 `npm test`, `npm run typecheck`, `npm run build` — all green, real output pasted below.
+
+### TDD Cycle Evidence (PR 3)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 10.1-10.2 | `test/infrastructure/composite-document-source.test.ts` | Unit | ✅ 4/4 (pre-change, unaffected tests) | ✅ Written — confirmed 5/9 failing against the unmodified no-`try`/`catch` composite | ✅ 9/9 passed after the `try`/`catch` + aggregate-rethrow implementation | ✅ 6 cases: one-root-fails, second-root-fails, alias-vs-declared, all-fail aggregate, N=1-degenerate, (plus the 3 pre-existing merge/sort cases unaffected) | ➖ None needed — a 20-line loop, already minimal |
+| 10.3 | `test/infrastructure/file-document-source.test.ts` | Unit | ✅ 14/14 (unchanged, diff-confirmed) | N/A — no change to this file in this batch | ✅ 14/14 | ➖ N/A | ➖ N/A |
+| 11.1-11.2 | `test/application/sync-index.test.ts` | Integration | ✅ 16/16 (pre-existing, unaffected) | ✅ Written; falsifiability confirmed **empirically** (not just reasoned): temporarily flipping `root.prefix`→`root.declared` in production code reproduced the exact predicted failure (`deleted` gained `docs/a.md`, `docs/nested/b.md`), then reverted | ✅ 19/19 passed (16 pre-existing + 3 new) | ✅ 3 cases: direct-protect, inverse-purge, end-to-end-through-real-composite | ➖ None needed — no production code changed in this phase |
+| 12.1-12.2 | `test/domain/convention.test.ts` | Unit | ✅ 29/29 (pre-change) | ✅ Written — confirmed 5/5 new assertions failing against the unmodified 1-arg `inferModule`/`createConventionPolicy` | ✅ 34/34 passed after the `rootPrefixes` parameter + strip logic | ✅ 6 cases for `inferModule` (baseline, strip, invert-to-undefined, second-root, no-match-fallthrough, omitted/empty-fallthrough) + 4 for `createConventionPolicy` threading (loose-strip, loose-root-level, loose-no-arg-default, strict-ignores) | ➖ None needed — a 4-line `find`+`slice` |
+| 12.3-12.4 | `src/composition.ts`, `test/helpers/build.ts`, `test/application/read-document.test.ts`, `test/application/index-and-search.test.ts` | Container/Integration | ✅ 638/639 full suite (pre-Phase-12.4, one deferred assertion still failing as predicted) | N/A — wiring change; falsifiability confirmed by running the full suite immediately after the wiring edit and observing exactly the one predicted pre-existing failure (`read-document.test.ts`'s `module: "docs"`), nothing else moved | ✅ 639/639 (0 skipped) after restoring the deferred assertion, un-skipping the "filters by module" test, and adding the `byModule` bucket-absence test | ✅ 2 real scenarios in the new byModule test (root-level-under-alias → absent, nested-second-root → real folder) | ➖ None needed |
+
+### Test Summary (PR 3)
+
+- **Total tests written**: 15 new (`composite-document-source.test.ts`: 4 net-new beyond the 2 rewritten
+  in place; `sync-index.test.ts`: 3; `convention.test.ts`: 10 across the two new describe blocks; 1 new
+  `byModule` test in `index-and-search.test.ts`) plus 2 tests rewritten in place (the former "propagates
+  immediately" pair) and 1 un-skipped (`index-and-search.test.ts`'s "filters by module")
+- **Total tests passing**: 639/639 (0 skipped) — full suite, up from 621 passed / 1 skipped at the end
+  of PR 2
+- **Layers used**: Unit (composite-document-source, convention: 19), Integration/Container
+  (sync-index, index-and-search, read-document, composition-adjacent: rest)
+- **Approval/characterization tests**: 1 (12.3-12.4's full-suite-rerun-after-wiring, matching the same
+  falsifiability-by-reasoning-then-confirmed-by-running pattern used for PR 2's 7.1)
+- **Pure functions modified**: 1 (`inferModule` — still zero I/O, zero `fs` calls, now takes an
+  optional `readonly string[]`)
+- **Empirical falsifications performed** (beyond the standard RED/GREEN cycle): 1 — Gate 4b's
+  alias-vs-declared property, verified by actually breaking the production code, observing the
+  predicted failure, then reverting (see 11.1's evidence row)
+
+### Files Changed (PR 3)
+
+| File | Action | What Was Done |
+|------|--------|----------------|
+| `src/infrastructure/fs/composite-document-source.ts` | Modified | Per-root `try`/`catch` tolerance; `ReadError.path` is `root.prefix` (alias); all-fail aggregate rethrow |
+| `src/domain/convention.ts` | Modified | `inferModule(path, rootPrefixes?)`; `createConventionPolicy(cfg, rootPrefixes?)` threading into `createLoosePolicy` only |
+| `src/composition.ts` | Modified | `createConventionPolicy(config.convention, roots.map(r => r.prefix))`, unconditional |
+| `test/infrastructure/composite-document-source.test.ts` | Modified | Tolerance tests replacing the PR-2 "propagates immediately" pair; alias-vs-declared test; all-fail aggregate test; N=1-degenerate test |
+| `test/application/sync-index.test.ts` | Modified | New "Gate 4b" describe block: direct-protect, inverse-purge, end-to-end-through-real-composite |
+| `test/domain/convention.test.ts` | Modified | `inferModule` alias-aware block (6 tests); `createConventionPolicy` rootPrefixes-threading block (4 tests) |
+| `test/helpers/build.ts` | Modified | `createConventionPolicy(convention, [root!.prefix])`, mirroring production wiring |
+| `test/application/index-and-search.test.ts` | Modified | Un-skipped "filters by module"; new `byModule` bucket-absence test; import for `GetOverview` |
+| `test/application/read-document.test.ts` | Modified | Module assertion restored from `"docs"` to `"leadsviewer"` |
+| `openspec/changes/multiple-doc-roots/tasks.md` | Modified | Phase 10-13 marked `[x]` |
+
+### Deviations from Design
+
+None that change the architecture or the decisions. One clarification worth naming:
+
+1. **`test/helpers/build.ts`'s `createConventionPolicy` call was extended, though tasks.md's Phase 12
+   list only names `composition.ts:74` explicitly.** This is required, not optional, for 12.4's un-skip
+   to be a real, non-vacuous restoration: `index-and-search.test.ts`'s "filters by module" test runs
+   through `buildHarness` (the in-memory test composition root), not through `createContainer`. Without
+   this change, the test would still see the naive (root-alias) module value and either fail or need to
+   stay weakened — exactly the divergence Decision 13 already named and fixed once for
+   `FileDocumentSource`'s prefix argument ("a harness that diverges from production on the most visible
+   contract is what produced finding 2"). Same argument, same fix, applied to the same file for a second
+   parameter.
+
+### Issues Found
+
+None.
+
+### Manual Verification (real output, not inferred)
+
+**Manual Gate 3 — module inference is alias-aware, measured on this repository, with an empirically
+reproduced "before" baseline.**
+
+Rather than trusting the orchestrator-supplied "before" figure, it was reproduced independently: `git
+stash` set the working tree back to the PR 2 tip (confirmed via `git log -1` showing `1a214f6`), built,
+indexed this repo with a temporary root `compendio.config.json` (`docsDir: ["docs","openspec"], exclude:
+["INDEX.md","openspec/changes/archive"]`), and ran `overview`:
+
+```
+node dist/cli.js index --lexical
+Indexed 17 documents (284 chunks) in 211 ms [mode lexical]
+
+node dist/cli.js overview
+Indexed documents: 17
+By type: guide (1)
+By module: transversal (1), openspec (16)
+```
+
+Identity with the orchestrator-quoted PR 2 figure (`transversal (1), openspec (16)`) — confirms the
+"before" is real, not assumed. Cleaned up (`rm -f compendio.config.json && rm -rf .compendio`),
+`git stash pop` restored the PR 3 working tree exactly (`git status --short` showed the same 10 modified
+files as before the stash), then rebuilt with PR 3's changes and re-ran the identical steps:
+
+```
+node dist/cli.js index --lexical
+Indexed 17 documents (284 chunks) in 200 ms [mode lexical]
+
+node dist/cli.js overview
+Indexed documents: 17
+By type: guide (1)
+By module: transversal (1), changes (9), specs (6)
+```
+
+No `docs`/`openspec` bucket in either run's "after" — `changes (9)` and `specs (6)` are the real
+`openspec/changes/*` and `openspec/specs/*` folders (9 + 6 + 1 transversal = 16, plus the one root-level
+`docs/documentation-convention.md` with no module at all = 17 total, matching Gate 3's exact prediction
+in design.md's table). Chunk count identical (284) between before/after, confirming this change touches
+only `module` classification, nothing about chunking or content.
+
+**Manual Gate 4 — a missing root does not crash; every root missing still throws.**
+
+One of two declared roots missing (`docsDir: ["docs", "nonexistent-root"]`):
+
+```
+node dist/cli.js index --lexical
+Discovering documents
+Indexing 1 documents
+[1/1] docs/documentation-convention.md
+WARNING nonexistent-root: declared documentation root "nonexistent-root" (C:\Users\Raul\Workspace\compendio-mcp\nonexistent-root) could not be read: cannot read the documentation directory "C:\Users\Raul\Workspace\compendio-mcp\nonexistent-root": ENOENT: no such file or directory, scandir 'C:\Users\Raul\Workspace\compendio-mcp\nonexistent-root'
+WARNING indexed without embeddings (provider unavailable): search runs in lexical mode
+Indexed 1 documents (13 chunks) in 29 ms [mode lexical]
+Skipped 1 documents with invalid frontmatter.
+EXIT CODE: 0
+```
+
+Every declared root missing (`docsDir: ["nonexistent-a", "nonexistent-b"]`):
+
+```
+node dist/cli.js index --lexical
+Discovering documents
+no documentation root could be read: "nonexistent-a" (C:\Users\Raul\Workspace\compendio-mcp\nonexistent-a): cannot read the documentation directory "C:\Users\Raul\Workspace\compendio-mcp\nonexistent-a": ENOENT: no such file or directory, scandir 'C:\Users\Raul\Workspace\compendio-mcp\nonexistent-a'; "nonexistent-b" (C:\Users\Raul\Workspace\compendio-mcp\nonexistent-b): cannot read the documentation directory "C:\Users\Raul\Workspace\compendio-mcp\nonexistent-b": ENOENT: no such file or directory, scandir 'C:\Users\Raul\Workspace\compendio-mcp\nonexistent-b'
+EXIT CODE: 1
+```
+
+Exit 0 with the readable root fully indexed and the missing one named by alias in the first case; exit 1
+with BOTH declared roots and reasons named in one aggregate message in the second — exactly Decision
+2/3's specified behaviour. Temporary config and `.compendio/` deleted immediately after each run;
+`git status --short` confirmed clean (only the 10 intentional source/test files modified) before
+committing.
+
+### Verification (real output, not inferred)
+
+`npm test` — full suite, after all Phase 10-13 work:
+
+```
+Test Files  43 passed (43)
+     Tests  639 passed (639)
+```
+
+Zero skipped. The two remaining conditional skips in the repo (`test/cli-subprocess.test.ts`'s
+`ctx.skip` when the platform can't create a symlink/junction, and `config.test.ts`'s/`composition.test.ts`'s
+`it.skipIf(process.platform !== "win32")`) are pre-existing, environment-conditional, unrelated to this
+PR's scope, and evaluate to "run" on this Windows development machine — confirmed by the 639 count
+including them.
+
+`npm run typecheck`: clean (`tsc --noEmit && tsc -p tsconfig.test.json`, no output, exit 0).
+
+`npm run build`: clean (`tsc`, no output, exit 0).
+
+Real diff stat (`git diff --numstat` across both feature commits, excluding `tasks.md`):
+
+```
+9 files changed, 346 insertions(+), 40 deletions(-)
+```
+
+386 changed lines — the first PR in this 4-PR chain to land **inside** the 400-line review budget
+outright (design's own forecast for this slice was ~230-370; this landed at the top of that band, not
+over it like PR 2's 793). Recorded as observed, not assumed to generalize to PR 4.
+
+### Workload / PR Boundary (PR 3)
+
+- Mode: chained PR slice (`feature-branch-chain`)
+- Current work unit: PR 3 — behavioural companions (composite per-root tolerance, alias-as-`ReadError.path`,
+  Gate 4b, alias-aware `inferModule`)
+- Boundary: starts from PR 2's branch (`feat/multiple-doc-roots-02-structural-core`); ends with a green,
+  typed, built suite where multi-root indexing is actually usable — a missing/unreadable declared root no
+  longer crashes the whole run, its subtree is protected from deletion, and `module` inference is a real
+  per-root folder signal again. This is the first PR after which the feature may be documented/announced
+  (per the design's own condition) — though that documentation itself is PR 4 scope, not done here.
+- Estimated review budget impact: 386 changed lines (346 insertions + 40 deletions), inside the 400-line
+  PR review budget.
+- Branches: tracker `feat/multiple-doc-roots` (off `main`, draft/no-merge); PR 1 child
+  `feat/multiple-doc-roots-01-exclude-prefix` (off the tracker); PR 2 child
+  `feat/multiple-doc-roots-02-structural-core` (off the PR 1 branch); PR 3 child
+  `feat/multiple-doc-roots-03-behavioural-companions` (off the PR 2 branch, per Feature Branch Chain
+  naming).
+- Commits (local only, not pushed): two work-unit commits — `feat(fs): tolerate per-root read failures
+  in CompositeDocumentSource` (Phase 10+11, tests land with the behavior they verify) and `feat(domain):
+  thread declared root aliases through module inference` (Phase 12, including the two restored PR-2
+  deferred assertions and the harness wiring that makes the restoration real) — plus this docs(sdd)
+  commit.
+
+### Status
+
+PR 1 (Phase 1-3): **9/9 tasks complete.**
+PR 2 (Phase 4-9): **26/26 tasks complete.**
+PR 3 (Phase 10-13): **16/16 tasks complete** (10.1-10.3, 11.1-11.2, 12.1-12.4, 13.1-13.5).
+
+**51/51 tasks complete across PR 1 + PR 2 + PR 3.** PR 3 is ready for `sdd-verify` on its own scope, or
+for the next `sdd-apply` batch to begin PR 4 (base: this PR 3 branch) — Phase 14 (combined `INDEX.md`),
+Phase 15 (`read_doc` tolerance tests — note the exact-hit and over-prefixed-hit cases this phase called
+for are already covered by Batch 2's Deviation #2, so Phase 15 there only owns the aliased-collision
+residual case and the bare-basename-miss case), Phase 16 (`vector-reach.mjs` + docs), Phase 17 (spec +
+final verification).
+
+## Remaining Tasks (PR 4 — not started)
+
 - [ ] Phase 14: Combined `INDEX.md`
-- [ ] Phase 15: `read_doc` tolerance — tests only (note: the exact-hit and over-prefixed-hit cases this
-      phase called for are already covered by this batch's Deviation #2 above; Phase 15 still owns the
-      aliased-collision residual case and the bare-basename-miss case)
+- [ ] Phase 15: `read_doc` tolerance — tests only (exact-hit and over-prefixed-hit already covered by
+      Batch 2's Deviation #2; Phase 15 still owns the aliased-collision residual case and the
+      bare-basename-miss case)
 - [ ] Phase 16: `vector-reach.mjs` + docs
 - [ ] Phase 17: Spec + final verification (PR 4)
