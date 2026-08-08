@@ -129,7 +129,7 @@ Entirely optional — every field has a default, and Compendio works with no con
 
 ```json
 {
-  "docsDir": "docs",
+  "docsDir": ["docs"],
   "exclude": ["INDEX.md"],
   "db": ".compendio/compendio.db",
   "embeddings": { "provider": "local", "model": "Xenova/multilingual-e5-small" },
@@ -146,8 +146,8 @@ Entirely optional — every field has a default, and Compendio works with no con
 
 | Key | What it's for |
 |---|---|
-| `docsDir` | Where your markdown lives, relative to the project root |
-| `exclude` | Filenames to skip when indexing |
+| `docsDir` | One or more documentation roots, relative to the project root. Always an array — there is no single-string form. Defaults to `["docs"]` |
+| `exclude` | Entries to skip when indexing: an exact path, a bare filename (matched anywhere), or a directory prefix (e.g. `"adr/superseded"` skips everything under it) |
 | `db` | Where the SQLite index file is written |
 | `search.k` | Default number of fragments returned per search |
 | `chunk` | Fragment size bounds, in tokens |
@@ -155,6 +155,20 @@ Entirely optional — every field has a default, and Compendio works with no con
 | `convention` | Optional documentation taxonomy — see below |
 
 Declaring only part of the `convention` block merges with the defaults field by field; it never wipes the siblings you didn't mention. `frontmatterFields` maps `type`/`module`/`status` onto non-standard frontmatter keys (e.g. `{ "status": "estado" }` reads a Spanish document's `estado:` field as `status`).
+
+### Multiple documentation roots
+
+Declare more than one root to index several folders — `adr/`, `rfcs/`, a spec directory — as one searchable corpus:
+
+```json
+{ "docsDir": ["docs", "openspec"], "exclude": ["INDEX.md", "openspec/changes/archive"] }
+```
+
+Every document `path` is prefixed with its root's alias — the directory's own name, so `docs/x.md` and `openspec/specs/y.md` both read as the real project-relative path. This holds with a single root too, including the zero-config default: `docs/x.md`, not `x.md`. `search_docs`, `docs_overview`, `read_doc` and the generated `INDEX.md` all use this prefixed shape; passing a `path` back to `read_doc` exactly as returned always resolves.
+
+Declared roots may not collide: two roots resolving to the same directory, one nested inside another (in either declaration order), or two roots sharing the same directory name (and therefore the same alias) are all rejected before anything is indexed. A root that is declared but cannot be read (a typo, or a folder only some checkouts have) is reported and skipped — the run continues on the remaining roots, and only throws if every declared root fails. Removing a root from `docsDir` deletes its documents on the next sync pass, same as deleting the files themselves would.
+
+`--dir <path>` (below) replaces the whole declared root set with that one directory — it does not add to it.
 
 ### Documentation convention (optional)
 
@@ -194,10 +208,10 @@ Designed as *progressive disclosure*: orient cheaply → search cheaply → read
 | `compendio index` | Full rebuild of the index |
 | `compendio search "..."` | Hybrid search with filters: `--type`, `--module`, `--tags`, `-k`, `--all` |
 | `compendio overview` | Map of the indexed corpus |
-| `compendio index-md` | Generates or updates `docs/INDEX.md` — one line per document |
+| `compendio index-md` | Generates or updates one combined `INDEX.md` in the first declared root (`docs/INDEX.md` by default) — one line per document, across every declared root |
 | `compendio eval` | Measures retrieval quality against a goldenset |
 
-Global option `-C, --root <dir>`: project root. Add `--lexical` to `index` or `search` to skip embeddings entirely.
+Global option `-C, --root <dir>`: project root. Add `--lexical` to `index` or `search` to skip embeddings entirely. `--dir <path>` on `index`/`index-md` **replaces** the configured `docsDir` with that one directory — it does not add to it, and the index it produces still has the prefixed path shape (`<dirname>/x.md`).
 
 ## How it works
 
