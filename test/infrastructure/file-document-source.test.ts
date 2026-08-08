@@ -109,6 +109,19 @@ describe("FileDocumentSource", () => {
     await expect(source.discover()).rejects.toThrow(/root directory unreachable/);
   });
 
+  it("still throws when the docs root itself cannot be read, even with a non-empty path prefix", async () => {
+    readdirMock.mockImplementation(async (path: unknown) => {
+      if (path === dir) {
+        throw new Error("root directory unreachable");
+      }
+      return [];
+    });
+
+    const source = new FileDocumentSource(dir, [], "docs");
+
+    await expect(source.discover()).rejects.toThrow(/root directory unreachable/);
+  });
+
   it("decodes a CP1252 file (curly quotes, dash, ellipsis, accented vowels) with zero readErrors", async () => {
     const original =
       "# Titulo\n\n“Cita” con guion – y puntos suspensivos… vocales: á é í ó ú ñ.\n";
@@ -186,5 +199,39 @@ describe("FileDocumentSource", () => {
     const result = await source.discover();
 
     expect(result.encodingNotices).toEqual([]);
+  });
+
+  it("excludes an entire directory when exclude declares its prefix", async () => {
+    writeFileSync(join(dir, "root.md"), "root content");
+    mkdirSync(join(dir, "sub"));
+    writeFileSync(join(dir, "sub", "x.md"), "sub content");
+
+    const source = new FileDocumentSource(dir, ["sub"]);
+    const result = await source.discover();
+
+    expect(result.files.map((f) => f.path).sort()).toEqual(["root.md"]);
+  });
+
+  it("strips a trailing slash from an exclude entry before matching the directory prefix", async () => {
+    writeFileSync(join(dir, "root.md"), "root content");
+    mkdirSync(join(dir, "sub"));
+    writeFileSync(join(dir, "sub", "x.md"), "sub content");
+
+    const source = new FileDocumentSource(dir, ["sub/"]);
+    const result = await source.discover();
+
+    expect(result.files.map((f) => f.path).sort()).toEqual(["root.md"]);
+  });
+
+  it("does not exclude a sibling directory whose name merely starts with the excluded entry", async () => {
+    mkdirSync(join(dir, "docs"));
+    writeFileSync(join(dir, "docs", "x.md"), "docs content");
+    mkdirSync(join(dir, "docs-old"));
+    writeFileSync(join(dir, "docs-old", "x.md"), "docs-old content");
+
+    const source = new FileDocumentSource(dir, ["docs"]);
+    const result = await source.discover();
+
+    expect(result.files.map((f) => f.path).sort()).toEqual(["docs-old/x.md"]);
   });
 });
