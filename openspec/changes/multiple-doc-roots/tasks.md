@@ -161,27 +161,27 @@ Note on 8.4's count: the actual literal count re-addressed was higher than 26 on
 
 ### Phase 14: Combined `INDEX.md`
 
-- [ ] 14.1 [RED] `test/application/generate-index-md.test.ts`: two-root fixture, `exclude: []` (the only case reaching the three dead equality checks) — assert a generated `docs/INDEX.md` still excludes itself and lists prefixed entries from both roots. Confirm this fails against unmodified `generate-index-md.ts`.
-- [ ] 14.2 [GREEN] `src/application/generate-index-md.ts`: add 6th constructor param `selfPath: string = INDEX_FILE`; retarget the three equality checks (lines 41, 46, 77) from the literal `INDEX_FILE` to `this.selfPath`.
-- [ ] 14.3 `composition.ts`: pass `` `${roots[0].prefix}/${INDEX_FILE}` `` as `selfPath`; writer stays `new FileIndexWriter(roots[0].dir, INDEX_FILE)`.
-- [ ] 14.4 [invert] 14.1 green — Gate 6.
+- [x] 14.1 [RED] `test/application/generate-index-md.test.ts`: two-root fixture, `exclude: []` (the only case reaching the three dead equality checks) — assert a generated `docs/INDEX.md` still excludes itself and lists prefixed entries from both roots. Confirm this fails against unmodified `generate-index-md.ts`.
+- [x] 14.2 [GREEN] `src/application/generate-index-md.ts`: add 6th constructor param `selfPath: string = INDEX_FILE`; retarget the three equality checks (lines 41, 46, 77) from the literal `INDEX_FILE` to `this.selfPath`.
+- [x] 14.3 `composition.ts`: pass `` `${roots[0].prefix}/${INDEX_FILE}` `` as `selfPath`; writer stays `new FileIndexWriter(roots[0].dir, INDEX_FILE)`.
+- [x] 14.4 [invert] 14.1 green — Gate 6.
 
 ### Phase 15: `read_doc` tolerance — tests only, no source edit expected
 
-- [ ] 15.1 `test/application/read-document.test.ts`: add 4 cases — exact prefixed-path hit; over-prefixed hit (`repo/docs/x.md` → strips to `docs/x.md`); the aliased-collision residual case (`docsDir: ["docs","adr"]`, request for a non-existent `docs/adr/x.md` strips to the real `adr/x.md`); bare-basename miss (`read_doc({ path: "x.md" })` → `path-not-found` + 3 closest matches, never a false resolve).
-- [ ] 15.2 Confirm `read-document.ts:44-50` needs zero edits — diff-check, not re-read.
+- [x] 15.1 `test/application/read-document.test.ts`: add 4 cases — exact prefixed-path hit; over-prefixed hit (`repo/docs/x.md` → strips to `docs/x.md`); the aliased-collision residual case (`docsDir: ["docs","adr"]`, request for a non-existent `docs/adr/x.md` strips to the real `adr/x.md`); bare-basename miss (`read_doc({ path: "x.md" })` → `path-not-found` + 3 closest matches, never a false resolve). Exact prefixed-path hit and over-prefixed hit were already covered by Batch 2's Deviation #2; this phase added the two remaining cases (aliased-collision residual, bare-basename miss).
+- [x] 15.2 Confirm `read-document.ts:44-50` needs zero edits — diff-check, not re-read.
 
 ### Phase 16: `vector-reach.mjs` + docs
 
-- [ ] 16.1 `scripts/vector-reach.mjs:204`: import `resolveRoots` from `../dist/infrastructure/config.js`; replace the join with `const owner = roots.find(r => markerChunk.path.startsWith(\`${r.prefix}/\`)) ?? roots[0]` then `resolve(owner.dir, markerChunk.path.slice(owner.prefix.length + 1))`.
-- [ ] 16.2 Run `node scripts/vector-reach.mjs test/fixtures/vector-reach "código de verificación interna QUETZAL"` end to end — confirm identical resolved absolute path to pre-change (`owner.prefix === "docs"`).
-- [ ] 16.3 `README.md:132,148-150`: `docsDir` as an array (no string form), always-prefixed path shape incl. zero-config, three-clause `exclude`, `--dir` replaces-not-adds.
-- [ ] 16.4 `CLAUDE.md`: same topics, plus the unreadable-vs-removed-root contrast (Decision 4) and "removing a root purges its documents on the next sync pass" as an operational note.
+- [x] 16.1 `scripts/vector-reach.mjs:204`: import `resolveRoots` from `../dist/infrastructure/config.js`; replace the join with `const owner = roots.find(r => markerChunk.path.startsWith(\`${r.prefix}/\`)) ?? roots[0]` then `resolve(owner.dir, markerChunk.path.slice(owner.prefix.length + 1))`.
+- [x] 16.2 Run `node scripts/vector-reach.mjs test/fixtures/vector-reach "código de verificación interna QUETZAL"` end to end — confirm identical resolved absolute path to pre-change (`owner.prefix === "docs"`).
+- [x] 16.3 `README.md:132,148-150`: `docsDir` as an array (no string form), always-prefixed path shape incl. zero-config, three-clause `exclude`, `--dir` replaces-not-adds.
+- [x] 16.4 `CLAUDE.md`: same topics, plus the unreadable-vs-removed-root contrast (Decision 4) and "removing a root purges its documents on the next sync pass" as an operational note.
 
 ### Phase 17: Spec + final verification
 
-- [ ] 17.1 Cross-check `specs/index-md/spec.md`'s two ADDED requirements against 14.1–14.4; `specs/mcp-contract/spec.md`'s two ADDED requirements against 15.1–15.2.
-- [ ] 17.2 Check `openspec/specs/search/spec.md` for stale path-shape claims; amend if found, note explicitly if none.
-- [ ] 17.3 Gate 7: `npm test`, `npm run typecheck`, `npm run build` green; diff-check `src/application/sync-index.ts` and `SCHEMA_DDL` (`sqlite-index-store.ts:48`) are empty across the whole 4-PR chain; grep the full `src/` tree for `string \| string\[\]` — zero matches.
-- [ ] 17.4 Recorded observations (not gates), into `verify-report.md`: byte/estimated-token weight per root for the Gate 2 corpus; whether any Gate-2-corpus `search_docs` query returns a spec-delta file over the active spec.
-- [ ] 17.5 Final Gate 2 pass (a, b, d, e) if not already captured during PR 2/3 manual runs — record the formula-computed `indexed` count.
+- [x] 17.1 Cross-check `specs/index-md/spec.md`'s two ADDED requirements against 14.1–14.4; `specs/mcp-contract/spec.md`'s two ADDED requirements against 15.1–15.2.
+- [x] 17.2 Check `openspec/specs/search/spec.md` for stale path-shape claims; amend if found, note explicitly if none. **None found** — `openspec/specs/search/spec.md` contains zero occurrences of the word "path" at all (verified by grep), so there is nothing to amend.
+- [x] 17.3 Gate 7: `npm test`, `npm run typecheck`, `npm run build` green; diff-check `src/application/sync-index.ts` and `SCHEMA_DDL` (`sqlite-index-store.ts:48`) are empty across the whole 4-PR chain; grep the full `src/` tree for `string \| string\[\]` — zero matches.
+- [x] 17.4 Recorded observations (not gates), into `verify-report.md`: byte/estimated-token weight per root for the Gate 2 corpus; whether any Gate-2-corpus `search_docs` query returns a spec-delta file over the active spec.
+- [x] 17.5 Final Gate 2 pass (a, b, d, e) if not already captured during PR 2/3 manual runs — record the formula-computed `indexed` count.
