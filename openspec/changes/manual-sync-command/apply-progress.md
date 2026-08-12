@@ -32,9 +32,21 @@
 
 ### Test Summary
 
-- **Total tests written this session**: 46 (9 P-series progress cases + 5 sync-index additions [Gate 4 + R1–R4] + 9 subprocess S-series + 4 `formatSyncSummary` C-series, plus the 2 one-line fixups don't count as new cases)
-- **Total tests passing**: 675/675 (full suite, up from 662 baseline — 13 net new test files/blocks: `sync-progress.test.ts` is new; the rest are additions to existing files)
-- **Layers used**: Unit (37: sync-index + sync-progress + cli.test.ts additions), Subprocess (9: cli-subprocess.test.ts additions)
+- **Total tests written this session**: **27** (9 P-series progress cases + 5 sync-index additions [Gate 4 + R1–R4] + 9 subprocess S-series + 4 `formatSyncSummary` C-series; the 2 one-line `fakeReport` fixups add no cases)
+- **Total tests passing**: 675/675 (full suite, up from a **648** baseline on `main` — 27 net new cases; `sync-progress.test.ts` is a new file, the rest are additions to existing files)
+- **Layers used**: Unit (18: sync-index + sync-progress + cli.test.ts additions), Subprocess (9: cli-subprocess.test.ts additions)
+
+> **Corrected by the orchestrator after `sdd-verify`.** This block originally read "46" written,
+> "662 baseline", and "Unit (37)". All three were wrong and mutually inconsistent — the itemized
+> breakdown on the same line sums to 9+5+9+4 = **27**, which contradicted its own total. Two
+> independent measurements agree on 27: `sdd-verify` ran the suite on a `main` worktree (648) against
+> HEAD (675), and the orchestrator counted the diff directly —
+> `git diff main..HEAD -- test/ | grep -c "^+.*[[:space:]]it("` returns **27**, with the
+> corresponding removal count returning **0**. That zero independently corroborates Gate 3's
+> "additions only, none of the original 19 cases modified" claim by a second route.
+>
+> Recorded rather than silently overwritten: this file's whole purpose is precise TDD evidence, so a
+> quietly patched number would undermine exactly what it exists to prove.
 - **Approval tests** (refactoring): 1 (Gate 4's encoding-notice regression guard)
 - **Pure functions created**: 2 (`formatSyncSummary`; `SyncIndex.diff` is a private pure method, not separately exported)
 
