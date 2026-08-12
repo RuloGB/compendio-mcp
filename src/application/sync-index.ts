@@ -22,6 +22,18 @@ export interface SyncIndexOptions extends PipelineOptions {
   onProgress?: ProgressReporter;
 }
 
+/** One document whose missing chunk vectors were filled AND COMMITTED during
+ * this pass's vector-coverage reconciliation. Never records an attempt: a
+ * group whose embed throws, or whose `replaceEmbeddings` throws, contributes
+ * nothing here (see `reconcileOne`). */
+export interface ReconciledFileReport {
+  path: string;
+  /** Chunk vectors written for this document — `replaceEmbeddings` commits
+   * the whole group in one transaction, so this is exact, never a partial
+   * count. */
+  chunks: number;
+}
+
 export interface SyncReport {
   mode: SearchMode;
   indexed: IndexedFileReport[];
@@ -29,6 +41,9 @@ export interface SyncReport {
   skipped: SkippedFileReport[];
   totalChunks: number;
   durationMs: number;
+  /** Documents whose vector-coverage gaps were filled this pass. Empty on
+   * the overwhelmingly common pass; never absent. */
+  reconciled: ReconciledFileReport[];
   /** Present when embeddings were requested but unavailable for at least one
    * document or reconciliation group during this pass. */
   embeddingsWarning?: string;
@@ -60,6 +75,7 @@ interface PassState {
    * vector-coverage reconciliation phase is restricted to. */
   hashMatchPaths: Set<string>;
   encodingNotices: EncodingNotice[];
+  reconciled: ReconciledFileReport[];
   embeddingsWarning?: string;
 }
 
@@ -107,6 +123,7 @@ export class SyncIndex {
       deleted: [],
       hashMatchPaths: new Set(),
       encodingNotices: [],
+      reconciled: [],
     };
 
     const changed = this.diff(files, existing, encodingNotices ?? [], state);
@@ -123,6 +140,7 @@ export class SyncIndex {
       skipped: state.skipped,
       totalChunks,
       durationMs: Date.now() - start,
+      reconciled: state.reconciled,
     };
     if (state.embeddingsWarning !== undefined) report.embeddingsWarning = state.embeddingsWarning;
     if (state.encodingNotices.length > 0) report.encodingNotices = state.encodingNotices;
@@ -232,30 +250,52 @@ export class SyncIndex {
 
   /** Chunk-granular vector-coverage reconciliation, restricted to this
    * pass's hash-match set (rule 3). A no-op when there is no embeddings
-   * provider or `listChunksMissingVectors()` finds nothing to do. */
+   * provider or `listChunksMissingVectors()` finds nothing to do. Reports the
+   * `embedding` phase only when there is at least one group to reconcile
+   * (design.md Decision 4) -- `batches`/`chunks` are what is ATTEMPTED, known
+   * before the first group starts; `reconcileOne` records what is WRITTEN. */
   private async reconcileVectors(state: PassState): Promise<void> {
     if (this.embeddings === null) return;
+    const embeddings = this.embeddings; // narrowed once here; passed as a parameter below
     const missing = this.store
       .listChunksMissingVectors()
       .filter((chunk) => state.hashMatchPaths.has(chunk.path));
+    const groups = [...groupByPath(missing)];
+    if (groups.length === 0) return;
 
-    for (const [path, chunksMissing] of groupByPath(missing)) {
-      let vectors: Float32Array[];
-      try {
-        vectors = await this.embeddings.embed(
-          chunksMissing.map((c) => `passage: ${c.heading}\n${c.content}`),
-        );
-      } catch (error) {
-        state.embeddingsWarning = `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
-        continue; // leave as-is (lexical-only), reconsidered on a future pass
-      }
-      try {
-        this.store.replaceEmbeddings(
-          chunksMissing.map((c, i) => ({ chunkId: c.chunkId, embedding: vectors[i]! })),
-        );
-      } catch (error) {
-        state.skipped.push({ path, errors: [describeError(error)] });
-      }
+    this.report({ phase: "embedding", kind: "start", batches: groups.length, chunks: missing.length });
+    for (const [i, [path, chunksMissing]] of groups.entries()) {
+      await this.reconcileOne(embeddings, path, chunksMissing, state);
+      this.report({ phase: "embedding", kind: "tick", current: i + 1, total: groups.length });
+    }
+  }
+
+  /** One reconciliation group's body: embeds the missing chunks, then writes
+   * them with `replaceEmbeddings` (one transaction, atomic per group).
+   * Records WRITTEN work only, never attempted work (design.md Decision 9):
+   * an embed failure sets `embeddingsWarning` and leaves the gap for a future
+   * pass; a write failure is a per-document skip. Neither push reaches
+   * `state.reconciled`. */
+  private async reconcileOne(
+    embeddings: EmbeddingsProvider,
+    path: string,
+    chunksMissing: ChunkMissingVector[],
+    state: PassState,
+  ): Promise<void> {
+    let vectors: Float32Array[];
+    try {
+      vectors = await embeddings.embed(chunksMissing.map((c) => `passage: ${c.heading}\n${c.content}`));
+    } catch (error) {
+      state.embeddingsWarning = `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
+      return; // leave as-is (lexical-only), reconsidered on a future pass -- nothing embedded, nothing counted
+    }
+    try {
+      this.store.replaceEmbeddings(
+        chunksMissing.map((c, i) => ({ chunkId: c.chunkId, embedding: vectors[i]! })),
+      );
+      state.reconciled.push({ path, chunks: chunksMissing.length }); // ONLY after the write returns
+    } catch (error) {
+      state.skipped.push({ path, errors: [describeError(error)] }); // nothing written -> nothing counted
     }
   }
 

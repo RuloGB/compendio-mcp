@@ -10,6 +10,7 @@ function fakeReport(overrides: Partial<SyncReport> = {}): SyncReport {
     skipped: [],
     totalChunks: 0,
     durationMs: 1,
+    reconciled: [],
     ...overrides,
   };
 }

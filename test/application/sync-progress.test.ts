@@ -207,4 +207,90 @@ describe("SyncIndex — progress emission", () => {
 
     store.close();
   });
+
+  it("P6: a vector-coverage gap -> files/start.total === 0, no files/tick, then embedding/start {batches:1,chunks:1} then embedding/tick {current:1,total:1}, in that order", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    const source = new MutableSource();
+    source.files = [{ path: "a.md", content: "# A\n\nText long enough for a real chunk.\n" }];
+    const seedSync = buildSync(store, source, new FakeEmbeddings(), undefined);
+    await seedSync.execute();
+    const doc = store.getDocumentByPath("a.md")!;
+    const gapChunk = store.getChunksByDocument(doc.id)[0]!;
+    dropVector(store, gapChunk.id);
+    expect(store.listChunksMissingVectors()).toHaveLength(1);
+
+    const events: ProgressEvent[] = [];
+    const sync = buildSync(store, source, new FakeEmbeddings(), (e) => events.push(e));
+    await sync.execute();
+
+    const filesStart = events.find((e) => e.phase === "files" && e.kind === "start");
+    expect(filesStart).toEqual({ phase: "files", kind: "start", total: 0 });
+    expect(events.filter(isFilesTick)).toEqual([]);
+
+    const embeddingEvents = events.filter(isEmbeddingEvent);
+    expect(embeddingEvents).toEqual([
+      { phase: "embedding", kind: "start", batches: 1, chunks: 1 },
+      { phase: "embedding", kind: "tick", current: 1, total: 1 },
+    ]);
+
+    store.close();
+  });
+
+  it("P7: no embedding events when there is nothing to reconcile, or when embeddings is null", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    const source = new MutableSource();
+    source.files = [{ path: "a.md", content: "# A\n\nFully vectorized, nothing to reconcile.\n" }];
+    const seedSync = buildSync(store, source, new FakeEmbeddings(), undefined);
+    await seedSync.execute();
+    expect(store.listChunksMissingVectors()).toEqual([]);
+
+    const eventsFullyCovered: ProgressEvent[] = [];
+    const syncFullyCovered = buildSync(store, source, new FakeEmbeddings(), (e) => eventsFullyCovered.push(e));
+    await syncFullyCovered.execute();
+    expect(eventsFullyCovered.filter(isEmbeddingEvent)).toEqual([]);
+
+    const eventsLexical: ProgressEvent[] = [];
+    const syncLexical = buildSync(store, source, null, (e) => eventsLexical.push(e));
+    await syncLexical.execute();
+    expect(eventsLexical.filter(isEmbeddingEvent)).toEqual([]);
+
+    store.close();
+  });
+
+  it("P9: one group's embed() throws -> embedding/start still reports the ATTEMPTED batch count, and report.reconciled names only the surviving document", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    const source = new MutableSource();
+    source.files = [
+      { path: "bad.md", content: "# Bad\n\nFAILEMBED marker text long enough for a real chunk.\n" },
+      { path: "good.md", content: "# Good\n\nA different text long enough for a real chunk.\n" },
+    ];
+    const seedSync = buildSync(store, source, new FakeEmbeddings(), undefined);
+    await seedSync.execute();
+    for (const path of ["bad.md", "good.md"]) {
+      const doc = store.getDocumentByPath(path)!;
+      const chunk = store.getChunksByDocument(doc.id)[0]!;
+      dropVector(store, chunk.id);
+    }
+    expect(store.listChunksMissingVectors()).toHaveLength(2);
+
+    class SelectivelyBrokenEmbeddings implements EmbeddingsProvider {
+      async embed(texts: string[]): Promise<Float32Array[]> {
+        if (texts.some((t) => t.includes("FAILEMBED"))) {
+          throw new Error("simulated embed failure for bad.md");
+        }
+        return new FakeEmbeddings().embed(texts);
+      }
+    }
+
+    const events: ProgressEvent[] = [];
+    const sync = buildSync(store, source, new SelectivelyBrokenEmbeddings(), (e) => events.push(e));
+    const report = await sync.execute();
+
+    const embeddingStart = events.find((e) => e.phase === "embedding" && e.kind === "start");
+    expect(embeddingStart).toEqual({ phase: "embedding", kind: "start", batches: 2, chunks: 2 });
+    expect(report.reconciled).toEqual([{ path: "good.md", chunks: 1 }]);
+    expect(report.embeddingsWarning).toBeDefined();
+
+    store.close();
+  });
 });
