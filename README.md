@@ -22,7 +22,7 @@
   <a href="#mcp-tools">MCP Tools</a> &bull;
   <a href="#cli">CLI</a> &bull;
   <a href="#how-it-works">How it works</a> &bull;
-  <a href="#incremental-reindex">Incremental reindex</a> &bull;
+  <a href="#incremental-sync">Incremental sync</a> &bull;
   <a href="#multilingual">Multilingual</a> &bull;
   <a href="docs/documentation-convention.md">Full docs</a>
 </p>
@@ -125,7 +125,7 @@ compendio index
 
 That's it. By default Compendio reads `docs/` at the project root — no config file needed. Add `.compendio/` to your `.gitignore`.
 
-> **Why this step exists.** The server also indexes on startup, so strictly speaking you could skip it — but the first run downloads and caches the embeddings model (tens of MB), and whoever triggers it waits. Running it here pays that cost in your terminal, with a progress bar, instead of inside your agent's first tool call. From then on everything is offline, and the index keeps itself up to date ([below](#incremental-reindex)).
+> **Why this step exists.** The server also indexes on startup, so strictly speaking you could skip it — but the first run downloads and caches the embeddings model (tens of MB), and whoever triggers it waits. Running it here pays that cost in your terminal, with a progress bar, instead of inside your agent's first tool call. From then on everything is offline, and the index keeps itself up to date ([below](#incremental-sync)).
 
 > **Windows note.** Some MCP clients can't spawn the `compendio.cmd` shim directly. If the server fails to start with `ENOENT`, use `"command": "npx"` with `"args": ["compendio-mcp", "serve"]`.
 
@@ -157,7 +157,7 @@ Entirely optional — every field has a default, and Compendio works with no con
 | `db` | Where the SQLite index file is written |
 | `search.k` | Default number of fragments returned per search |
 | `chunk` | Fragment size bounds, in tokens |
-| `sync.throttleMs` | Minimum time between automatic reindex passes, in ms (30000 = 30 s). A floor, not a timer — see [Incremental reindex](#incremental-reindex) |
+| `sync.throttleMs` | Minimum time between automatic sync passes, in ms (30000 = 30 s). A floor, not a timer — gates only `serve`'s automatic triggers, not a manually-run `compendio sync` — see [Incremental sync](#incremental-sync) |
 | `convention` | Optional documentation taxonomy — see below |
 
 Declaring only part of the `convention` block merges with the defaults field by field; it never wipes the siblings you didn't mention. `frontmatterFields` maps `type`/`module`/`status` onto non-standard frontmatter keys (e.g. `{ "status": "estado" }` reads a Spanish document's `estado:` field as `status`).
@@ -212,12 +212,13 @@ Designed as *progressive disclosure*: orient cheaply → search cheaply → read
 |---|---|
 | `compendio serve` | Starts the MCP server over stdio |
 | `compendio index` | Full rebuild of the index |
+| `compendio sync` | Runs one incremental sync pass from the terminal — syncs only the documents whose content changed, with live progress. See [Incremental sync](#incremental-sync) |
 | `compendio search "..."` | Hybrid search with filters: `--type`, `--module`, `--tags`, `-k`, `--all` |
 | `compendio overview` | Map of the indexed corpus |
 | `compendio index-md` | Generates or updates one combined `INDEX.md` in the first declared root (`docs/INDEX.md` by default) — one line per document, across every declared root |
 | `compendio eval` | Measures retrieval quality against a goldenset |
 
-Global option `-C, --root <dir>`: project root. Add `--lexical` to `index` or `search` to skip embeddings entirely. `--dir <path>` on `index`/`index-md` **replaces** the configured `docsDir` with that one directory — it does not add to it, and the index it produces still has the prefixed path shape (`<dirname>/x.md`).
+Global option `-C, --root <dir>`: project root. Add `--lexical` to `index`, `sync` or `search` to skip embeddings entirely. `--dir <path>` on `index`/`index-md` **replaces** the configured `docsDir` with that one directory — it does not add to it, and the index it produces still has the prefixed path shape (`<dirname>/x.md`). `sync` has no `--dir`: under an incremental pass, dropping a root this way would delete its documents rather than merely skip them (see `compendio sync --help`).
 
 ## How it works
 
@@ -238,21 +239,22 @@ Compendio is the **retrieval** half of RAG. It never calls an LLM and generates 
 
 If the embeddings model is unavailable, Compendio doesn't crash — it degrades to keyword-only search and says so in its responses.
 
-## Incremental reindex
+## Incremental sync
 
-Documentation changes while you work, and Compendio keeps up on its own. There are exactly three ways the index gets refreshed:
+Documentation changes while you work, and Compendio keeps up on its own — or on request. There are four ways the index gets refreshed:
 
 | Trigger | What happens |
 |---|---|
-| **Server startup** (`compendio serve`) | One incremental pass, started before the transport connects. The first tool call waits for it, so nothing is ever answered against a cold index |
-| **Any MCP tool call** (`search_docs`, `docs_overview`, `read_doc`) | One incremental pass — but only if **30 s** have elapsed since the last one (`sync.throttleMs`, `30000` by default). Otherwise the call proceeds against the current index |
+| **Server startup** (`compendio serve`) | One incremental sync pass, started before the transport connects. The first tool call waits for it, so nothing is ever answered against a cold index |
+| **Any MCP tool call** (`search_docs`, `docs_overview`, `read_doc`) | One incremental sync pass — but only if **30 s** have elapsed since the last one (`sync.throttleMs`, `30000` by default). Otherwise the call proceeds against the current index |
+| **`compendio sync`** | One incremental sync pass, run manually from the terminal, with live progress. `sync.throttleMs` does **not** gate it — every invocation runs a fresh pass regardless of how recently one ran. A failure exits non-zero instead of being logged and swallowed, since there is no "proceed against the current index" fallback for a command whose whole point is a definitive answer |
 | **`compendio index`** | Full rebuild from scratch: the index is dropped and recreated |
 
-**It is not a timer.** There is no background interval and no file watcher. Reindexing is driven by your agent's tool calls, and the throttle is a *floor* between passes, not a schedule: a server nobody is querying does not reindex, and a burst of ten calls in one second still triggers at most one pass. Concurrent calls join the pass already running instead of starting a second one.
+**It is not a timer.** There is no background interval and no file watcher. Syncing is driven by your agent's tool calls, or by you running `compendio sync`, and the throttle is a *floor* between the two automatic triggers, not a schedule: a server nobody is querying does not sync, and a burst of ten calls in one second still triggers at most one pass. Concurrent calls join the pass already running instead of starting a second one.
 
-Each incremental pass compares content hashes against what's already indexed, so only new, changed and deleted documents do any work — an unchanged corpus costs nothing. If a pass fails, it's logged to stderr and the tool still answers against the current index.
+Each incremental sync pass compares content hashes against what's already indexed, so only new, changed and deleted documents do any work — an unchanged corpus costs nothing. Inside `serve`, if a pass fails it's logged to stderr and the tool still answers against the current index; `compendio sync` has no such fallback, so the same failure exits the process non-zero.
 
-**When you need the full rebuild.** `compendio index` is the authoritative one. Reach for it after a large restructuring, if you suspect the index has drifted, or — the case that surprises people — after changing `chunk.minTokens`/`chunk.maxTokens`. An incremental pass fingerprints a document by its content hash alone, so a document you haven't edited keeps its old fragment boundaries no matter what the config now says. Only a full rebuild applies new chunking to unchanged files.
+**When you need the full rebuild.** `compendio index` is the only command that reindexes: it drops and recreates the whole database, and it is the authoritative one. Reach for it after a large restructuring, if you suspect the index has drifted, or — the case that surprises people — after changing `chunk.minTokens`/`chunk.maxTokens`. An incremental sync pass, whether automatic or run manually via `compendio sync`, fingerprints a document by its content hash alone, so a document you haven't edited keeps its old fragment boundaries no matter what the config now says. Only a full reindex (`compendio index`) applies new chunking to unchanged files — see `compendio sync --help` for the same caveat at the point you're most likely to need it.
 
 ## Multilingual
 
