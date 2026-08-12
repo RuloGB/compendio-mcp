@@ -117,9 +117,15 @@ To update Compendio later, run that same command again — it always pulls the l
 }
 ```
 
-**3. That's it.** By default Compendio reads `docs/` at the project root. On startup the server indexes everything it finds — no separate index step, no config file. Add `.compendio/` to your `.gitignore`.
+**3. Build the index once**, from the project root:
 
-> **First run is the slow one.** The embeddings model (tens of MB) is downloaded and cached the first time, and your agent's first tool call waits for it. To pay that cost up front, run `compendio index` once from the project root before starting the client. From then on everything is offline.
+```bash
+compendio index
+```
+
+That's it. By default Compendio reads `docs/` at the project root — no config file needed. Add `.compendio/` to your `.gitignore`.
+
+> **Why this step exists.** The server also indexes on startup, so strictly speaking you could skip it — but the first run downloads and caches the embeddings model (tens of MB), and whoever triggers it waits. Running it here pays that cost in your terminal, with a progress bar, instead of inside your agent's first tool call. From then on everything is offline, and the index keeps itself up to date ([below](#incremental-reindex)).
 
 > **Windows note.** Some MCP clients can't spawn the `compendio.cmd` shim directly. If the server fails to start with `ENOENT`, use `"command": "npx"` with `"args": ["compendio-mcp", "serve"]`.
 
@@ -151,7 +157,7 @@ Entirely optional — every field has a default, and Compendio works with no con
 | `db` | Where the SQLite index file is written |
 | `search.k` | Default number of fragments returned per search |
 | `chunk` | Fragment size bounds, in tokens |
-| `sync.throttleMs` | Minimum interval between automatic reindex passes |
+| `sync.throttleMs` | Minimum time between automatic reindex passes, in ms (30000 = 30 s). A floor, not a timer — see [Incremental reindex](#incremental-reindex) |
 | `convention` | Optional documentation taxonomy — see below |
 
 Declaring only part of the `convention` block merges with the defaults field by field; it never wipes the siblings you didn't mention. `frontmatterFields` maps `type`/`module`/`status` onto non-standard frontmatter keys (e.g. `{ "status": "estado" }` reads a Spanish document's `estado:` field as `status`).
@@ -234,11 +240,19 @@ If the embeddings model is unavailable, Compendio doesn't crash — it degrades 
 
 ## Incremental reindex
 
-Documentation changes while you work, and Compendio keeps up on its own.
+Documentation changes while you work, and Compendio keeps up on its own. There are exactly three ways the index gets refreshed:
 
-A running server reindexes at startup and then, at most once per throttle window (30 s by default), whenever your agent calls a tool. Each pass compares content hashes against what's already indexed, so only new, changed and deleted documents do any work — an unchanged corpus costs nothing. If a pass fails, it's logged and the tool still answers against the current index.
+| Trigger | What happens |
+|---|---|
+| **Server startup** (`compendio serve`) | One incremental pass, started before the transport connects. The first tool call waits for it, so nothing is ever answered against a cold index |
+| **Any MCP tool call** (`search_docs`, `docs_overview`, `read_doc`) | One incremental pass — but only if **30 s** have elapsed since the last one (`sync.throttleMs`, `30000` by default). Otherwise the call proceeds against the current index |
+| **`compendio index`** | Full rebuild from scratch: the index is dropped and recreated |
 
-`compendio index` remains the authoritative full rebuild. Reach for it after a large restructuring, or if you ever suspect the index has drifted.
+**It is not a timer.** There is no background interval and no file watcher. Reindexing is driven by your agent's tool calls, and the throttle is a *floor* between passes, not a schedule: a server nobody is querying does not reindex, and a burst of ten calls in one second still triggers at most one pass. Concurrent calls join the pass already running instead of starting a second one.
+
+Each incremental pass compares content hashes against what's already indexed, so only new, changed and deleted documents do any work — an unchanged corpus costs nothing. If a pass fails, it's logged to stderr and the tool still answers against the current index.
+
+**When you need the full rebuild.** `compendio index` is the authoritative one. Reach for it after a large restructuring, if you suspect the index has drifted, or — the case that surprises people — after changing `chunk.minTokens`/`chunk.maxTokens`. An incremental pass fingerprints a document by its content hash alone, so a document you haven't edited keeps its old fragment boundaries no matter what the config now says. Only a full rebuild applies new chunking to unchanged files.
 
 ## Multilingual
 
