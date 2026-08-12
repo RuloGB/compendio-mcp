@@ -5,7 +5,7 @@ import { GetOverview } from "./application/get-overview.js";
 import { IndexDocuments, type IndexDocumentsOptions } from "./application/index-documents.js";
 import { ReadDocument } from "./application/read-document.js";
 import { SearchDocuments } from "./application/search-documents.js";
-import { SyncIndex } from "./application/sync-index.js";
+import { SyncIndex, type SyncIndexOptions } from "./application/sync-index.js";
 import { SyncScheduler } from "./application/sync-scheduler.js";
 import { createIndexComparator, createConventionPolicy } from "./domain/convention.js";
 import { INDEX_FILE } from "./domain/index-markdown.js";
@@ -45,8 +45,9 @@ export interface Container {
   getOverview: GetOverview;
   readDocument: ReadDocument;
   evaluateSearch: EvaluateSearch;
-  /** Incremental diff engine (unwired from any trigger by itself — see
-   * `syncScheduler`, which is what `cli.ts`/`server.ts` actually call). */
+  /** Incremental diff engine. Triggered two ways: `syncScheduler`'s
+   * startup + throttled pre-tool-call check (`serve`), and directly by the
+   * `sync` CLI action, which bypasses the scheduler entirely. */
   syncIndex: SyncIndex;
   /** Owns the startup + throttled trigger for `syncIndex`, with in-flight
    * dedupe (see `SyncScheduler`). */
@@ -114,10 +115,9 @@ export function createContainer(options: ContainerOptions): Container {
     k: config.search.k,
     excludedStatuses: config.convention.excludedStatuses,
   });
-  const syncIndex = new SyncIndex(source, parser, store, embeddings, policy, {
-    chunking: config.chunk,
-    noChunking: NO_CHUNKING,
-  });
+  const syncIndexOptions: SyncIndexOptions = { chunking: config.chunk, noChunking: NO_CHUNKING };
+  if (onProgress !== undefined) syncIndexOptions.onProgress = onProgress;
+  const syncIndex = new SyncIndex(source, parser, store, embeddings, policy, syncIndexOptions);
   const syncScheduler = new SyncScheduler(syncIndex, config.sync.throttleMs);
 
   return {

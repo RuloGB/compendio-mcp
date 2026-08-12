@@ -10,6 +10,7 @@ import type {
   DocumentFile,
   DocumentSource,
   EmbeddingsProvider,
+  EncodingNotice,
   IndexStore,
   ReadError,
   SavedDocument,
@@ -39,8 +40,9 @@ const OPTIONS = { chunking: { minTokens: 10, maxTokens: 800 }, noChunking: [] };
 class MutableSource implements DocumentSource {
   files: DocumentFile[] = [];
   readErrors: ReadError[] = [];
+  encodingNotices: EncodingNotice[] = [];
   async discover(): Promise<DiscoverResult> {
-    return { files: this.files, readErrors: this.readErrors };
+    return { files: this.files, readErrors: this.readErrors, encodingNotices: this.encodingNotices };
   }
 }
 
@@ -653,5 +655,173 @@ describe("SyncIndex — per-document write-failure resilience", () => {
     expect(inner.getDocumentByPath("ok.md")).not.toBeNull();
     expect(inner.getDocumentByPath("to-delete.md")).not.toBeNull(); // delete failed: row survives, not orphaned
     inner.close();
+  });
+});
+
+// --- Gate 4: a transcoded-but-unchanged document is still reported on -----
+// --- EVERY pass, not only when its content changes (design.md Decision 1). -
+//
+// This is an approval test as much as a regression guard: it must hold both
+// before and after the diff/applyChanged split (tasks.md Phase 2/3), because
+// the notice push belongs in the sub-pass that iterates ALL discovered
+// files, not the sub-pass restricted to the changed set. The "natural,
+// wrong-looking-right" refactor moves it into the latter and silently drops
+// this exact case -- zero coverage existed for it before this change.
+describe("SyncIndex — Gate 4: a transcoded-but-unchanged document is reported every pass", () => {
+  it("reports encodingNotices for a hash-matched document, and does NOT re-index it", async () => {
+    const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
+    source.files = [{ path: "cp1252.md", content: "# CP1252\n\nSome text.\n" }];
+    await sync.execute();
+    expect(store.getDocumentByPath("cp1252.md")).not.toBeNull();
+
+    // Second pass: IDENTICAL content (hash matches), but discover() reports
+    // this pass's decode as non-UTF-8 -- the case a two-pass implementation
+    // that moves the notice push into the changed-only loop would drop.
+    source.encodingNotices = [{ path: "cp1252.md", encoding: "windows-1252" }];
+    const second = await sync.execute();
+
+    expect(second.indexed).toEqual([]); // hash matched: nothing re-indexed
+    expect(second.encodingNotices).toEqual([{ path: "cp1252.md", encoding: "windows-1252" }]);
+    close();
+  });
+});
+
+// --- Gate 7: SyncReport.reconciled reports WRITTEN vector-coverage-gap ------
+// --- work, never ATTEMPTED work (design.md Decision 9, tasks.md Phase 5). --
+describe("SyncIndex — Gate 7: SyncReport.reconciled reports written, never attempted, reconciliation work", () => {
+  it("R1: a filled vector-coverage gap is reported in reconciled, separately from indexed/totalChunks", async () => {
+    const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
+    source.files = [
+      { path: "a.md", content: "# A\n\nText long enough to produce a real chunk for this test.\n" },
+    ];
+    await sync.execute();
+    const doc = store.getDocumentByPath("a.md")!;
+    const gapChunk = store.getChunksByDocument(doc.id)[0]!;
+    dropVector(store, gapChunk.id);
+    expect(store.listChunksMissingVectors()).toHaveLength(1);
+
+    const second = await sync.execute();
+
+    expect(second.reconciled).toEqual([{ path: "a.md", chunks: 1 }]);
+    expect(second.indexed).toEqual([]);
+    expect(second.totalChunks).toBe(0);
+    close();
+  });
+
+  it("R2: an embed failure during reconciliation counts nothing (attempted, not written)", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    const source = new MutableSource();
+    const parser = new RemarkMarkdownParser();
+    const policy = createConventionPolicy(LOOSE);
+    const withEmbeddings = new SyncIndex(source, parser, store, new FakeEmbeddings(), policy, OPTIONS);
+    const withBroken = new SyncIndex(source, parser, store, new BrokenEmbeddings(), policy, OPTIONS);
+
+    source.files = [{ path: "a.md", content: "# A\n\nText long enough for a real chunk.\n" }];
+    await withEmbeddings.execute();
+    const doc = store.getDocumentByPath("a.md")!;
+    const gapChunk = store.getChunksByDocument(doc.id)[0]!;
+    dropVector(store, gapChunk.id);
+
+    const report = await withBroken.execute();
+
+    expect(report.reconciled).toEqual([]);
+    expect(report.embeddingsWarning).toBeDefined();
+    store.close();
+  });
+
+  it("R3: a rolled-back replaceEmbeddings write counts nothing, and the document lands in skipped", async () => {
+    class ReplaceThrowsStore implements IndexStore {
+      constructor(private readonly inner: IndexStore) {}
+      reset(): void {
+        this.inner.reset();
+      }
+      saveDocument(meta: DocumentMeta, chunks: Chunk[]): SavedDocument {
+        return this.inner.saveDocument(meta, chunks);
+      }
+      saveEmbeddings(items: ChunkEmbedding[]): void {
+        this.inner.saveEmbeddings(items);
+      }
+      deleteDocument(path: string): void {
+        this.inner.deleteDocument(path);
+      }
+      upsertDocument(meta: DocumentMeta, chunks: Chunk[], embeddings: Float32Array[] | null): SavedDocument {
+        return this.inner.upsertDocument(meta, chunks, embeddings);
+      }
+      listChunksMissingVectors() {
+        return this.inner.listChunksMissingVectors();
+      }
+      replaceEmbeddings(): void {
+        throw new Error("simulated replaceEmbeddings failure");
+      }
+      listDocuments() {
+        return this.inner.listDocuments();
+      }
+      getDocumentByPath(path: string) {
+        return this.inner.getDocumentByPath(path);
+      }
+      getChunksByDocument(documentId: number) {
+        return this.inner.getChunksByDocument(documentId);
+      }
+      getChunksByIds(ids: number[]) {
+        return this.inner.getChunksByIds(ids);
+      }
+      getDocumentsByIds(ids: number[]) {
+        return this.inner.getDocumentsByIds(ids);
+      }
+      searchLexical(query: string, filters: SearchFilters, limit: number) {
+        return this.inner.searchLexical(query, filters, limit);
+      }
+      searchVector(embedding: Float32Array, filters: SearchFilters, limit: number) {
+        return this.inner.searchVector(embedding, filters, limit);
+      }
+      hasVectors(): boolean {
+        return this.inner.hasVectors();
+      }
+      close(): void {
+        this.inner.close();
+      }
+    }
+
+    const inner = new SqliteIndexStore(":memory:");
+    const source = new MutableSource();
+    const parser = new RemarkMarkdownParser();
+    const policy = createConventionPolicy(LOOSE);
+    const seedSync = new SyncIndex(source, parser, inner, new FakeEmbeddings(), policy, OPTIONS);
+
+    source.files = [{ path: "a.md", content: "# A\n\nText long enough for a real chunk.\n" }];
+    await seedSync.execute();
+    const doc = inner.getDocumentByPath("a.md")!;
+    const gapChunk = inner.getChunksByDocument(doc.id)[0]!;
+    dropVector(inner, gapChunk.id);
+
+    const throwingStore = new ReplaceThrowsStore(inner);
+    const sync = new SyncIndex(source, parser, throwingStore, new FakeEmbeddings(), policy, OPTIONS);
+    const report = await sync.execute();
+
+    expect(report.reconciled).toEqual([]);
+    expect(report.skipped.map((s) => s.path)).toEqual(["a.md"]);
+    inner.close();
+  });
+
+  it("R4: a changed document and, independently, a hash-matched document with a gap are both reported, never conflated", async () => {
+    const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
+    source.files = [
+      { path: "a.md", content: "# A\n\nText long enough for a real chunk.\n" },
+      { path: "b.md", content: "# B\n\nAnother text long enough for a real chunk.\n" },
+    ];
+    await sync.execute();
+    const docB = store.getDocumentByPath("b.md")!;
+    const gapChunk = store.getChunksByDocument(docB.id)[0]!;
+    dropVector(store, gapChunk.id);
+
+    source.files = [
+      { path: "a.md", content: "# A\n\nEDITED text long enough for a real chunk.\n" },
+      { path: "b.md", content: "# B\n\nAnother text long enough for a real chunk.\n" },
+    ];
+    const second = await sync.execute();
+
+    expect(second.indexed.map((d) => d.path)).toEqual(["a.md"]);
+    expect(second.reconciled).toEqual([{ path: "b.md", chunks: 1 }]);
+    close();
   });
 });

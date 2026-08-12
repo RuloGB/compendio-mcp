@@ -8,6 +8,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -113,7 +114,7 @@ describe("CLI subprocess: basic contract", () => {
     const run = runCli(["--help"]);
     expect(run.status).toBe(0);
     expect(run.stdout).toContain("compendio");
-    for (const command of ["index", "index-md", "search", "overview", "eval", "serve"]) {
+    for (const command of ["index", "index-md", "search", "overview", "eval", "serve", "sync"]) {
       expect(run.stdout).toContain(command);
     }
   });
@@ -285,5 +286,138 @@ describe("CLI subprocess: invoked through a link (npx / global install)", () => 
     const run = runCli(["--version"], link.cli);
     expect(run.status).toBe(0);
     expect(run.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});
+
+/**
+ * `compendio sync` gates (Gates 1, 2, 5). A DEDICATED workdir, never the
+ * shared one above: the sync gates edit, add AND delete documents, which
+ * would couple every assertion above (`Indexed 5 documents`, the
+ * guide-service-onboarding.md hit, the deny-list pair, `Indexing 5
+ * documents`) to vitest's declaration order if they shared a fixture
+ * (design.md's Testing Strategy; tasks.md Non-negotiable sequencing
+ * constraint 5). Every `sync` invocation here carries `--lexical`
+ * (constraint 4): a hybrid sync against a corpus indexed with `--lexical`
+ * would send every chunk through `reconcileVectors`, triggering a ~129 MB
+ * model download inside this suite.
+ */
+describe("CLI subprocess: sync command", () => {
+  let syncWorkdir: string;
+
+  beforeAll(() => {
+    ensureBuilt();
+    syncWorkdir = mkdtempSync(join(tmpdir(), "compendio-sync-cli-"));
+    cpSync(join(FIXTURE, "docs"), join(syncWorkdir, "docs"), { recursive: true });
+    cpSync(join(FIXTURE, "compendio.config.json"), join(syncWorkdir, "compendio.config.json"));
+    runCli(["--root", syncWorkdir, "index", "--lexical"]);
+  }, 120_000);
+
+  afterAll(() => {
+    if (syncWorkdir !== undefined) rmSync(syncWorkdir, { recursive: true, force: true });
+  });
+
+  it("S9: sync --dir <path> exits non-zero, rejected as an unknown option", () => {
+    const run = runCli(["--root", syncWorkdir, "sync", "--dir", "docs", "--lexical"]);
+    expect(run.status).not.toBe(0);
+    expect(run.stderr).toContain("unknown option '--dir'");
+  });
+
+  it("S7: sync --help states the full-reindex caveat, the throttle note, and why --dir is absent", () => {
+    const run = runCli(["sync", "--help"]);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("compendio index");
+    expect(run.stdout).toContain("chunk.maxTokens");
+    expect(run.stdout).toContain("sync.throttleMs");
+    expect(run.stdout).toContain("--dir");
+  });
+
+  // S1-S6 and S10 run in sequence, each mutating the SAME dedicated
+  // workdir the beforeAll above indexed. S1's run is captured and reused by
+  // S3, which asserts stdout from "that same edited-document run" rather
+  // than performing a second sync (design.md's Testing Strategy table).
+  // `syncWorkdir` is not assigned until `beforeAll` runs, so paths derived
+  // from it are computed lazily, inside each `it`, never at describe-body
+  // evaluation time.
+  let editRun: SpawnSyncReturns<string>;
+
+  it("S1 (Gate 1): editing one document -> the files denominator is the changed count, not the discovered count", () => {
+    const onboardingDoc = join(syncWorkdir, "docs", "guide-service-onboarding.md");
+    const original = readFileSync(onboardingDoc, "utf8");
+    writeFileSync(onboardingDoc, `${original}\nEDITED marker text for the sync CLI gate.\n`);
+
+    editRun = runCli(["--root", syncWorkdir, "sync", "--lexical"], CLI, { COMPENDIO_PROGRESS: "plain" });
+
+    expect(editRun.status).toBe(0);
+    expect(editRun.stderr).toContain("Indexing 1 documents");
+    expect(editRun.stderr).toMatch(/\[1\/1\]/);
+    expect(editRun.stderr).not.toContain("Indexing 5 documents");
+  });
+
+  it("S2 (Gate 1): a second, unedited run reports zero changed documents and emits no tick", () => {
+    const run = runCli(["--root", syncWorkdir, "sync", "--lexical"], CLI, { COMPENDIO_PROGRESS: "plain" });
+
+    expect(run.status).toBe(0);
+    expect(run.stderr).toContain("Indexing 0 documents");
+    expect(run.stderr).not.toMatch(/\[\d+\/\d+\]/);
+  });
+
+  it("S3 (Gate 2): S1's run reports the edit in stdout, and a following search returns the new content", () => {
+    expect(editRun.stdout).toMatch(/Synced 1 documents \(\d+ chunks\), 0 deleted/);
+
+    const search = runCli(["--root", syncWorkdir, "search", "EDITED marker text for the sync CLI gate", "--lexical"]);
+    expect(search.status).toBe(0);
+    const payload = JSON.parse(search.stdout) as { results: { path: string }[] };
+    expect(payload.results.map((r) => r.path)).toContain("docs/guide-service-onboarding.md");
+  });
+
+  it("S4 (Gate 2): deleting a document is reported by count, and it stops being returned by search", () => {
+    rmSync(join(syncWorkdir, "docs", "guide-service-onboarding.md"));
+
+    const run = runCli(["--root", syncWorkdir, "sync", "--lexical"]);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toMatch(/Synced 0 documents \(0 chunks\), 1 deleted/);
+
+    const search = runCli(["--root", syncWorkdir, "search", "onboard a new service", "--lexical"]);
+    const payload = JSON.parse(search.stdout) as { results: { path: string }[] };
+    expect(payload.results.map((r) => r.path)).not.toContain("docs/guide-service-onboarding.md");
+  });
+
+  it("S5 (Gate 2): adding a document is indexed and becomes searchable", () => {
+    writeFileSync(
+      join(syncWorkdir, "docs", "new-during-sync.md"),
+      "---\ntype: guide\nmodule: demo\nstatus: current\n---\n\n# Added during sync\n\nBrand new SYNCADDED marker content.\n",
+    );
+
+    const run = runCli(["--root", syncWorkdir, "sync", "--lexical"]);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toMatch(/Synced 1 documents/);
+
+    const search = runCli(["--root", syncWorkdir, "search", "SYNCADDED marker content", "--lexical"]);
+    const payload = JSON.parse(search.stdout) as { results: { path: string }[] };
+    expect(payload.results.map((r) => r.path)).toContain("docs/new-during-sync.md");
+  });
+
+  it("S6 (Gate 2, Approach 8): sync against a never-indexed project indexes the whole corpus, no reset()", () => {
+    const freshDir = mkdtempSync(join(tmpdir(), "compendio-sync-fresh-"));
+    try {
+      cpSync(join(FIXTURE, "docs"), join(freshDir, "docs"), { recursive: true });
+      cpSync(join(FIXTURE, "compendio.config.json"), join(freshDir, "compendio.config.json"));
+      expect(existsSync(join(freshDir, ".compendio"))).toBe(false);
+
+      const run = runCli(["--root", freshDir, "sync", "--lexical"]);
+      expect(run.status).toBe(0);
+      expect(run.stdout).toMatch(/Synced 5 documents/);
+
+      const search = runCli(["--root", freshDir, "search", "onboarding a new service", "--lexical"]);
+      const payload = JSON.parse(search.stdout) as { results: { path: string }[] };
+      expect(payload.results.length).toBeGreaterThan(0);
+    } finally {
+      rmSync(freshDir, { recursive: true, force: true });
+    }
+  });
+
+  it("S10 (Gate 5): sync --lexical exits 0 and its stdout carries [mode lexical]", () => {
+    expect(editRun.status).toBe(0);
+    expect(editRun.stdout).toContain("[mode lexical]");
   });
 });

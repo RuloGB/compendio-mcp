@@ -1,6 +1,7 @@
 /**
- * Progress event stream for `compendio index`, and the pure functions that
- * decide what to show from it. Nothing here touches the filesystem, SQLite,
+ * Progress event stream for `compendio index` and `compendio sync`, and the
+ * pure functions that decide what to show from it. Nothing here touches the
+ * filesystem, SQLite,
  * transformers.js, or `process` — mode resolution and rendering are total
  * functions of injected inputs, never ambient reads. See
  * `openspec/changes/archive/2026-07-28-index-progress-reporting/design.md`.

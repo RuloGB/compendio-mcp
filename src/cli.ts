@@ -8,6 +8,7 @@ import { parse as parseYaml } from "yaml";
 import { formatEncodingNotice } from "./application/index-documents.js";
 import { formatOverview } from "./application/get-overview.js";
 import type { SearchQuery } from "./application/search-documents.js";
+import type { SyncReport } from "./application/sync-index.js";
 import type { EvalCase, EvalSummary } from "./domain/metrics.js";
 import { resolveProgressMode } from "./domain/progress.js";
 import { createContainer, type Container, type ContainerOptions } from "./composition.js";
@@ -65,6 +66,90 @@ program
         );
         if (report.skipped.length > 0) {
           console.log(`Skipped ${report.skipped.length} documents with invalid frontmatter.`);
+        }
+      },
+    );
+  });
+
+/**
+ * Answers the three questions a user of `sync` will actually have, in the
+ * order they will have them: what it does NOT do (the full-reindex caveat
+ * this whole command exists to widen, not narrow), why the throttle a
+ * shared name suggests does not apply here, and why `--dir` -- present on
+ * `index` -- is absent from this command (design.md Decision 8).
+ */
+const SYNC_HELP_NOTES = `
+What a sync pass does NOT do:
+  Only documents whose file content changed are reindexed. Changing
+  chunk.maxTokens, the splitting logic, or how a chunk heading is resolved does
+  NOT reach a document whose bytes are unchanged. Run "compendio index" for
+  that -- it drops and rebuilds the whole index.
+
+The throttle does not apply here:
+  sync.throttleMs gates only the automatic pre-tool-call check inside
+  "compendio serve". Every "compendio sync" invocation runs a full pass.
+
+Why there is no --dir:
+  --dir replaces the configured docsDir. Under an incremental pass every
+  document of the dropped roots would be treated as absent from disk and
+  deleted. Use "compendio index --dir" if replacing the corpus is what you want.
+`;
+
+/**
+ * stdout for a completed sync pass: the summary line, plus a conditional
+ * line per additional finding. Pure, and exported for direct unit testing,
+ * in the same spirit as `parseType` below -- the reconciliation line is
+ * unreachable from any hermetic subprocess run (it needs a real embeddings
+ * provider), so this is the only seam that can execute it in CI
+ * (design.md Decisions 8, 9).
+ */
+export function formatSyncSummary(report: SyncReport): string[] {
+  const lines = [
+    `Synced ${report.indexed.length} documents (${report.totalChunks} chunks), ` +
+      `${report.deleted.length} deleted in ${report.durationMs} ms [mode ${report.mode}]`,
+  ];
+  if (report.reconciled.length > 0) {
+    const chunks = report.reconciled.reduce((sum, doc) => sum + doc.chunks, 0);
+    lines.push(`Filled ${chunks} missing chunk vectors across ${report.reconciled.length} documents.`);
+  }
+  if (report.skipped.length > 0) {
+    lines.push(`Skipped ${report.skipped.length} documents with invalid frontmatter.`);
+  }
+  return lines;
+}
+
+program
+  .command("sync")
+  .description("Runs one incremental sync pass: reindexes only the documents whose content changed")
+  .option("--lexical", "sync without embeddings (lexical search only)")
+  .addHelpText("after", SYNC_HELP_NOTES)
+  .showHelpAfterError('(run "compendio sync --help" for the accepted options)')
+  .action(async (options: { lexical?: boolean }) => {
+    const mode = resolveProgressMode(process.env["COMPENDIO_PROGRESS"], process.stderr.isTTY === true);
+    const progress = createProgressSink(mode, process.stderr);
+    await withContainer(
+      { forceLexical: options.lexical, onProgress: progress.onProgress },
+      async (container) => {
+        let report: Awaited<ReturnType<typeof container.syncIndex.execute>>;
+        try {
+          report = await container.syncIndex.execute();
+        } finally {
+          // Clears any in-progress bar line before any console.warn/console.log
+          // below can be appended onto a partially-drawn bar line -- cli.ts's
+          // `index` action's ordering, unchanged.
+          progress.finish();
+        }
+        for (const skippedItem of report.skipped) {
+          console.warn(`WARNING ${skippedItem.path}: ${skippedItem.errors.join("; ")}`);
+        }
+        for (const notice of report.encodingNotices ?? []) {
+          console.warn(`WARNING ${formatEncodingNotice(notice)}`);
+        }
+        if (report.embeddingsWarning !== undefined) {
+          console.warn(`WARNING ${report.embeddingsWarning}`);
+        }
+        for (const line of formatSyncSummary(report)) {
+          console.log(line);
         }
       },
     );
