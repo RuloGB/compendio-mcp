@@ -10,6 +10,7 @@ import type {
   DocumentFile,
   DocumentSource,
   EmbeddingsProvider,
+  EncodingNotice,
   IndexStore,
   ReadError,
   SavedDocument,
@@ -39,8 +40,9 @@ const OPTIONS = { chunking: { minTokens: 10, maxTokens: 800 }, noChunking: [] };
 class MutableSource implements DocumentSource {
   files: DocumentFile[] = [];
   readErrors: ReadError[] = [];
+  encodingNotices: EncodingNotice[] = [];
   async discover(): Promise<DiscoverResult> {
-    return { files: this.files, readErrors: this.readErrors };
+    return { files: this.files, readErrors: this.readErrors, encodingNotices: this.encodingNotices };
   }
 }
 
@@ -653,5 +655,33 @@ describe("SyncIndex — per-document write-failure resilience", () => {
     expect(inner.getDocumentByPath("ok.md")).not.toBeNull();
     expect(inner.getDocumentByPath("to-delete.md")).not.toBeNull(); // delete failed: row survives, not orphaned
     inner.close();
+  });
+});
+
+// --- Gate 4: a transcoded-but-unchanged document is still reported on -----
+// --- EVERY pass, not only when its content changes (design.md Decision 1). -
+//
+// This is an approval test as much as a regression guard: it must hold both
+// before and after the diff/applyChanged split (tasks.md Phase 2/3), because
+// the notice push belongs in the sub-pass that iterates ALL discovered
+// files, not the sub-pass restricted to the changed set. The "natural,
+// wrong-looking-right" refactor moves it into the latter and silently drops
+// this exact case -- zero coverage existed for it before this change.
+describe("SyncIndex — Gate 4: a transcoded-but-unchanged document is reported every pass", () => {
+  it("reports encodingNotices for a hash-matched document, and does NOT re-index it", async () => {
+    const { store, source, sync, close } = buildHarness(new FakeEmbeddings());
+    source.files = [{ path: "cp1252.md", content: "# CP1252\n\nSome text.\n" }];
+    await sync.execute();
+    expect(store.getDocumentByPath("cp1252.md")).not.toBeNull();
+
+    // Second pass: IDENTICAL content (hash matches), but discover() reports
+    // this pass's decode as non-UTF-8 -- the case a two-pass implementation
+    // that moves the notice push into the changed-only loop would drop.
+    source.encodingNotices = [{ path: "cp1252.md", encoding: "windows-1252" }];
+    const second = await sync.execute();
+
+    expect(second.indexed).toEqual([]); // hash matched: nothing re-indexed
+    expect(second.encodingNotices).toEqual([{ path: "cp1252.md", encoding: "windows-1252" }]);
+    close();
   });
 });

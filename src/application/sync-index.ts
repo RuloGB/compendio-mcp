@@ -10,8 +10,17 @@ import type {
   MarkdownParser,
   ReadError,
 } from "../domain/ports.js";
+import type { ProgressEvent, ProgressReporter } from "../domain/progress.js";
 import type { IndexedFileReport, SkippedFileReport } from "./index-documents.js";
 import { computeHash, describeError, transformFile, type PipelineOptions } from "./index-pipeline.js";
+
+export interface SyncIndexOptions extends PipelineOptions {
+  /** Optional progress observability hook; a no-op by default. Left unset by
+   * `serve`, which constructs its container with no `onProgress`
+   * (`cli.ts:160`) — so every emission added here is inert under `serve` by
+   * construction, not by care. */
+  onProgress?: ProgressReporter;
+}
 
 export interface SyncReport {
   mode: SearchMode;
@@ -28,6 +37,18 @@ export interface SyncReport {
    * document's hash is unchanged, since `discover()` decodes every file on
    * every pass regardless of whether it ends up re-indexed. */
   encodingNotices?: EncodingNotice[];
+}
+
+/** One discovered file whose hash did not match the persisted value (or has
+ * no persisted value at all) -- the output of `diff`, and the input `
+ * applyChanged`/`applyOne` consume instead of re-deriving. `known` is
+ * `existingDoc !== undefined`, the boolean the resolver-rejection-deletes-
+ * the-stale-row rule actually needs; the rest of `IndexedDocument` has no
+ * use downstream. */
+interface ChangedFile {
+  file: DocumentFile;
+  hash: string;
+  known: boolean;
 }
 
 /** Mutable accumulator threaded through one pass's three phases. */
@@ -67,11 +88,16 @@ export class SyncIndex {
     private readonly store: IndexStore,
     private readonly embeddings: EmbeddingsProvider | null,
     private readonly policy: ConventionPolicy,
-    private readonly options: PipelineOptions,
+    private readonly options: SyncIndexOptions,
   ) {}
+
+  private report(event: ProgressEvent): void {
+    this.options.onProgress?.(event);
+  }
 
   async execute(): Promise<SyncReport> {
     const start = Date.now();
+    this.report({ phase: "discovery", kind: "start" });
     const { files, readErrors, encodingNotices } = await this.source.discover();
     const existing = this.store.listDocuments();
 
@@ -83,7 +109,9 @@ export class SyncIndex {
       encodingNotices: [],
     };
 
-    await this.processNewAndChanged(files, existing, encodingNotices ?? [], state);
+    const changed = this.diff(files, existing, encodingNotices ?? [], state);
+    this.report({ phase: "files", kind: "start", total: changed.length });
+    await this.applyChanged(changed, state);
     this.deleteMissingDocuments(files, existing, readErrors, state);
     await this.reconcileVectors(state);
 
@@ -101,20 +129,22 @@ export class SyncIndex {
     return report;
   }
 
-  /** New/changed documents: embeds each document's own chunks first, then
-   * commits via `upsertDocument` (documents+chunks+fts+vectors together, one
-   * transaction). A resolver rejection on a known path deletes the stale
-   * row; on a new path it is a plain skip. Also carries `discover()`'s
-   * per-file encoding notices onto the pass state for every currently
-   * discovered file, whether hash-matched or re-indexed this pass. */
-  private async processNewAndChanged(
+  /** Synchronous, silent diff over EVERY discovered file: computes each
+   * file's fingerprint against the persisted index and decides new/changed
+   * vs. hash-match. Carries `discover()`'s per-file encoding notices onto the
+   * pass state here -- and only here -- because this is the sub-pass that
+   * iterates all discovered files, not just the changed set (design.md
+   * Decision 1). Zero `await`s: the changed count is known in full before
+   * `files/start` is reported. */
+  private diff(
     files: DocumentFile[],
     existing: IndexedDocument[],
     encodingNotices: EncodingNotice[],
     state: PassState,
-  ): Promise<void> {
+  ): ChangedFile[] {
     const existingByPath = new Map(existing.map((doc) => [doc.path, doc]));
     const noticeByPath = new Map(encodingNotices.map((n) => [n.path, n]));
+    const changed: ChangedFile[] = [];
 
     for (const file of files) {
       const notice = noticeByPath.get(file.path);
@@ -128,34 +158,57 @@ export class SyncIndex {
         continue;
       }
 
-      const result = transformFile(this.parser, this.policy, this.options, file, hash);
-      if (!result.ok) {
-        state.skipped.push({ path: file.path, errors: result.errors });
-        if (existingDoc !== undefined) {
-          this.tryDelete(file.path, state, false);
-        }
-        continue;
-      }
+      changed.push({ file, hash, known: existingDoc !== undefined });
+    }
+    return changed;
+  }
 
-      const { meta, chunks } = result;
-      let chunkEmbeddings: Float32Array[] | null = null;
-      if (this.embeddings === null) {
-        state.embeddingsWarning = "indexed without embeddings (provider unavailable): search runs in lexical mode";
-      } else {
-        try {
-          const texts = chunks.map((c) => `passage: ${c.heading}\n${c.content}`);
-          chunkEmbeddings = await this.embeddings.embed(texts);
-        } catch (error) {
-          state.embeddingsWarning = `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
-        }
-      }
+  /** Awaiting sub-pass over `diff`'s output only. One `files/tick` call site,
+   * hoisted above `applyOne`'s branching, fired AFTER the unit of work
+   * commits -- so `current` reaches `total` on every pass, including one
+   * where every document fails (design.md Decision 2). */
+  private async applyChanged(changed: ChangedFile[], state: PassState): Promise<void> {
+    const total = changed.length;
+    for (const [i, entry] of changed.entries()) {
+      await this.applyOne(entry, state);
+      this.report({ phase: "files", kind: "tick", current: i + 1, total, path: entry.file.path });
+    }
+  }
 
+  /** Today's per-document body, verbatim except its two `continue`
+   * statements become `return`: embeds a document's own chunks first, then
+   * commits via `upsertDocument` (documents+chunks+fts+vectors together, one
+   * transaction). A resolver rejection on a known path deletes the stale
+   * row; on a new path it is a plain skip. */
+  private async applyOne(entry: ChangedFile, state: PassState): Promise<void> {
+    const { file, hash, known } = entry;
+    const result = transformFile(this.parser, this.policy, this.options, file, hash);
+    if (!result.ok) {
+      state.skipped.push({ path: file.path, errors: result.errors });
+      if (known) {
+        this.tryDelete(file.path, state, false);
+      }
+      return;
+    }
+
+    const { meta, chunks } = result;
+    let chunkEmbeddings: Float32Array[] | null = null;
+    if (this.embeddings === null) {
+      state.embeddingsWarning = "indexed without embeddings (provider unavailable): search runs in lexical mode";
+    } else {
       try {
-        this.store.upsertDocument(meta, chunks, chunkEmbeddings);
-        state.indexed.push({ path: file.path, title: meta.title, chunks: chunks.length });
+        const texts = chunks.map((c) => `passage: ${c.heading}\n${c.content}`);
+        chunkEmbeddings = await this.embeddings.embed(texts);
       } catch (error) {
-        state.skipped.push({ path: file.path, errors: [describeError(error)] });
+        state.embeddingsWarning = `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
       }
+    }
+
+    try {
+      this.store.upsertDocument(meta, chunks, chunkEmbeddings);
+      state.indexed.push({ path: file.path, title: meta.title, chunks: chunks.length });
+    } catch (error) {
+      state.skipped.push({ path: file.path, errors: [describeError(error)] });
     }
   }
 
