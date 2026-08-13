@@ -1,0 +1,108 @@
+{
+  "author": "Raúl García Barciela",
+  "description": "MCP server that indexes a project's markdown documentation and exposes it to AI agents through local hybrid search (BM25 + embeddings), in the fewest possible tokens.",
+  "homepage": "https://github.com/RuloGB/compendio-mcp#readme",
+  "identifier": "rulogb-compendio-mcp",
+  "name": "compendio-mcp",
+  "prompts": [],
+  "resources": [],
+  "tags": [
+    "mcp",
+    "rag",
+    "documentation",
+    "sqlite",
+    "embeddings",
+    "search"
+  ],
+  "tools": [
+    {
+      "name": "docs_overview",
+      "title": "Documentation map",
+      "description": "Map of the documentation corpus: counts by type and module, plus one line per document ([type] path — summary (status)). Use it to enumerate what exists, or to pick filter values for search_docs. For a specific question, call search_docs first — it answers in one call, while orienting here lists the whole corpus before you can read anything.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "search_docs",
+      "title": "Documentation search",
+      "description": "Hybrid search (lexical BM25 + semantic) in natural language over the project's documentation, with metadata filters. Entry point for any question about what the project does or why — behaviour, business rules, the exact text of a user-facing message, limits, endpoints, deployment steps, or the reasoning behind a decision. Cheapest first probe for such a question; source code remains the authority on current behaviour, while these docs are the only record of intent. The top result carries a full-length excerpt, centred on the part of the document that matched, which usually answers outright; the rest carry short ones from the start of their section, enough to tell whether the top result is the right one. Each result has path, title, section, excerpt and score; section names the document region the fragment came from — a document with no headings reports one region for the whole file. A '…' at either end of an excerpt marks content omitted there — that is the signal to call read_doc with its path and section. If the project declares convention.excludedStatuses, documents in those statuses are left out unless include_excluded is set; if it declares none, no document is excluded by status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Natural-language query"
+          },
+          "type": {
+            "type": "string",
+            "description": "Filter by document type — project-defined, and absent entirely in many projects. Omit it unless docs_overview showed you the value; never infer it from directory names or paths."
+          },
+          "module": {
+            "type": "string",
+            "description": "Filter by module — same caveat as type: omit unless docs_overview showed the value."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter by tags (matching one is enough) — same caveat: omit unless docs_overview showed them."
+          },
+          "k": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "Number of results (5 by default)"
+          },
+          "include_excluded": {
+            "type": "boolean",
+            "description": "Include documents whose status is listed in convention.excludedStatuses (no effect if the project declares no exclusions)"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "read_doc",
+      "title": "Read a document",
+      "description": "Returns one section of a document (or the whole document when no section is given), along with its frontmatter. Prefer passing section: a whole document costs several times more than the section you actually need. If the path does not exist, responds with the 3 closest matching paths instead of failing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Document path, relative to the docs directory"
+          },
+          "section": {
+            "type": "string",
+            "description": "Heading (or part of it) of the section to read, e.g. 'Business rules'. Use the section field of a search_docs result. Sections name a region of a document, not a single fragment: a large section returns all of its parts joined."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ],
+  "version": "1.3.2"
+}
