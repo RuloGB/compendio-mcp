@@ -1,3 +1,4 @@
+ [![MCP Badge](https://lobehub.com/badge/mcp/rulogb-compendio-mcp)](https://lobehub.com/mcp/rulogb-compendio-mcp)
 <p align="center">
   <img width="1280" height="640" alt="compendio-mcp — your project's documentation, served to any agent in the fewest possible tokens" src="assets/branding/compendio-banner.png" />
 </p>
