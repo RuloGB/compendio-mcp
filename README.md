@@ -1,4 +1,3 @@
- [![MCP Badge](https://lobehub.com/badge/mcp/rulogb-compendio-mcp)](https://lobehub.com/mcp/rulogb-compendio-mcp)
 <p align="center">
   <img width="1280" height="640" alt="compendio-mcp — your project's documentation, served to any agent in the fewest possible tokens" src="assets/branding/compendio-banner.png" />
 </p>
@@ -13,6 +12,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/npm/l/compendio-mcp.svg" alt="license"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/compendio-mcp.svg" alt="node"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue" alt="platform: macOS | Linux | Windows">
+</p>
+
+<p align="center">
+  <a href="https://lobehub.com/mcp/rulogb-compendio-mcp"><img src="https://lobehub.com/badge/mcp/rulogb-compendio-mcp?style=for-the-badge" alt="MCP Badge"></a>
 </p>
 
 <p align="center">
