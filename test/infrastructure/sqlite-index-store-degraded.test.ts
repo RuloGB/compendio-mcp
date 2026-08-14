@@ -52,14 +52,14 @@ describe("SqliteIndexStore — degraded (sqlite-vec unavailable), fresh database
   it("D2: upsertDocument with non-null embeddings does not throw; the document commits, is findable, is lexically searchable, and no chunks_vec table is created", () => {
     expect(() =>
       store.upsertDocument(
-        meta({ path: "nuevo.md" }),
-        [{ heading: "A", content: "contenido buscable", position: 0 }],
+        meta({ path: "fresh.md" }),
+        [{ heading: "A", content: "searchable content", position: 0 }],
         [new Float32Array([1, 0, 0])],
       ),
     ).not.toThrow();
 
-    expect(store.getDocumentByPath("nuevo.md")).not.toBeNull();
-    expect(store.searchLexical("buscable", {}, 10)).toHaveLength(1);
+    expect(store.getDocumentByPath("fresh.md")).not.toBeNull();
+    expect(store.searchLexical("searchable", {}, 10)).toHaveLength(1);
 
     // Distinguishes "guard fired" from "guard absent but the table happened
     // to exist" -- the sqlite_master check, not a text-containment check
@@ -73,8 +73,8 @@ describe("SqliteIndexStore — degraded (sqlite-vec unavailable), fresh database
 
   it("D3: the embeddings argument is ignored -- hasVectors() stays false, listChunksMissingVectors() stays []", () => {
     store.upsertDocument(
-      meta({ path: "nuevo.md" }),
-      [{ heading: "A", content: "contenido", position: 0 }],
+      meta({ path: "fresh.md" }),
+      [{ heading: "A", content: "content", position: 0 }],
       [new Float32Array([1, 0, 0])],
     );
 
@@ -130,13 +130,13 @@ describe("SqliteIndexStore — degraded (sqlite-vec unavailable), carried-over d
 
     expect(() =>
       store.upsertDocument(
-        meta({ path: "nuevo.md" }),
-        [{ heading: "A", content: "contenido", position: 0 }],
+        meta({ path: "fresh.md" }),
+        [{ heading: "A", content: "content", position: 0 }],
         [new Float32Array([1, 0, 0])],
       ),
     ).not.toThrow();
 
-    expect(store.getDocumentByPath("nuevo.md")).not.toBeNull();
+    expect(store.getDocumentByPath("fresh.md")).not.toBeNull();
     expect(store.hasVectors()).toBe(false);
     store.close();
   });
