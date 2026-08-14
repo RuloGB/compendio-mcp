@@ -197,6 +197,124 @@ describe("loadConfig", () => {
     expect(config.sync.throttleMs).toBe(100);
     await rm(projectDir, { recursive: true, force: true });
   });
+
+  // design.md Decision 3: chunk.minTokens / chunk.maxTokens / search.k now
+  // validate with the same `positiveNumber` policy sync.throttleMs already
+  // applied (generalized from `validThrottleMs`); search.k additionally
+  // requires a whole number via `positiveInteger`.
+  describe("chunk.minTokens / chunk.maxTokens validation (positiveNumber)", () => {
+    const INVALID_NUMERIC = [0, -5, null, "abc", {}, [1, 2], true, 1e400] as const;
+
+    it.each(INVALID_NUMERIC)("chunk.maxTokens falls back to the default on %j", async (invalid) => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-maxtokens-invalid-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ chunk: { maxTokens: invalid } }),
+        "utf8",
+      );
+      const config = loadConfig(projectDir);
+      expect(config.chunk.maxTokens).toBe(480);
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it.each(INVALID_NUMERIC)("chunk.minTokens falls back to the default on %j", async (invalid) => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-mintokens-invalid-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ chunk: { minTokens: invalid } }),
+        "utf8",
+      );
+      const config = loadConfig(projectDir);
+      expect(config.chunk.minTokens).toBe(100);
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("honors chunk.maxTokens: 1 and chunk.minTokens: 3 without clamping", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-tokens-valid-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ chunk: { minTokens: 3, maxTokens: 1 } }),
+        "utf8",
+      );
+      const config = loadConfig(projectDir);
+      expect(config.chunk).toEqual({ minTokens: 3, maxTokens: 1 });
+      await rm(projectDir, { recursive: true, force: true });
+    });
+  });
+
+  describe("search.k validation (positiveInteger)", () => {
+    it.each([0, "abc", null, 5.01] as const)("search.k falls back to the default on %j", async (invalid) => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-k-invalid-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ search: { k: invalid } }),
+        "utf8",
+      );
+      const config = loadConfig(projectDir);
+      expect(config.search.k).toBe(5);
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it.each([1, 3] as const)("honors search.k: %d without clamping", async (valid) => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-k-valid-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ search: { k: valid } }),
+        "utf8",
+      );
+      const config = loadConfig(projectDir);
+      expect(config.search.k).toBe(valid);
+      await rm(projectDir, { recursive: true, force: true });
+    });
+  });
+
+  // design.md Decision 4: embeddings, chunk, and convention.frontmatterFields
+  // become explicit whitelists, matching the pattern search already used —
+  // an unrecognized key under any of the three must never leak into the
+  // loaded config, mirroring the existing `search` case above.
+  describe("unknown-key hygiene (explicit whitelists, design.md Decision 4)", () => {
+    it("an unknown key under chunk never leaks into the loaded config", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-unknown-chunk-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ chunk: { maxTokens: 600, unknownKey: "nope" } }),
+        "utf8",
+      );
+      const config = loadConfig(projectDir);
+      expect(config.chunk).toEqual({ minTokens: 100, maxTokens: 600 });
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("an unknown key under embeddings never leaks into the loaded config", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-unknown-embeddings-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ embeddings: { model: "custom-model", unknownKey: "nope" } }),
+        "utf8",
+      );
+      const config = loadConfig(projectDir);
+      expect(config.embeddings).toEqual({ provider: "local", model: "custom-model" });
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("an unknown key under convention.frontmatterFields never leaks into the loaded config", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-unknown-fields-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({
+          convention: { frontmatterFields: { type: "tipo", unknownKey: "nope" } },
+        }),
+        "utf8",
+      );
+      const config = loadConfig(projectDir);
+      expect(config.convention.frontmatterFields).toEqual({
+        type: "tipo",
+        module: "module",
+        status: "status",
+      });
+      await rm(projectDir, { recursive: true, force: true });
+    });
+  });
 });
 
 describe("resolveRoots", () => {

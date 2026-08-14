@@ -94,27 +94,51 @@ export function loadConfig(root: string): CompendioConfig {
   return mergeConfig(structuredClone(DEFAULT_CONFIG), parsed as Partial<CompendioConfig>);
 }
 
+// Every branch below is an explicit key-by-key build, never a spread: a raw
+// parsed config may carry keys the type does not declare (a typo, a retired
+// key), and building explicitly ensures none of them leak into the returned
+// config -- true of every branch here, not just `search`'s (design.md
+// Decision 4).
 function mergeConfig(base: CompendioConfig, override: Partial<CompendioConfig>): CompendioConfig {
   return {
     docsDir: override.docsDir ?? base.docsDir,
     exclude: override.exclude ?? base.exclude,
     db: override.db ?? base.db,
-    embeddings: { ...base.embeddings, ...override.embeddings },
-    chunk: { ...base.chunk, ...override.chunk },
-    // Explicit whitelist (not a spread): a raw parsed config may carry keys
-    // the type does not declare, and this line ensures none of them leak into
-    // the returned config.
-    search: { k: override.search?.k ?? base.search.k },
-    sync: { throttleMs: validThrottleMs(override.sync?.throttleMs) ?? base.sync.throttleMs },
+    embeddings: {
+      provider: override.embeddings?.provider ?? base.embeddings.provider,
+      model: override.embeddings?.model ?? base.embeddings.model,
+    },
+    chunk: {
+      minTokens: positiveNumber(override.chunk?.minTokens) ?? base.chunk.minTokens,
+      maxTokens: positiveNumber(override.chunk?.maxTokens) ?? base.chunk.maxTokens,
+    },
+    search: { k: positiveInteger(override.search?.k) ?? base.search.k },
+    sync: { throttleMs: positiveNumber(override.sync?.throttleMs) ?? base.sync.throttleMs },
     convention: mergeConvention(base.convention, override.convention),
   };
 }
 
-/** A declared `throttleMs` is valid only when it is a finite number greater
- * than 0; anything else (non-numeric, negative, zero) is treated the same as
- * an absent key and falls back to the default. */
-function validThrottleMs(value: unknown): number | undefined {
+/** A declared numeric config value is honored only when it is a finite
+ * number greater than 0. Anything else -- non-numeric (a quoted number,
+ * `null`, a boolean, an array, an object), zero, negative, or `Infinity`
+ * (reachable as `1e400`; `NaN` is not, the JSON grammar has no literal for
+ * it) -- is treated the same as an absent key and falls back to the default.
+ * NEVER clamps: any finite positive value, however small, is accepted
+ * (configuration/spec.md's `throttleMs` MUST, generalized to every numeric
+ * key). */
+function positiveNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/** `search.k` additionally: a whole number. It is a result count, and both
+ * input adapters already require an integer -- `z.number().int().min(1).max(20)`
+ * (server.ts) and `parsePositiveInt` (cli.ts). The config path is the only
+ * one that did not, which is this change's whole premise. No ceiling: 20 is
+ * the MCP adapter's per-call cap, not a config bound, and adding one here
+ * would be the clamping configuration/spec.md forbids. */
+function positiveInteger(value: unknown): number | undefined {
+  const n = positiveNumber(value);
+  return n !== undefined && Number.isInteger(n) ? n : undefined;
 }
 
 /**
@@ -134,7 +158,15 @@ function mergeConvention(
     ...(types !== undefined ? { types } : {}),
     ...(statuses !== undefined ? { statuses } : {}),
     excludedStatuses: override?.excludedStatuses ?? base.excludedStatuses,
-    frontmatterFields: { ...base.frontmatterFields, ...override?.frontmatterFields },
+    // Explicit whitelist, not a spread (design.md Decision 4): each key
+    // falls back independently, so declaring one mapped field never wipes
+    // its siblings' identity defaults, and an unrecognized key (e.g. a
+    // mistyped `maxtokens`) can never leak into the returned config.
+    frontmatterFields: {
+      type: override?.frontmatterFields?.type ?? base.frontmatterFields.type,
+      module: override?.frontmatterFields?.module ?? base.frontmatterFields.module,
+      status: override?.frontmatterFields?.status ?? base.frontmatterFields.status,
+    },
   };
 }
 
