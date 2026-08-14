@@ -90,7 +90,7 @@ export function createMcpServer(container: Container): McpServer {
       await container.syncScheduler.maybeSync();
       const overview = container.getOverview.execute();
       const sync = toSyncInfo(container.syncScheduler.lastReport);
-      return { content: [{ type: "text", text: formatOverview(overview, sync) }] };
+      return { content: [{ type: "text", text: formatOverview(overview, sync, container.configWarnings) }] };
     },
   );
 

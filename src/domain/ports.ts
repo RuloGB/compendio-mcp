@@ -30,6 +30,26 @@ export interface EncodingNotice {
   encoding: string;
 }
 
+/** One fact the config loader had to ignore or override in the declared
+ * config. Structured, never pre-rendered — the adapters own the wording, the
+ * loader owns only what happened. Lives here for the same reason
+ * `EncodingNotice` does: `application/` renders it (`formatConfigWarning`),
+ * so the type cannot live in the adapter that produces it without inverting
+ * the dependency direction. */
+export interface ConfigWarning {
+  kind: ConfigWarningKind;
+  /** Dotted key path exactly as written in the file: `chunk.maxTokens`,
+   * `chunk.maxtokens`. For `inverted-chunk-bounds`, names both keys, joined
+   * by `/`. */
+  key: string;
+  /** `JSON.stringify` of the declared value. Absent for `unknown-key`. */
+  declared?: string;
+  /** The value actually in force. Absent when nothing fell back. */
+  inEffect?: number;
+}
+
+export type ConfigWarningKind = "invalid-value" | "unknown-key" | "inverted-chunk-bounds";
+
 /** Result of a discovery pass: successfully read files plus per-file read failures. */
 export interface DiscoverResult {
   files: DocumentFile[];

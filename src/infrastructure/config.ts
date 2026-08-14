@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ConventionConfig } from "../domain/convention.js";
 import { INDEX_FILE } from "../domain/index-markdown.js";
+import type { ConfigWarning } from "../domain/ports.js";
 
 export interface CompendioConfig {
   /**
@@ -72,16 +73,32 @@ export const DEFAULT_CONFIG: CompendioConfig = {
 };
 
 /**
- * Loads compendio.config.json from the project root, merged over defaults.
- * Every key has a default: in a repo following the convention the tool works
- * with no config file at all.
+ * The merged config plus every `ConfigWarning` the load produced. The warning
+ * type itself lives in `domain/ports.ts` and its renderer in
+ * `application/get-overview.ts`, mirroring `EncodingNotice` /
+ * `formatEncodingNotice` -- the adapters own the wording, never the loader
+ * (design.md Decision 5).
  */
-export function loadConfig(root: string): CompendioConfig {
+export interface ConfigLoadReport {
+  config: CompendioConfig;
+  /** Empty on a clean load; never absent. */
+  warnings: ConfigWarning[];
+}
+
+/**
+ * Loads compendio.config.json from the project root, merged over defaults,
+ * plus every `ConfigWarning` the load produced: an invalid declared numeric
+ * value, an unrecognized key under a whitelisted branch, or an inverted
+ * `chunk.minTokens`/`chunk.maxTokens` pair (design.md Decision 5).
+ * `warnings` is always an array, never absent -- empty on a clean load,
+ * including when no `compendio.config.json` exists at all.
+ */
+export function loadConfigReport(root: string): ConfigLoadReport {
   let raw: string;
   try {
     raw = readFileSync(join(root, CONFIG_FILE), "utf8");
   } catch {
-    return structuredClone(DEFAULT_CONFIG);
+    return { config: structuredClone(DEFAULT_CONFIG), warnings: [] };
   }
   let parsed: unknown;
   try {
@@ -91,30 +108,159 @@ export function loadConfig(root: string): CompendioConfig {
       `${CONFIG_FILE} no es JSON valido: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  return mergeConfig(structuredClone(DEFAULT_CONFIG), parsed as Partial<CompendioConfig>);
+  const warnings: ConfigWarning[] = [];
+  const config = mergeConfig(structuredClone(DEFAULT_CONFIG), parsed as Partial<CompendioConfig>, warnings);
+  return { config, warnings };
 }
 
-function mergeConfig(base: CompendioConfig, override: Partial<CompendioConfig>): CompendioConfig {
+/**
+ * Loads compendio.config.json from the project root, merged over defaults.
+ * Every key has a default: in a repo following the convention the tool works
+ * with no config file at all. Thin wrapper over `loadConfigReport` -- see it
+ * for the warnings a caller that needs them should read instead
+ * (`createContainer` is the one caller that does; the two `scripts/*.mjs`
+ * probes and every other call site want `CompendioConfig` alone).
+ */
+export function loadConfig(root: string): CompendioConfig {
+  return loadConfigReport(root).config;
+}
+
+/** One numeric key's resolution: the value in force, and whether a declared
+ * value was present but rejected by its predicate -- distinct from "not
+ * declared at all", which also resolves to `value: fallback` but is not
+ * itself a fact worth reporting or worth guarding the inverted-bounds check
+ * against. */
+interface NumericResolution {
+  value: number;
+  invalid: boolean;
+}
+
+function resolveNumeric(
+  key: string,
+  declared: unknown,
+  fallback: number,
+  predicate: (value: unknown) => number | undefined,
+  warnings: ConfigWarning[],
+): NumericResolution {
+  if (declared === undefined) return { value: fallback, invalid: false };
+  const validated = predicate(declared);
+  if (validated !== undefined) return { value: validated, invalid: false };
+  warnings.push({ kind: "invalid-value", key, declared: JSON.stringify(declared), inEffect: fallback });
+  return { value: fallback, invalid: true };
+}
+
+/** Pushes one `unknown-key` warning per key present in `raw` but absent from
+ * `recognized` -- the enumeration side of the same whitelists `mergeConfig`'s
+ * explicit key-by-key builds already apply (design.md Decision 4 built the
+ * whitelist; Decision 5 is what makes it observable). */
+function collectUnknownKeys(
+  prefix: string,
+  raw: unknown,
+  recognized: readonly string[],
+  warnings: ConfigWarning[],
+): void {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
+  for (const key of Object.keys(raw)) {
+    if (!recognized.includes(key)) {
+      warnings.push({ kind: "unknown-key", key: `${prefix}.${key}` });
+    }
+  }
+}
+
+// Every branch below is an explicit key-by-key build, never a spread: a raw
+// parsed config may carry keys the type does not declare (a typo, a retired
+// key), and building explicitly ensures none of them leak into the returned
+// config -- true of every branch here, not just `search`'s (design.md
+// Decision 4). `warnings` accumulates every fact this function had to ignore
+// or override (design.md Decision 5); `loadConfig` never reads it.
+function mergeConfig(
+  base: CompendioConfig,
+  override: Partial<CompendioConfig>,
+  warnings: ConfigWarning[],
+): CompendioConfig {
+  collectUnknownKeys("chunk", override.chunk, ["minTokens", "maxTokens"], warnings);
+  collectUnknownKeys("embeddings", override.embeddings, ["provider", "model"], warnings);
+  collectUnknownKeys("search", override.search, ["k"], warnings);
+  collectUnknownKeys(
+    "convention.frontmatterFields",
+    override.convention?.frontmatterFields,
+    ["type", "module", "status"],
+    warnings,
+  );
+
+  const minTokens = resolveNumeric(
+    "chunk.minTokens",
+    override.chunk?.minTokens,
+    base.chunk.minTokens,
+    positiveNumber,
+    warnings,
+  );
+  const maxTokens = resolveNumeric(
+    "chunk.maxTokens",
+    override.chunk?.maxTokens,
+    base.chunk.maxTokens,
+    positiveNumber,
+    warnings,
+  );
+  // Only checked when both keys resolved to a genuinely valid state (default
+  // or a validly declared value): an already-invalid key's fallback is
+  // reported on its own, and comparing an arbitrary fallback against the
+  // other key would be a second, confusing warning about the same mistake
+  // (design.md Decision 8).
+  if (!minTokens.invalid && !maxTokens.invalid && minTokens.value > maxTokens.value) {
+    warnings.push({
+      kind: "inverted-chunk-bounds",
+      key: "chunk.minTokens/chunk.maxTokens",
+      declared: JSON.stringify({ minTokens: minTokens.value, maxTokens: maxTokens.value }),
+    });
+  }
+
   return {
     docsDir: override.docsDir ?? base.docsDir,
     exclude: override.exclude ?? base.exclude,
     db: override.db ?? base.db,
-    embeddings: { ...base.embeddings, ...override.embeddings },
-    chunk: { ...base.chunk, ...override.chunk },
-    // Explicit whitelist (not a spread): a raw parsed config may carry keys
-    // the type does not declare, and this line ensures none of them leak into
-    // the returned config.
-    search: { k: override.search?.k ?? base.search.k },
-    sync: { throttleMs: validThrottleMs(override.sync?.throttleMs) ?? base.sync.throttleMs },
+    embeddings: {
+      provider: override.embeddings?.provider ?? base.embeddings.provider,
+      model: override.embeddings?.model ?? base.embeddings.model,
+    },
+    chunk: { minTokens: minTokens.value, maxTokens: maxTokens.value },
+    search: {
+      k: resolveNumeric("search.k", override.search?.k, base.search.k, positiveInteger, warnings).value,
+    },
+    sync: {
+      throttleMs: resolveNumeric(
+        "sync.throttleMs",
+        override.sync?.throttleMs,
+        base.sync.throttleMs,
+        positiveNumber,
+        warnings,
+      ).value,
+    },
     convention: mergeConvention(base.convention, override.convention),
   };
 }
 
-/** A declared `throttleMs` is valid only when it is a finite number greater
- * than 0; anything else (non-numeric, negative, zero) is treated the same as
- * an absent key and falls back to the default. */
-function validThrottleMs(value: unknown): number | undefined {
+/** A declared numeric config value is honored only when it is a finite
+ * number greater than 0. Anything else -- non-numeric (a quoted number,
+ * `null`, a boolean, an array, an object), zero, negative, or `Infinity`
+ * (reachable as `1e400`; `NaN` is not, the JSON grammar has no literal for
+ * it) -- is treated the same as an absent key and falls back to the default.
+ * NEVER clamps: any finite positive value, however small, is accepted
+ * (configuration/spec.md's `throttleMs` MUST, generalized to every numeric
+ * key). */
+function positiveNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/** `search.k` additionally: a whole number. It is a result count, and both
+ * input adapters already require an integer -- `z.number().int().min(1).max(20)`
+ * (server.ts) and `parsePositiveInt` (cli.ts). The config path is the only
+ * one that did not, which is this change's whole premise. No ceiling: 20 is
+ * the MCP adapter's per-call cap, not a config bound, and adding one here
+ * would be the clamping configuration/spec.md forbids. */
+function positiveInteger(value: unknown): number | undefined {
+  const n = positiveNumber(value);
+  return n !== undefined && Number.isInteger(n) ? n : undefined;
 }
 
 /**
@@ -134,7 +280,15 @@ function mergeConvention(
     ...(types !== undefined ? { types } : {}),
     ...(statuses !== undefined ? { statuses } : {}),
     excludedStatuses: override?.excludedStatuses ?? base.excludedStatuses,
-    frontmatterFields: { ...base.frontmatterFields, ...override?.frontmatterFields },
+    // Explicit whitelist, not a spread (design.md Decision 4): each key
+    // falls back independently, so declaring one mapped field never wipes
+    // its siblings' identity defaults, and an unrecognized key (e.g. a
+    // mistyped `maxtokens`) can never leak into the returned config.
+    frontmatterFields: {
+      type: override?.frontmatterFields?.type ?? base.frontmatterFields.type,
+      module: override?.frontmatterFields?.module ?? base.frontmatterFields.module,
+      status: override?.frontmatterFields?.status ?? base.frontmatterFields.status,
+    },
   };
 }
 

@@ -9,9 +9,14 @@ import { SyncIndex, type SyncIndexOptions } from "./application/sync-index.js";
 import { SyncScheduler } from "./application/sync-scheduler.js";
 import { createIndexComparator, createConventionPolicy } from "./domain/convention.js";
 import { INDEX_FILE } from "./domain/index-markdown.js";
-import type { EmbeddingsProvider } from "./domain/ports.js";
+import type { ConfigWarning, EmbeddingsProvider } from "./domain/ports.js";
 import type { ProgressReporter } from "./domain/progress.js";
-import { loadConfig, resolveRoots, NO_CHUNKING, type CompendioConfig } from "./infrastructure/config.js";
+import {
+  loadConfigReport,
+  resolveRoots,
+  NO_CHUNKING,
+  type CompendioConfig,
+} from "./infrastructure/config.js";
 import {
   LazyEmbeddings,
   TransformersEmbeddings,
@@ -38,6 +43,11 @@ export interface ContainerOptions {
 /** Composition root: wires adapters into use cases. */
 export interface Container {
   config: CompendioConfig;
+  /** Every fact `loadConfigReport` had to ignore or override in the declared
+   * config -- empty on a clean load, including no config file at all
+   * (design.md Decision 5). Rendered by the CLI (stderr) and `docs_overview`
+   * (`Config:` block), never by `search_docs` (design.md Decision 6). */
+  configWarnings: ConfigWarning[];
   store: SqliteIndexStore;
   indexDocuments: IndexDocuments;
   generateIndexMd: GenerateIndexMd;
@@ -56,7 +66,7 @@ export interface Container {
 }
 
 export function createContainer(options: ContainerOptions): Container {
-  const config = loadConfig(options.root);
+  const { config, warnings: configWarnings } = loadConfigReport(options.root);
   // Runs, and can throw, before `new SqliteIndexStore` below: `migrate()`
   // creates `.compendio/` on every construction, so an invalid root set must
   // be rejected first (design.md Decision 6) — this is what makes "no
@@ -122,6 +132,7 @@ export function createContainer(options: ContainerOptions): Container {
 
   return {
     config,
+    configWarnings,
     store,
     indexDocuments,
     generateIndexMd,

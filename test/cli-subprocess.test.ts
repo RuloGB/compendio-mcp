@@ -421,3 +421,46 @@ describe("CLI subprocess: sync command", () => {
     expect(editRun.stdout).toContain("[mode lexical]");
   });
 });
+
+/**
+ * Config-load warning rendering on CLI stderr (design.md Decision 6, Gate 6d).
+ * A DEDICATED workdir, not the shared `workdir` above: this fixture's
+ * `compendio.config.json` is deliberately mutated to declare an invalid
+ * `chunk.maxTokens`, which would otherwise change every other test's chunk
+ * counts if it shared the corpus already indexed above.
+ */
+describe("CLI subprocess: config-load warnings on stderr (design.md Decision 6)", () => {
+  let configWarningWorkdir: string;
+
+  beforeAll(() => {
+    ensureBuilt();
+    configWarningWorkdir = mkdtempSync(join(tmpdir(), "compendio-config-warning-cli-"));
+    cpSync(join(FIXTURE, "docs"), join(configWarningWorkdir, "docs"), { recursive: true });
+    const config = JSON.parse(readFileSync(join(FIXTURE, "compendio.config.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    config["chunk"] = { maxTokens: 0 };
+    writeFileSync(join(configWarningWorkdir, "compendio.config.json"), JSON.stringify(config), "utf8");
+  }, 120_000);
+
+  afterAll(() => {
+    if (configWarningWorkdir !== undefined) rmSync(configWarningWorkdir, { recursive: true, force: true });
+  });
+
+  it("index --lexical against an invalid chunk.maxTokens prints a WARNING naming the key on stderr, exits 0, stdout unaffected", () => {
+    const run = runCli(["--root", configWarningWorkdir, "index", "--lexical"]);
+    expect(run.status).toBe(0);
+    expect(run.stderr).toMatch(/WARNING.*chunk\.maxTokens/);
+    expect(run.stdout).toMatch(/Indexed 5 documents \(\d+ chunks\)/);
+  });
+
+  it("a clean/valid config workdir produces zero WARNING lines referencing config keys", () => {
+    const run = runCli(["--root", workdir, "index", "--lexical"]);
+    expect(run.status).toBe(0);
+    expect(run.stderr).not.toMatch(/WARNING chunk\./);
+    expect(run.stderr).not.toMatch(/WARNING search\./);
+    expect(run.stderr).not.toMatch(/WARNING sync\./);
+    expect(run.stderr).not.toMatch(/WARNING embeddings\./);
+  });
+});

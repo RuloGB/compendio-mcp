@@ -158,3 +158,60 @@ describe("createContainer — docsDir override (--dir) replaces the configured r
     expect(overridePaths).toEqual(["notes/c.md"]);
   });
 });
+
+/**
+ * design.md Decision 5, 6 (Slice 2): `createContainer` switches from
+ * `loadConfig` to `loadConfigReport` and exposes the resulting warnings as
+ * `Container.configWarnings`, so the CLI and `docs_overview` have something
+ * to render.
+ */
+describe("createContainer — configWarnings sourced from loadConfigReport (design.md Decision 5, 6)", () => {
+  let projectDir: string;
+
+  beforeEach(async () => {
+    projectDir = await mkdtemp(join(tmpdir(), "compendio-config-warnings-"));
+  });
+
+  afterEach(async () => {
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  it("exposes one configWarnings entry for an invalid declared chunk.maxTokens", async () => {
+    await writeFile(
+      join(projectDir, "compendio.config.json"),
+      JSON.stringify({ chunk: { maxTokens: 0 } }),
+      "utf8",
+    );
+    const container = createContainer({ root: projectDir });
+    try {
+      expect(container.configWarnings).toContainEqual(
+        expect.objectContaining({ kind: "invalid-value", key: "chunk.maxTokens" }),
+      );
+    } finally {
+      container.close();
+    }
+  });
+
+  it("exposes an empty configWarnings array for a clean, valid config", async () => {
+    await writeFile(
+      join(projectDir, "compendio.config.json"),
+      JSON.stringify({ chunk: { maxTokens: 480 } }),
+      "utf8",
+    );
+    const container = createContainer({ root: projectDir });
+    try {
+      expect(container.configWarnings).toEqual([]);
+    } finally {
+      container.close();
+    }
+  });
+
+  it("exposes an empty configWarnings array when no config file exists at all", async () => {
+    const container = createContainer({ root: projectDir });
+    try {
+      expect(container.configWarnings).toEqual([]);
+    } finally {
+      container.close();
+    }
+  });
+});

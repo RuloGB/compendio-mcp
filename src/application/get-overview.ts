@@ -1,7 +1,26 @@
 import { displaySummary, formatDocLine } from "../domain/index-markdown.js";
-import type { EncodingNotice, IndexStore } from "../domain/ports.js";
+import type { ConfigWarning, EncodingNotice, IndexStore } from "../domain/ports.js";
 import { formatEncodingNotice, type SkippedFileReport } from "./index-documents.js";
 import type { SyncReport } from "./sync-index.js";
+
+/**
+ * `${key}: ...` -- one rendered line per warning kind, mirroring
+ * `formatEncodingNotice` (`index-documents.ts`) and living in the same layer
+ * for the same reason: the adapter that produces the warning owns only what
+ * happened, never the wording. Exact wording is not spec-pinned (design.md
+ * Open Question 3): the contract pins only that a report is produced and
+ * where it surfaces, never the string.
+ */
+export function formatConfigWarning(warning: ConfigWarning): string {
+  switch (warning.kind) {
+    case "invalid-value":
+      return `${warning.key}: invalid declared value ${warning.declared} -- falling back to ${warning.inEffect}`;
+    case "unknown-key":
+      return `${warning.key}: unrecognized config key -- ignored`;
+    case "inverted-chunk-bounds":
+      return `${warning.key}: chunk.minTokens is greater than chunk.maxTokens (declared ${warning.declared}) -- both honored unchanged`;
+  }
+}
 
 export interface OverviewLine {
   type?: string;
@@ -84,6 +103,7 @@ export function toSyncInfo(report: SyncReport | null): SyncInfo | null {
 export function formatOverview(
   overview: Overview,
   sync?: SyncInfo | null,
+  configWarnings?: ConfigWarning[],
 ): string {
   const lines: string[] = [];
   lines.push(`Indexed documents: ${overview.totalDocuments}`);
@@ -106,6 +126,19 @@ export function formatOverview(
     }
     for (const notice of sync.encodingNotices ?? []) {
       lines.push(`WARNING ${formatEncodingNotice(notice)}`);
+    }
+  }
+  // Distinct from `Sync:`, and never folded into it: a config-load report
+  // describes a property of the running process, constant for its lifetime,
+  // while `Sync:` describes the outcome of the most recent sync pass
+  // (design.md Decision 6). Omitted entirely -- never rendered empty -- when
+  // there is nothing to report, so a clean project shows no `Config:` block,
+  // ever (Gate 6c).
+  if (configWarnings !== undefined && configWarnings.length > 0) {
+    lines.push("");
+    lines.push("Config:");
+    for (const warning of configWarnings) {
+      lines.push(`WARNING ${formatConfigWarning(warning)}`);
     }
   }
   return lines.join("\n");
