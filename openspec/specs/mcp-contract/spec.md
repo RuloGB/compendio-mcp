@@ -151,6 +151,28 @@ The `docs_overview` MCP tool response MUST include a `sync` field surfacing the 
 - WHEN `docs_overview` is called
 - THEN its `sync` field surfaces that document as transcoded — distinct from `skipped`, since the document was indexed successfully rather than skipped
 
+### Requirement: Config-Warning Visibility in `docs_overview` Response
+
+The `docs_overview` MCP tool's rendered text response MUST include a `Config:` block whenever the running process's loaded configuration produced one or more config-load reports (an invalid declared numeric value, an unrecognized key, or an inverted `chunk.minTokens`/`chunk.maxTokens` pair — see the Configuration spec's "Config Load Reports Invalid Values and Unrecognized Keys"). This block is distinct from, and never folded into, the `Sync:` block: a config-load report describes a property of the running process, constant for its lifetime, while `Sync:` describes the outcome of the most recent sync pass. The `Config:` block MUST be omitted entirely — never rendered empty — when the loaded configuration produced no report. Because the report describes process-lifetime state rather than a one-time event, it MUST be rendered on every `docs_overview` call for as long as the process runs with that configuration, not only on the first call.
+
+#### Scenario: A running process with an invalid declared value renders the block
+
+- GIVEN a process started with `compendio.config.json` declaring an invalid `chunk.maxTokens`
+- WHEN `docs_overview` is called
+- THEN its rendered response includes a `Config:` block naming the fallback
+
+#### Scenario: A clean configuration omits the block
+
+- GIVEN a process started with no `compendio.config.json`, or one declaring only valid, recognized keys with `chunk.minTokens` at or below `chunk.maxTokens`
+- WHEN `docs_overview` is called
+- THEN its rendered response contains no `Config:` block
+
+#### Scenario: The block persists across repeated calls, not only the first
+
+- GIVEN a process started with an invalid declared config value
+- WHEN `docs_overview` is called twice in the same process lifetime
+- THEN the `Config:` block appears in both responses, not only the first
+
 ### Requirement: Renamed MCP Tool Signatures And Response Field Names
 
 The `search_docs` tool MUST accept `{ query, type?, module?, tags?, k?, include_excluded? }`. The `read_doc` tool MUST accept `{ path, section? }`. The `docs_overview` tool MUST accept no parameters. Every param and response field this domain's other requirements reference (`path`, `title`, `section`, `excerpt`, `status`, `score`, `mode: "hybrid" | "lexical"`, `indexed`, `skipped`, `deleted`, `embeddingsWarning`, `byType`, `byModule`, `syncStatus`) MUST use its English form; the three tool names (`docs_overview`, `search_docs`, `read_doc`) are already English and unchanged. No retired Spanish param or field name (`tipo`, `modulo`, `etiquetas`, `ruta`, `seccion`, `incluir_no_vigentes`, `omitidos`, `indexados`, `avisoEmbeddings`) MUST remain reachable through any tool call or response.
