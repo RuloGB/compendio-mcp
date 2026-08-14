@@ -155,88 +155,127 @@ before starting Slice 2** — it is a complete, independently correct fix for th
 
 ### Phase 5: `sync-index-degraded.test.ts` — G1–G6 (Gates 1, 2, 3, 7)
 
-- [ ] 5.1 [new file] Create `test/application/sync-index-degraded.test.ts`. Declare its own
+- [x] 5.1 [new file] Create `test/application/sync-index-degraded.test.ts`. Declare its own
       `vi.mock("sqlite-vec", ...)` (same shape as 2.1 — `vi.mock` is file-scoped, so this does not
       degrade Phase 1's decorator-only cases in `sync-index.test.ts`). Build the harness: a real
       `SqliteIndexStore(":memory:")` under the mock, a mutable in-memory `DocumentSource` (mirroring
       `MutableSource` in `sync-index.test.ts:40-47`), and a locally re-declared `RecordingEmbeddings`
       wrapping `new FakeEmbeddings()` (mirrors `sync-index.test.ts:81-88`, re-declared rather than
-      imported, to keep that file's diff additions-only per Decision 6).
-- [ ] 5.2 [G1 — RED, Gate 1] Case: one new document, working provider, degraded store → after the pass,
+      imported, to keep that file's diff additions-only per Decision 6). DONE.
+- [x] 5.2 [G1 — RED, Gate 1] Case: one new document, working provider, degraded store → after the pass,
       `report.mode === "lexical"`; `embeddingsWarning` is non-empty, contains `"vector storage"`, and
       does **not** contain `"provider unavailable"`. **Confirm this FAILS today** — reports
-      `mode: "hybrid"`.
-- [ ] 5.3 [G2, Gate 2] Same pass → the path is in `indexed`, absent from `skipped`, and
+      `mode: "hybrid"`. CONFIRMED: failed with `expected 'hybrid' to be 'lexical'` before Phase 6.
+- [x] 5.3 [G2, Gate 2] Same pass → the path is in `indexed`, absent from `skipped`, and
       `store.searchLexical` returns its content. This is the assertion the rejected option C (throwing
-      from `upsertDocument`) cannot pass.
-- [ ] 5.4 [G3, Gate 7] Same pass → `recording.calls` (the `RecordingEmbeddings` wrapper) is `[]` — zero
+      from `upsertDocument`) cannot pass. Passed already under Slice 1's guard alone (as expected —
+      Slice 1 satisfies Gate 2 outright).
+- [x] 5.4 [G3, Gate 7] Same pass → `recording.calls` (the `RecordingEmbeddings` wrapper) is `[]` — zero
       `embed()` invocations. Falsifies shipping option A instead of B (the wasted-CPU half left unfixed).
-- [ ] 5.5 [G4 — RED, Gate 1] Case: a **second** pass over identical content (nothing changed) → still
+      CONFIRMED RED before Phase 6 (`recording.calls` held one invocation), GREEN after.
+- [x] 5.5 [G4 — RED, Gate 1] Case: a **second** pass over identical content (nothing changed) → still
       `mode === "lexical"` with the warning, and `indexed` is `[]`. **Confirm this FAILS** against a fix
       scoped only to `applyOne` (Decision 3's hole — an all-unchanged pass never enters `applyOne`).
-- [ ] 5.6 [G5, Gate 3] Case: `IndexDocuments.execute()` (not `SyncIndex`) over the same corpus against a
+      CONFIRMED: failed with `expected 'hybrid' to be 'lexical'` before Phase 6.
+- [x] 5.6 [G5, Gate 3] Case: `IndexDocuments.execute()` (not `SyncIndex`) over the same corpus against a
       **fresh** degraded store → `mode === "lexical"` and a non-empty `embeddingsWarning`. Scoped to a
       fresh store only (Decision 7's narrowing) — do not extend to a carried-over store; `compendio
-      index` is itself broken there via `reset()` (pinned by D5, not fixed here).
-- [ ] 5.7 [G6, Gates 1, 2] Case: the carried-over fixture (same seeding technique as 2.6) driven through
+      index` is itself broken there via `reset()` (pinned by D5, not fixed here). Passed already
+      (unaffected by this change — `IndexDocuments` was asserted unchanged).
+- [x] 5.7 [G6, Gates 1, 2] Case: the carried-over fixture (same seeding technique as 2.6) driven through
       a full `SyncIndex` pass → identical outcome to G1+G2. Falsifies the two cases diverging after the
-      guard.
-- [ ] 5.8 [guard, no new case] Confirm no case in this file asserts `report.mode === "hybrid"` anywhere —
+      guard. CONFIRMED RED before Phase 6 (`mode: "hybrid"`), GREEN after.
+- [x] 5.8 [guard, no new case] Confirm no case in this file asserts `report.mode === "hybrid"` anywhere —
       every store here is degraded by construction; a `hybrid` expectation would mean the mock silently
       failed to take effect. G1's `lexical` assertion doubles as the mock's own liveness check (D1 pins
-      it independently at the adapter).
+      it independently at the adapter). CONFIRMED — no `"hybrid"` assertion anywhere in the file.
 
 ### Phase 6: `SyncIndex` implementation — GREEN (Decision 3)
 
-- [ ] 6.1 `src/application/sync-index.ts`: add `vectorsPersistable: boolean` to the module-private
+- [x] 6.1 `src/application/sync-index.ts`: add `vectorsPersistable: boolean` to the module-private
       `PassState` interface, with the doc comment from design Decision 3 (answered once per pass since
       `canPersistVectors()` reflects a load attempt made in the constructor and cannot change mid-pass).
-- [ ] 6.2 In `execute()`, immediately after `state` is built: set
+- [x] 6.2 In `execute()`, immediately after `state` is built: set
       `state.vectorsPersistable = this.embeddings === null || this.store.canPersistVectors();` and, when
       `false`, `state.embeddingsWarning = "embeddings not persisted (vector storage unavailable): search runs in lexical mode"` (Decision 4's new warning variant — verbatim string, third in the family
       alongside the two existing ones).
-- [ ] 6.3 In `applyOne` (`:213-223`), replace the two-branch embed block with the three-way form from
+- [x] 6.3 In `applyOne` (`:213-223`), replace the two-branch embed block with the three-way form from
       Decision 3: `this.embeddings === null` → unchanged provider-unavailable warning branch;
       `else if (state.vectorsPersistable)` → the existing try/embed/catch block, unchanged; no third
       branch — when neither condition holds, `chunkEmbeddings` stays `null` and the pass-level warning
       set in 6.2 already covers it.
-- [ ] 6.4 Run G1–G6: confirm all green, and specifically confirm 5.2 and 5.5 (the two RED cases) now
-      pass.
+- [x] 6.4 Run G1–G6: confirm all green, and specifically confirm 5.2 and 5.5 (the two RED cases) now
+      pass. CONFIRMED: 6/6 green (`npx vitest run test/application/sync-index-degraded.test.ts`).
 
 ### Phase 7: Regression confirmation, spec cross-check, docs
 
-- [ ] 7.1 [confirm] Re-run `test/application/sync-index.test.ts` in full — every pre-existing case
+- [x] 7.1 [confirm] Re-run `test/application/sync-index.test.ts` in full — every pre-existing case
       passes, plus the three additive `canPersistVectors()` delegating methods from 1.3, with **no
       assertion modified** (Gate 6). Confirm `ThrowingStore`'s throw→`skipped` case (`:628-658`) still
-      passes unmodified (Gate 2's negative half).
-- [ ] 7.2 Cross-check `openspec/changes/2026-08-14-sync-vector-contract/specs/indexing/spec.md`'s two
+      passes unmodified (Gate 2's negative half). CONFIRMED: 24/24 tests pass, zero diff against this
+      file (only the three Slice-1 delegating methods, already committed).
+- [x] 7.2 Cross-check `openspec/changes/2026-08-14-sync-vector-contract/specs/indexing/spec.md`'s two
       ADDED requirements — "Embeddings Degradation Reporting Is Trigger-Agnostic and Cause-Agnostic" (3
       scenarios) and "`IndexStore` States Vector-Persistence Capability and Enforces It Consistently" (3
       scenarios) — against Phases 2, 5, 6. Record which test satisfies each scenario (D1–D6, G1–G6). Do
-      not edit the spec file; it is already drafted.
-- [ ] 7.3 `CLAUDE.md`: widen the "Graceful degradation on embeddings failure" bullet. It currently names
+      not edit the spec file; it is already drafted. CROSS-CHECK:
+      Requirement 1 "Vectors cannot be persisted while the provider works" → G1+G2;
+      "The same store, on a pass that changes nothing" → G4;
+      "A genuine hard write failure is still a skip, not a degrade" → `ThrowingStore`'s existing
+      throw→`skipped` case (`sync-index.test.ts:634-664`, unmodified).
+      Requirement 2 "The capability query reflects unavailability" → D1;
+      "`upsertDocument` ignores embeddings without throwing, and the document still commits" → D2/D3;
+      "`saveEmbeddings` and `replaceEmbeddings` still throw when vectors cannot be persisted" → D6.
+      Every scenario in both requirements has a satisfying test; no gap found.
+- [x] 7.3 `CLAUDE.md`: widen the "Graceful degradation on embeddings failure" bullet. It currently names
       only the embeddings provider as a cause and only `IndexDocuments` as a trigger. Reword to cover
       both triggers (`IndexDocuments` and `SyncIndex`) and both causes (provider missing/throws, OR the
       store cannot persist vectors — `canPersistVectors()` false), matching the trigger-agnostic,
-      cause-agnostic framing of the spec delta.
-- [ ] 7.4 Confirm the five existing vector-coverage-reconciliation scenarios in the canonical
+      cause-agnostic framing of the spec delta. DONE.
+- [x] 7.4 Confirm the five existing vector-coverage-reconciliation scenarios in the canonical
       `openspec/specs/indexing/spec.md` remain untouched — in particular "Vector table has never been
-      created," whose no-op stays correct and is not edited by this change.
+      created," whose no-op stays correct and is not edited by this change. CONFIRMED: `git diff` against
+      `openspec/specs/indexing/spec.md` is empty; `git status` shows no change to that file.
 
 ### Phase 8: Whole-change verification
 
-- [ ] 8.1 `npm test`, `npm run typecheck`, `npm run build` green.
-- [ ] 8.2 Walk the proposal's Gate 0–7 checklist end to end against the finished diff (both slices);
+- [x] 8.1 `npm test`, `npm run typecheck`, `npm run build` green. CONFIRMED: 688/688 tests pass (46 files,
+      up from 682/45 after Slice 1), typecheck clean (both `tsc --noEmit` and `tsc -p tsconfig.test.json`),
+      build clean.
+- [x] 8.2 Walk the proposal's Gate 0–7 checklist end to end against the finished diff (both slices);
       record which test(s) satisfy each gate. Gate 0 already satisfied (measured in the proposal). Gate
-      7 is active because option B was taken — satisfied by 5.4.
-- [ ] 8.3 Diff-sweep the design's "Asserted unchanged" table: `src/application/index-documents.ts`
+      7 is active because option B was taken — satisfied by 5.4. FULL WALK: Gate 0 — proposal
+      measurement, unchanged. Gate 1 — G1, G4, G6. Gate 2 — G2, G6, plus `ThrowingStore`'s unmodified
+      case. Gate 3 — G5, narrowed to a fresh store (Decision 7). Gate 4 — D1–D4, D6, G1–G6 all drive a
+      real `SqliteIndexStore`, nothing waived. Gate 5 — `ports.ts` diff, D2's `sqlite_master` assertion,
+      D6 for the sibling writers. Gate 6 — `npm test`/`typecheck`/`build` green; `sqlite-index-store.test.ts:257-270`
+      unmodified; `sync-index.test.ts` diff additions-only; `hasVectors()`'s body unchanged and unused as
+      the query. Gate 7 — G3.
+- [x] 8.3 Diff-sweep the design's "Asserted unchanged" table: `src/application/index-documents.ts`
       (including `IndexReport`), `src/application/search-documents.ts`, `src/application/get-overview.ts`, `SCHEMA_DDL`/`migrate()`/`reset()`, `SqliteIndexStore`'s constructor signature,
-      `SavedDocument`/`SyncReport`/`IndexReport` shapes. Confirm each is empty-diff.
-- [ ] 8.4 Confirm `hasVectors()`'s adapter body (`sqlite-index-store.ts:322-326`) is byte-identical to
+      `SavedDocument`/`SyncReport`/`IndexReport` shapes. Confirm each is empty-diff. CONFIRMED:
+      `git diff --stat` for `index-documents.ts`, `search-documents.ts`, `get-overview.ts` is empty.
+      `sqlite-index-store.ts` (`SCHEMA_DDL`/`migrate()`/`reset()`/constructor) untouched in this session
+      (Slice 2 never opened the file). `SavedDocument`/`SyncReport`/`IndexReport` shapes unchanged — see
+      8.4.
+- [x] 8.4 Confirm `hasVectors()`'s adapter body (`sqlite-index-store.ts:322-326`) is byte-identical to
       before this change, and it is not used anywhere as the `canPersistVectors()` query (Gate 6's fourth
       bullet). Confirm `SyncReport.mode`'s computation line (`sync-index.ts:137`) and `SyncReport`'s
       shape are otherwise unchanged — the fix flows entirely through `state.embeddingsWarning`/
-      `state.vectorsPersistable`, never through a new report field.
-- [ ] 8.5 Record the final changed-line count (per work unit and total) against the 137–210 / 155–265 /
+      `state.vectorsPersistable`, never through a new report field. CONFIRMED — `hasVectors()` untouched
+      by Slice 2 (last touched in Slice 1's doc-comment-only pass, its body is unchanged since before
+      this whole change); grepped every `canPersistVectors` call site, none aliases to `hasVectors()`.
+      `git diff -- src/application/sync-index.ts` shows the `mode` computation line and `SyncReport`
+      interface untouched — the entire diff is `PassState` (module-private) plus one `else if` in
+      `applyOne`.
+- [x] 8.5 Record the final changed-line count (per work unit and total) against the 137–210 / 155–265 /
       290–475 forecasts, the same way `manual-sync-command` and `encoding-aware-reads` reconciled their
-      own forecasts at the end of `tasks.md`.
+      own forecasts at the end of `tasks.md`. MEASURED (re-verified via `git diff --numstat` against
+      pre-change baseline `fce813f`): Slice 1 — `ports.ts` 17+4, `sqlite-index-store.ts` 19+1,
+      `sync-index.test.ts` 9+0, `sqlite-index-store-degraded.test.ts` (new) 152+0,
+      `sqlite-index-store.test.ts` 7+0 = **209 total** (task 4.4 recorded 204 at the time; the 5-line
+      delta is the follow-up "use English fixtures" commit landing after that count was taken). Slice 2 —
+      `CLAUDE.md` 1+1, `sync-index.ts` 15+1, `sync-index-degraded.test.ts` (new) 222+0 = **240 total**,
+      inside the 155–265 estimate. **Change total: 449 lines**, inside the 290–475 forecast, close to the
+      upper bound — consistent with this project's repeated pattern of forecasts landing low, though this
+      one held within range rather than overrunning it.
