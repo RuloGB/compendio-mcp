@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { SearchDocuments } from "../../src/application/search-documents";
+import { formatConfigWarning } from "../../src/application/get-overview";
+import type { ConfigWarning } from "../../src/domain/ports";
 import {
   DEFAULT_CONFIG,
-  formatConfigWarning,
   loadConfig,
   loadConfigReport,
   resolveRoots,
-  type ConfigWarning,
 } from "../../src/infrastructure/config";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 

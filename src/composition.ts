@@ -9,14 +9,13 @@ import { SyncIndex, type SyncIndexOptions } from "./application/sync-index.js";
 import { SyncScheduler } from "./application/sync-scheduler.js";
 import { createIndexComparator, createConventionPolicy } from "./domain/convention.js";
 import { INDEX_FILE } from "./domain/index-markdown.js";
-import type { EmbeddingsProvider } from "./domain/ports.js";
+import type { ConfigWarning, EmbeddingsProvider } from "./domain/ports.js";
 import type { ProgressReporter } from "./domain/progress.js";
 import {
   loadConfigReport,
   resolveRoots,
   NO_CHUNKING,
   type CompendioConfig,
-  type ConfigWarning,
 } from "./infrastructure/config.js";
 import {
   LazyEmbeddings,

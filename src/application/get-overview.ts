@@ -1,8 +1,26 @@
 import { displaySummary, formatDocLine } from "../domain/index-markdown.js";
-import type { EncodingNotice, IndexStore } from "../domain/ports.js";
-import { formatConfigWarning, type ConfigWarning } from "../infrastructure/config.js";
+import type { ConfigWarning, EncodingNotice, IndexStore } from "../domain/ports.js";
 import { formatEncodingNotice, type SkippedFileReport } from "./index-documents.js";
 import type { SyncReport } from "./sync-index.js";
+
+/**
+ * `${key}: ...` -- one rendered line per warning kind, mirroring
+ * `formatEncodingNotice` (`index-documents.ts`) and living in the same layer
+ * for the same reason: the adapter that produces the warning owns only what
+ * happened, never the wording. Exact wording is not spec-pinned (design.md
+ * Open Question 3): the contract pins only that a report is produced and
+ * where it surfaces, never the string.
+ */
+export function formatConfigWarning(warning: ConfigWarning): string {
+  switch (warning.kind) {
+    case "invalid-value":
+      return `${warning.key}: invalid declared value ${warning.declared} -- falling back to ${warning.inEffect}`;
+    case "unknown-key":
+      return `${warning.key}: unrecognized config key -- ignored`;
+    case "inverted-chunk-bounds":
+      return `${warning.key}: chunk.minTokens is greater than chunk.maxTokens (declared ${warning.declared}) -- both honored unchanged`;
+  }
+}
 
 export interface OverviewLine {
   type?: string;

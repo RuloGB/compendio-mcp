@@ -6,13 +6,12 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { Command } from "commander";
 import { parse as parseYaml } from "yaml";
 import { formatEncodingNotice } from "./application/index-documents.js";
-import { formatOverview } from "./application/get-overview.js";
+import { formatConfigWarning, formatOverview } from "./application/get-overview.js";
 import type { SearchQuery } from "./application/search-documents.js";
 import type { SyncReport } from "./application/sync-index.js";
 import type { EvalCase, EvalSummary } from "./domain/metrics.js";
 import { resolveProgressMode } from "./domain/progress.js";
 import { createContainer, type Container, type ContainerOptions } from "./composition.js";
-import { formatConfigWarning } from "./infrastructure/config.js";
 import { createProgressSink } from "./infrastructure/progress-sink.js";
 import { createMcpServer, SERVER_VERSION } from "./server.js";
 

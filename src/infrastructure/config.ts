@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ConventionConfig } from "../domain/convention.js";
 import { INDEX_FILE } from "../domain/index-markdown.js";
+import type { ConfigWarning } from "../domain/ports.js";
 
 export interface CompendioConfig {
   /**
@@ -72,25 +73,12 @@ export const DEFAULT_CONFIG: CompendioConfig = {
 };
 
 /**
- * One thing `loadConfig` had to ignore or override in the declared config.
- * Structured rather than pre-rendered, mirroring `EncodingNotice` /
- * `formatEncodingNotice` (`domain/ports.ts`, `application/index-documents.ts`)
- * -- the adapters own the wording, never the loader (design.md Decision 5).
+ * The merged config plus every `ConfigWarning` the load produced. The warning
+ * type itself lives in `domain/ports.ts` and its renderer in
+ * `application/get-overview.ts`, mirroring `EncodingNotice` /
+ * `formatEncodingNotice` -- the adapters own the wording, never the loader
+ * (design.md Decision 5).
  */
-export type ConfigWarningKind = "invalid-value" | "unknown-key" | "inverted-chunk-bounds";
-
-export interface ConfigWarning {
-  kind: ConfigWarningKind;
-  /** Dotted key path exactly as written in the file: `chunk.maxTokens`,
-   * `chunk.maxtokens`. For `inverted-chunk-bounds`, names both keys, joined
-   * by `/`. */
-  key: string;
-  /** `JSON.stringify` of the declared value. Absent for `unknown-key`. */
-  declared?: string;
-  /** The value actually in force. Absent when nothing fell back. */
-  inEffect?: number;
-}
-
 export interface ConfigLoadReport {
   config: CompendioConfig;
   /** Empty on a clean load; never absent. */
@@ -135,23 +123,6 @@ export function loadConfigReport(root: string): ConfigLoadReport {
  */
 export function loadConfig(root: string): CompendioConfig {
   return loadConfigReport(root).config;
-}
-
-/**
- * `${key}: ...` -- one rendered line per warning kind, mirroring
- * `formatEncodingNotice` (`application/index-documents.ts`). Exact wording is
- * not spec-pinned (design.md Open Question 3): the contract pins only that a
- * report is produced and where it surfaces, never the string.
- */
-export function formatConfigWarning(warning: ConfigWarning): string {
-  switch (warning.kind) {
-    case "invalid-value":
-      return `${warning.key}: invalid declared value ${warning.declared} -- falling back to ${warning.inEffect}`;
-    case "unknown-key":
-      return `${warning.key}: unrecognized config key -- ignored`;
-    case "inverted-chunk-bounds":
-      return `${warning.key}: chunk.minTokens is greater than chunk.maxTokens (declared ${warning.declared}) -- both honored unchanged`;
-  }
 }
 
 /** One numeric key's resolution: the value in force, and whether a declared

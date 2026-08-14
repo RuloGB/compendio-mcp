@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { formatOverview, GetOverview, toSyncInfo, type Overview } from "../../src/application/get-overview";
 import type { SyncReport } from "../../src/application/sync-index";
 import type { DocumentMeta } from "../../src/domain/model";
-import type { ConfigWarning } from "../../src/infrastructure/config";
+import type { ConfigWarning } from "../../src/domain/ports";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
 function fakeReport(overrides: Partial<SyncReport> = {}): SyncReport {
