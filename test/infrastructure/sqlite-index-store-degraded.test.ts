@@ -141,12 +141,51 @@ describe("SqliteIndexStore — degraded (sqlite-vec unavailable), carried-over d
     store.close();
   });
 
-  it("D5: reset() on a carried-over degraded database THROWS 'no such module: vec0' -- documenting assertion of today's broken behaviour (Decision 7), not a guarantee; a separate future change owns fixing this. Do NOT patch reset() to make this pass.", async () => {
+  it("D5: reset() on a carried-over degraded database succeeds by recreating the file -- the vec0 table an unloadable extension cannot DROP is gone, and the store is usable afterwards", async () => {
     await seedCarriedOverVectorTable();
     const store = new SqliteIndexStore(file);
 
-    expect(() => store.reset()).toThrow(/no such module: vec0/);
+    expect(() => store.reset()).not.toThrow();
+
+    // The whole point: chunks_vec is gone. `DROP TABLE` could not remove it
+    // (it needs the module to call the destructor), so if it is absent the
+    // file itself must have been recreated.
+    const tables = (store as unknown as { db: RealDatabase.Database }).db
+      .prepare(`SELECT name FROM sqlite_master WHERE name LIKE 'chunks_vec%'`)
+      .all();
+    expect(tables).toEqual([]);
+
+    // Usable afterwards: the reopened connection carries the current schema.
+    store.upsertDocument(
+      meta({ path: "after-reset.md" }),
+      [{ heading: "A", content: "searchable content", position: 0 }],
+      null,
+    );
+    expect(store.getDocumentByPath("after-reset.md")).not.toBeNull();
+    expect(store.searchLexical("searchable", {}, 10)).toHaveLength(1);
+    // Still degraded -- recreating the file does not make the extension load.
+    expect(store.canPersistVectors()).toBe(false);
 
     store.close();
+  });
+
+  it("D7: reset() on a HEALTHY carried-over database does NOT recreate the file -- the in-place drop path is preserved, so an unrelated table added by a future migration is not silently destroyed", async () => {
+    const real = await vi.importActual<typeof import("sqlite-vec")>("sqlite-vec");
+    const db = new RealDatabase(file);
+    real.load(db);
+    db.exec(`CREATE TABLE canary (id INTEGER PRIMARY KEY)`);
+    db.close();
+
+    // A store whose extension DOES load, against the same file.
+    const healthy = new (await vi.importActual<
+      typeof import("../../src/infrastructure/sqlite/sqlite-index-store")
+    >("../../src/infrastructure/sqlite/sqlite-index-store")).SqliteIndexStore(file);
+    healthy.reset();
+
+    const canary = (healthy as unknown as { db: RealDatabase.Database }).db
+      .prepare(`SELECT name FROM sqlite_master WHERE name = 'canary'`)
+      .all();
+    expect(canary).toHaveLength(1);
+    healthy.close();
   });
 });

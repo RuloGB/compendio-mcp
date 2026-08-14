@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
@@ -75,14 +75,23 @@ export const SCHEMA_DDL = `
  * extension cannot be loaded the store still works in lexical-only mode.
  */
 export class SqliteIndexStore implements IndexStore {
-  private readonly db: Database.Database;
-  private vectorsEnabled: boolean;
+  /** Not `readonly`: `reset()` replaces the connection when it has to recreate
+   * the file (see `recreateFile`). */
+  private db!: Database.Database;
+  private vectorsEnabled!: boolean;
 
-  constructor(dbPath: string) {
+  constructor(private readonly dbPath: string) {
     if (dbPath !== ":memory:") {
       mkdirSync(dirname(dbPath), { recursive: true });
     }
-    this.db = new Database(dbPath);
+    this.open();
+  }
+
+  /** Opens (or reopens) the connection and brings it to the current schema.
+   * Every field the rest of the class reads is (re)established here, so a
+   * reopened store is indistinguishable from a freshly constructed one. */
+  private open(): void {
+    this.db = new Database(this.dbPath);
     this.db.pragma("journal_mode = WAL");
     this.vectorsEnabled = this.loadVectorExtension();
     this.migrate();
@@ -118,6 +127,10 @@ export class SqliteIndexStore implements IndexStore {
    * concurrent reader could observe a missing table.
    */
   reset(): void {
+    if (!this.vectorsEnabled && this.tableExists("chunks_vec")) {
+      this.recreateFile();
+      return;
+    }
     const run = this.db.transaction((): void => {
       this.db.exec(`
         DROP TABLE IF EXISTS chunks_vec;
@@ -128,6 +141,39 @@ export class SqliteIndexStore implements IndexStore {
       this.db.exec(SCHEMA_DDL);
     });
     run();
+  }
+
+  /**
+   * The one case the in-place path above cannot serve: the database carries a
+   * `chunks_vec` table created when sqlite-vec loaded, and this process cannot
+   * load it. `DROP TABLE` on a virtual table needs the module to call its
+   * destructor, so the drop raises `no such module: vec0` and takes the whole
+   * `compendio index` run down with it — measured, and the reason this method
+   * exists.
+   *
+   * Dropping vec0's four shadow tables by name instead is NOT a way out: it
+   * was measured to succeed and still leave the undroppable `chunks_vec` row
+   * in `sqlite_master`, i.e. a half-destroyed table that breaks the moment the
+   * extension loads again. Recreating the file is the only route that ends in
+   * a coherent database.
+   *
+   * Deleting the file loses nothing `reset()` was not already about to
+   * destroy: it is the drop-and-recreate every `compendio index` run performs,
+   * and the caller has already committed to discarding the whole index. The
+   * WAL sidecars go with it — leaving them behind would let SQLite replay
+   * pages belonging to the file that just disappeared.
+   *
+   * Concurrent readers during this window are the same declared non-goal the
+   * in-place path already carries (see `reset`'s transaction note).
+   */
+  private recreateFile(): void {
+    this.db.close();
+    if (this.dbPath !== ":memory:") {
+      for (const suffix of ["", "-wal", "-shm"]) {
+        rmSync(`${this.dbPath}${suffix}`, { force: true });
+      }
+    }
+    this.open();
   }
 
   saveDocument(meta: DocumentMeta, chunks: Chunk[]): SavedDocument {
