@@ -112,14 +112,26 @@ export interface IndexStore {
    * A no-op when the path is not indexed. */
   deleteDocument(path: string): void;
   /** Atomically replaces a document (delete-if-exists, then insert):
-   * documents + chunks + chunks_fts, plus chunks_vec when embeddings is
-   * non-null. `embeddings`, when provided, must have one entry per chunk in
-   * the same order. */
+   * documents + chunks + chunks_fts, plus chunks_vec when `embeddings` is
+   * non-null AND the store can persist vectors at all. When it cannot, the
+   * `embeddings` argument is IGNORED: the document, its chunks and its FTS
+   * rows are still written and the call still returns normally, so a caller
+   * that did not ask first has no way to learn its vectors were dropped.
+   * Call `canPersistVectors()` BEFORE generating them. `embeddings`, when
+   * provided, must have one entry per chunk in the same order. */
   upsertDocument(
     meta: DocumentMeta,
     chunks: Chunk[],
     embeddings: Float32Array[] | null,
   ): SavedDocument;
+  /** Whether this store can persist vectors AT ALL — a standing capability,
+   * fixed for the store's lifetime, not a statement about current contents.
+   * NOT `hasVectors()`: that one answers "are there vectors in here right
+   * now" and is `false` for a healthy corpus on its first run, so using it
+   * as a capability check suppresses embedding on every first index. A
+   * caller MUST consult this before spending CPU on embeddings destined for
+   * `upsertDocument`. */
+  canPersistVectors(): boolean;
   /** Every indexed chunk with no `chunks_vec` row. `[]` when vectors are
    * unavailable or `chunks_vec` was never created. */
   listChunksMissingVectors(): ChunkMissingVector[];
@@ -138,7 +150,8 @@ export interface IndexStore {
   /** Nearest-neighbour ranked chunk ids (best first). Empty when the vector
    * index is unavailable. */
   searchVector(embedding: Float32Array, filters: SearchFilters, limit: number): number[];
-  /** True when the vector index exists and holds at least one embedding. */
+  /** True when the vector index exists and holds at least one embedding.
+   * A statement about CONTENT, not capability — see `canPersistVectors()`. */
   hasVectors(): boolean;
   close(): void;
 }

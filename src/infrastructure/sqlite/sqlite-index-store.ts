@@ -261,6 +261,14 @@ export class SqliteIndexStore implements IndexStore {
     return run();
   }
 
+  /** Deliberately not `this.vectorsEnabled && this.tableExists("chunks_vec")`
+   * — the table is created lazily on first write, and including its
+   * existence would reproduce the `hasVectors()` trap: it would report
+   * `false` on a brand-new project before the first vector is ever written. */
+  canPersistVectors(): boolean {
+    return this.vectorsEnabled;
+  }
+
   listChunksMissingVectors(): ChunkMissingVector[] {
     if (!this.vectorsEnabled || !this.tableExists("chunks_vec")) return [];
     return this.db
@@ -309,8 +317,18 @@ export class SqliteIndexStore implements IndexStore {
     run();
   }
 
-  /** Created lazily so the dimension always matches the active provider. */
+  /** Created lazily so the dimension always matches the active provider.
+   * No-op when the extension is unavailable: on a database that does not
+   * already carry the table, `CREATE VIRTUAL TABLE IF NOT EXISTS … USING
+   * vec0(…)` raises `no such module: vec0` (measured, proposal Gate 0), and
+   * `upsertDocument` calls this from OUTSIDE its transaction — so an
+   * unguarded throw here takes the document, its chunks and its FTS rows
+   * down with it and lands the path in `skipped`. This is the single choke
+   * point all three vector-touching callers (`upsertDocument`,
+   * `replaceEmbeddings`, `saveEmbeddings`) pass through, so guarding here
+   * once covers all three instead of at each call site individually. */
   private ensureVectorTable(dimension: number): void {
+    if (!this.vectorsEnabled) return;
     this.db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(
         chunk_id INTEGER PRIMARY KEY,
