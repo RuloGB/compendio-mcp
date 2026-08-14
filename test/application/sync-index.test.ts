@@ -488,6 +488,9 @@ describe("SyncIndex — embed-before-upsert atomicity (load-bearing: a hash-curr
     deleteDocument(path: string): void {
       this.inner.deleteDocument(path);
     }
+    canPersistVectors(): boolean {
+      return this.inner.canPersistVectors();
+    }
     listChunksMissingVectors() {
       return this.inner.listChunksMissingVectors();
     }
@@ -589,6 +592,9 @@ describe("SyncIndex — per-document write-failure resilience", () => {
     upsertDocument(meta: DocumentMeta, chunks: Chunk[], embeddings: Float32Array[] | null): SavedDocument {
       if (meta.path === this.failUpsertPath) throw new Error("simulated upsert failure");
       return this.inner.upsertDocument(meta, chunks, embeddings);
+    }
+    canPersistVectors(): boolean {
+      return this.inner.canPersistVectors();
     }
     listChunksMissingVectors() {
       return this.inner.listChunksMissingVectors();
@@ -746,6 +752,9 @@ describe("SyncIndex — Gate 7: SyncReport.reconciled reports written, never att
       }
       upsertDocument(meta: DocumentMeta, chunks: Chunk[], embeddings: Float32Array[] | null): SavedDocument {
         return this.inner.upsertDocument(meta, chunks, embeddings);
+      }
+      canPersistVectors(): boolean {
+        return this.inner.canPersistVectors();
       }
       listChunksMissingVectors() {
         return this.inner.listChunksMissingVectors();

@@ -254,6 +254,13 @@ describe("SqliteIndexStore — upsertDocument", () => {
     expect(store.searchLexical("nuevo", {}, 10)).toHaveLength(1);
   });
 
+  it("canPersistVectors() is true on a healthy store", () => {
+    // The mocked file (test/infrastructure/sqlite-index-store-degraded.test.ts)
+    // can only prove the false half; this proves the true half against a real,
+    // unmocked sqlite-vec load.
+    expect(store.canPersistVectors()).toBe(true);
+  });
+
   it("writes embeddings for a brand-new document even before any compendio index run", () => {
     // Regression guard for the design's write-guard decision: on a project
     // whose chunks_vec table has never been created, upsertDocument must

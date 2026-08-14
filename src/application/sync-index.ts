@@ -77,6 +77,11 @@ interface PassState {
   encodingNotices: EncodingNotice[];
   reconciled: ReconciledFileReport[];
   embeddingsWarning?: string;
+  /** False only when a provider exists AND the store cannot persist vectors
+   * at all. Answered once per pass: `SqliteIndexStore.canPersistVectors()`
+   * reflects a load attempt made in the constructor, so it cannot change
+   * mid-pass, and one answer keeps the skip branch and the report in step. */
+  vectorsPersistable: boolean;
 }
 
 /**
@@ -124,7 +129,12 @@ export class SyncIndex {
       hashMatchPaths: new Set(),
       encodingNotices: [],
       reconciled: [],
+      vectorsPersistable: this.embeddings === null || this.store.canPersistVectors(),
     };
+    if (!state.vectorsPersistable) {
+      state.embeddingsWarning =
+        "embeddings not persisted (vector storage unavailable): search runs in lexical mode";
+    }
 
     const changed = this.diff(files, existing, encodingNotices ?? [], state);
     this.report({ phase: "files", kind: "start", total: changed.length });
@@ -213,7 +223,7 @@ export class SyncIndex {
     let chunkEmbeddings: Float32Array[] | null = null;
     if (this.embeddings === null) {
       state.embeddingsWarning = "indexed without embeddings (provider unavailable): search runs in lexical mode";
-    } else {
+    } else if (state.vectorsPersistable) {
       try {
         const texts = chunks.map((c) => `passage: ${c.heading}\n${c.content}`);
         chunkEmbeddings = await this.embeddings.embed(texts);
@@ -221,6 +231,10 @@ export class SyncIndex {
         state.embeddingsWarning = `embeddings unavailable (${describeError(error)}): search runs in lexical mode`;
       }
     }
+    // No third branch: when the provider exists but vectors cannot be
+    // persisted, the pass-level warning set in `execute()` already covers
+    // it, and `chunkEmbeddings` stays null -- `embed()` is never spent on a
+    // result the store would drop (Gate 7).
 
     try {
       this.store.upsertDocument(meta, chunks, chunkEmbeddings);
