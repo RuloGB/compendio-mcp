@@ -3,7 +3,14 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { SearchDocuments } from "../../src/application/search-documents";
-import { DEFAULT_CONFIG, loadConfig, resolveRoots } from "../../src/infrastructure/config";
+import {
+  DEFAULT_CONFIG,
+  formatConfigWarning,
+  loadConfig,
+  loadConfigReport,
+  resolveRoots,
+  type ConfigWarning,
+} from "../../src/infrastructure/config";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
 describe("loadConfig", () => {
@@ -314,6 +321,249 @@ describe("loadConfig", () => {
       });
       await rm(projectDir, { recursive: true, force: true });
     });
+  });
+});
+
+// design.md Decision 5 (Slice 2): loadConfig had to ignore or override a
+// declared config in silence up to this point. loadConfigReport is the added
+// entry point that surfaces every one of those facts as a ConfigWarning,
+// without changing loadConfig's own signature (Gate 6a, 6b).
+describe("loadConfigReport (design.md Decision 5, Slice 2)", () => {
+  let dir: string;
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "compendio-config-report-"));
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("loadConfig(root) equals loadConfigReport(root).config", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-parity-"));
+    await writeFile(
+      join(projectDir, "compendio.config.json"),
+      JSON.stringify({ chunk: { maxTokens: 600 } }),
+      "utf8",
+    );
+    expect(loadConfig(projectDir)).toEqual(loadConfigReport(projectDir).config);
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  it("warnings is [] on a clean declared config (Gate 6b)", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-clean-"));
+    await writeFile(
+      join(projectDir, "compendio.config.json"),
+      JSON.stringify({ chunk: { minTokens: 100, maxTokens: 480 }, search: { k: 5 } }),
+      "utf8",
+    );
+    const report = loadConfigReport(projectDir);
+    expect(report.warnings).toEqual([]);
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  it("warnings is [] when no config file exists at all (Gate 6b)", () => {
+    const report = loadConfigReport(join(dir, "no-such-project-report"));
+    expect(report.warnings).toEqual([]);
+    expect(report.config).toEqual(DEFAULT_CONFIG);
+  });
+
+  describe("one invalid-value warning per invalid declared numeric key", () => {
+    it("chunk.maxTokens: reports the key, the declared value, and the effective fallback", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-maxtokens-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ chunk: { maxTokens: "abc" } }),
+        "utf8",
+      );
+      const report = loadConfigReport(projectDir);
+      expect(report.config.chunk.maxTokens).toBe(480);
+      expect(report.warnings).toContainEqual(
+        expect.objectContaining({ kind: "invalid-value", key: "chunk.maxTokens", inEffect: 480 }),
+      );
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("chunk.minTokens: reports the key", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-mintokens-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ chunk: { minTokens: 0 } }),
+        "utf8",
+      );
+      const report = loadConfigReport(projectDir);
+      expect(report.config.chunk.minTokens).toBe(100);
+      expect(report.warnings).toContainEqual(
+        expect.objectContaining({ kind: "invalid-value", key: "chunk.minTokens", inEffect: 100 }),
+      );
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("search.k: reports the key", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-k-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ search: { k: 5.01 } }),
+        "utf8",
+      );
+      const report = loadConfigReport(projectDir);
+      expect(report.config.search.k).toBe(5);
+      expect(report.warnings).toContainEqual(
+        expect.objectContaining({ kind: "invalid-value", key: "search.k", inEffect: 5 }),
+      );
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("sync.throttleMs: reports the key", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-throttle-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ sync: { throttleMs: -100 } }),
+        "utf8",
+      );
+      const report = loadConfigReport(projectDir);
+      expect(report.config.sync.throttleMs).toBe(30000);
+      expect(report.warnings).toContainEqual(
+        expect.objectContaining({ kind: "invalid-value", key: "sync.throttleMs", inEffect: 30000 }),
+      );
+      await rm(projectDir, { recursive: true, force: true });
+    });
+  });
+
+  describe("one unknown-key warning per unrecognized key under a whitelisted branch", () => {
+    it("chunk: a generic unrecognized key is reported", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-unknown-chunk-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ chunk: { maxTokens: 600, unknownKey: "nope" } }),
+        "utf8",
+      );
+      const report = loadConfigReport(projectDir);
+      expect(report.warnings).toContainEqual(
+        expect.objectContaining({ kind: "unknown-key", key: "chunk.unknownKey" }),
+      );
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("chunk.maxtokens (wrong case) is reported as unrecognized, not honored as maxTokens", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-maxtokens-case-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ chunk: { maxtokens: 600 } }),
+        "utf8",
+      );
+      const report = loadConfigReport(projectDir);
+      expect(report.config.chunk.maxTokens).toBe(480);
+      expect(report.warnings).toContainEqual(
+        expect.objectContaining({ kind: "unknown-key", key: "chunk.maxtokens" }),
+      );
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("embeddings: an unrecognized key is reported", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-unknown-embeddings-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ embeddings: { model: "custom-model", unknownKey: "nope" } }),
+        "utf8",
+      );
+      const report = loadConfigReport(projectDir);
+      expect(report.warnings).toContainEqual(
+        expect.objectContaining({ kind: "unknown-key", key: "embeddings.unknownKey" }),
+      );
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("search.excludedStatuses (legacy key) is reported as unrecognized", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-legacy-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ search: { k: 5, excludedStatuses: ["draft"] } }),
+        "utf8",
+      );
+      const report = loadConfigReport(projectDir);
+      expect(report.config.search).toEqual({ k: 5 });
+      expect(report.warnings).toContainEqual(
+        expect.objectContaining({ kind: "unknown-key", key: "search.excludedStatuses" }),
+      );
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("convention.frontmatterFields: an unrecognized key is reported", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-unknown-fields-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({
+          convention: { frontmatterFields: { type: "tipo", unknownKey: "nope" } },
+        }),
+        "utf8",
+      );
+      const report = loadConfigReport(projectDir);
+      expect(report.warnings).toContainEqual(
+        expect.objectContaining({ kind: "unknown-key", key: "convention.frontmatterFields.unknownKey" }),
+      );
+      await rm(projectDir, { recursive: true, force: true });
+    });
+  });
+
+  describe("inverted chunk.minTokens/chunk.maxTokens pair", () => {
+    it("is reported, and neither value is swapped, dropped, or reset", async () => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-inverted-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ chunk: { minTokens: 500, maxTokens: 100 } }),
+        "utf8",
+      );
+      const report = loadConfigReport(projectDir);
+      expect(report.config.chunk).toEqual({ minTokens: 500, maxTokens: 100 });
+      const warning = report.warnings.find((w) => w.kind === "inverted-chunk-bounds");
+      expect(warning).toBeDefined();
+      // Both declared values must be named somewhere in the warning.
+      expect(`${warning?.key} ${warning?.declared}`).toContain("500");
+      expect(`${warning?.key} ${warning?.declared}`).toContain("100");
+      await rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("does not fire when only one of the pair is declared and the other is the default", async () => {
+      // minTokens defaults to 100, maxTokens declared valid at 200: not inverted.
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-config-report-not-inverted-"));
+      await writeFile(
+        join(projectDir, "compendio.config.json"),
+        JSON.stringify({ chunk: { maxTokens: 200 } }),
+        "utf8",
+      );
+      const report = loadConfigReport(projectDir);
+      expect(report.warnings.find((w) => w.kind === "inverted-chunk-bounds")).toBeUndefined();
+      await rm(projectDir, { recursive: true, force: true });
+    });
+  });
+});
+
+describe("formatConfigWarning (design.md Decision 5)", () => {
+  it("names the key for an invalid-value warning", () => {
+    const line = formatConfigWarning({
+      kind: "invalid-value",
+      key: "chunk.maxTokens",
+      declared: '"abc"',
+      inEffect: 480,
+    });
+    expect(line).toContain("chunk.maxTokens");
+  });
+
+  it("names the key for an unknown-key warning", () => {
+    const line = formatConfigWarning({ kind: "unknown-key", key: "search.excludedStatuses" });
+    expect(line).toContain("search.excludedStatuses");
+  });
+
+  it("names both bounds for an inverted-chunk-bounds warning", () => {
+    const warning: ConfigWarning = {
+      kind: "inverted-chunk-bounds",
+      key: "chunk.minTokens/chunk.maxTokens",
+      declared: JSON.stringify({ minTokens: 500, maxTokens: 100 }),
+    };
+    const line = formatConfigWarning(warning);
+    expect(line).toContain("chunk.minTokens");
+    expect(line).toContain("chunk.maxTokens");
   });
 });
 

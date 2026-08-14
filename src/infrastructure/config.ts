@@ -72,16 +72,45 @@ export const DEFAULT_CONFIG: CompendioConfig = {
 };
 
 /**
- * Loads compendio.config.json from the project root, merged over defaults.
- * Every key has a default: in a repo following the convention the tool works
- * with no config file at all.
+ * One thing `loadConfig` had to ignore or override in the declared config.
+ * Structured rather than pre-rendered, mirroring `EncodingNotice` /
+ * `formatEncodingNotice` (`domain/ports.ts`, `application/index-documents.ts`)
+ * -- the adapters own the wording, never the loader (design.md Decision 5).
  */
-export function loadConfig(root: string): CompendioConfig {
+export type ConfigWarningKind = "invalid-value" | "unknown-key" | "inverted-chunk-bounds";
+
+export interface ConfigWarning {
+  kind: ConfigWarningKind;
+  /** Dotted key path exactly as written in the file: `chunk.maxTokens`,
+   * `chunk.maxtokens`. For `inverted-chunk-bounds`, names both keys, joined
+   * by `/`. */
+  key: string;
+  /** `JSON.stringify` of the declared value. Absent for `unknown-key`. */
+  declared?: string;
+  /** The value actually in force. Absent when nothing fell back. */
+  inEffect?: number;
+}
+
+export interface ConfigLoadReport {
+  config: CompendioConfig;
+  /** Empty on a clean load; never absent. */
+  warnings: ConfigWarning[];
+}
+
+/**
+ * Loads compendio.config.json from the project root, merged over defaults,
+ * plus every `ConfigWarning` the load produced: an invalid declared numeric
+ * value, an unrecognized key under a whitelisted branch, or an inverted
+ * `chunk.minTokens`/`chunk.maxTokens` pair (design.md Decision 5).
+ * `warnings` is always an array, never absent -- empty on a clean load,
+ * including when no `compendio.config.json` exists at all.
+ */
+export function loadConfigReport(root: string): ConfigLoadReport {
   let raw: string;
   try {
     raw = readFileSync(join(root, CONFIG_FILE), "utf8");
   } catch {
-    return structuredClone(DEFAULT_CONFIG);
+    return { config: structuredClone(DEFAULT_CONFIG), warnings: [] };
   }
   let parsed: unknown;
   try {
@@ -91,15 +120,130 @@ export function loadConfig(root: string): CompendioConfig {
       `${CONFIG_FILE} no es JSON valido: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  return mergeConfig(structuredClone(DEFAULT_CONFIG), parsed as Partial<CompendioConfig>);
+  const warnings: ConfigWarning[] = [];
+  const config = mergeConfig(structuredClone(DEFAULT_CONFIG), parsed as Partial<CompendioConfig>, warnings);
+  return { config, warnings };
+}
+
+/**
+ * Loads compendio.config.json from the project root, merged over defaults.
+ * Every key has a default: in a repo following the convention the tool works
+ * with no config file at all. Thin wrapper over `loadConfigReport` -- see it
+ * for the warnings a caller that needs them should read instead
+ * (`createContainer` is the one caller that does; the two `scripts/*.mjs`
+ * probes and every other call site want `CompendioConfig` alone).
+ */
+export function loadConfig(root: string): CompendioConfig {
+  return loadConfigReport(root).config;
+}
+
+/**
+ * `${key}: ...` -- one rendered line per warning kind, mirroring
+ * `formatEncodingNotice` (`application/index-documents.ts`). Exact wording is
+ * not spec-pinned (design.md Open Question 3): the contract pins only that a
+ * report is produced and where it surfaces, never the string.
+ */
+export function formatConfigWarning(warning: ConfigWarning): string {
+  switch (warning.kind) {
+    case "invalid-value":
+      return `${warning.key}: invalid declared value ${warning.declared} -- falling back to ${warning.inEffect}`;
+    case "unknown-key":
+      return `${warning.key}: unrecognized config key -- ignored`;
+    case "inverted-chunk-bounds":
+      return `${warning.key}: chunk.minTokens is greater than chunk.maxTokens (declared ${warning.declared}) -- both honored unchanged`;
+  }
+}
+
+/** One numeric key's resolution: the value in force, and whether a declared
+ * value was present but rejected by its predicate -- distinct from "not
+ * declared at all", which also resolves to `value: fallback` but is not
+ * itself a fact worth reporting or worth guarding the inverted-bounds check
+ * against. */
+interface NumericResolution {
+  value: number;
+  invalid: boolean;
+}
+
+function resolveNumeric(
+  key: string,
+  declared: unknown,
+  fallback: number,
+  predicate: (value: unknown) => number | undefined,
+  warnings: ConfigWarning[],
+): NumericResolution {
+  if (declared === undefined) return { value: fallback, invalid: false };
+  const validated = predicate(declared);
+  if (validated !== undefined) return { value: validated, invalid: false };
+  warnings.push({ kind: "invalid-value", key, declared: JSON.stringify(declared), inEffect: fallback });
+  return { value: fallback, invalid: true };
+}
+
+/** Pushes one `unknown-key` warning per key present in `raw` but absent from
+ * `recognized` -- the enumeration side of the same whitelists `mergeConfig`'s
+ * explicit key-by-key builds already apply (design.md Decision 4 built the
+ * whitelist; Decision 5 is what makes it observable). */
+function collectUnknownKeys(
+  prefix: string,
+  raw: unknown,
+  recognized: readonly string[],
+  warnings: ConfigWarning[],
+): void {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
+  for (const key of Object.keys(raw)) {
+    if (!recognized.includes(key)) {
+      warnings.push({ kind: "unknown-key", key: `${prefix}.${key}` });
+    }
+  }
 }
 
 // Every branch below is an explicit key-by-key build, never a spread: a raw
 // parsed config may carry keys the type does not declare (a typo, a retired
 // key), and building explicitly ensures none of them leak into the returned
 // config -- true of every branch here, not just `search`'s (design.md
-// Decision 4).
-function mergeConfig(base: CompendioConfig, override: Partial<CompendioConfig>): CompendioConfig {
+// Decision 4). `warnings` accumulates every fact this function had to ignore
+// or override (design.md Decision 5); `loadConfig` never reads it.
+function mergeConfig(
+  base: CompendioConfig,
+  override: Partial<CompendioConfig>,
+  warnings: ConfigWarning[],
+): CompendioConfig {
+  collectUnknownKeys("chunk", override.chunk, ["minTokens", "maxTokens"], warnings);
+  collectUnknownKeys("embeddings", override.embeddings, ["provider", "model"], warnings);
+  collectUnknownKeys("search", override.search, ["k"], warnings);
+  collectUnknownKeys(
+    "convention.frontmatterFields",
+    override.convention?.frontmatterFields,
+    ["type", "module", "status"],
+    warnings,
+  );
+
+  const minTokens = resolveNumeric(
+    "chunk.minTokens",
+    override.chunk?.minTokens,
+    base.chunk.minTokens,
+    positiveNumber,
+    warnings,
+  );
+  const maxTokens = resolveNumeric(
+    "chunk.maxTokens",
+    override.chunk?.maxTokens,
+    base.chunk.maxTokens,
+    positiveNumber,
+    warnings,
+  );
+  // Only checked when both keys resolved to a genuinely valid state (default
+  // or a validly declared value): an already-invalid key's fallback is
+  // reported on its own, and comparing an arbitrary fallback against the
+  // other key would be a second, confusing warning about the same mistake
+  // (design.md Decision 8).
+  if (!minTokens.invalid && !maxTokens.invalid && minTokens.value > maxTokens.value) {
+    warnings.push({
+      kind: "inverted-chunk-bounds",
+      key: "chunk.minTokens/chunk.maxTokens",
+      declared: JSON.stringify({ minTokens: minTokens.value, maxTokens: maxTokens.value }),
+    });
+  }
+
   return {
     docsDir: override.docsDir ?? base.docsDir,
     exclude: override.exclude ?? base.exclude,
@@ -108,12 +252,19 @@ function mergeConfig(base: CompendioConfig, override: Partial<CompendioConfig>):
       provider: override.embeddings?.provider ?? base.embeddings.provider,
       model: override.embeddings?.model ?? base.embeddings.model,
     },
-    chunk: {
-      minTokens: positiveNumber(override.chunk?.minTokens) ?? base.chunk.minTokens,
-      maxTokens: positiveNumber(override.chunk?.maxTokens) ?? base.chunk.maxTokens,
+    chunk: { minTokens: minTokens.value, maxTokens: maxTokens.value },
+    search: {
+      k: resolveNumeric("search.k", override.search?.k, base.search.k, positiveInteger, warnings).value,
     },
-    search: { k: positiveInteger(override.search?.k) ?? base.search.k },
-    sync: { throttleMs: positiveNumber(override.sync?.throttleMs) ?? base.sync.throttleMs },
+    sync: {
+      throttleMs: resolveNumeric(
+        "sync.throttleMs",
+        override.sync?.throttleMs,
+        base.sync.throttleMs,
+        positiveNumber,
+        warnings,
+      ).value,
+    },
     convention: mergeConvention(base.convention, override.convention),
   };
 }

@@ -12,6 +12,7 @@ import type { SyncReport } from "./application/sync-index.js";
 import type { EvalCase, EvalSummary } from "./domain/metrics.js";
 import { resolveProgressMode } from "./domain/progress.js";
 import { createContainer, type Container, type ContainerOptions } from "./composition.js";
+import { formatConfigWarning } from "./infrastructure/config.js";
 import { createProgressSink } from "./infrastructure/progress-sink.js";
 import { createMcpServer, SERVER_VERSION } from "./server.js";
 
@@ -243,6 +244,9 @@ program
   .action(async () => {
     const root = program.opts<GlobalOptions>().root;
     const container = createContainer({ root });
+    for (const warning of container.configWarnings) {
+      console.error(`WARNING ${formatConfigWarning(warning)}`);
+    }
     const server = createMcpServer(container);
     // Synchronously assigns the startup sync pass to the scheduler's
     // in-flight promise — NOT awaited: the stdio transport connects without
@@ -268,6 +272,9 @@ async function withContainer(
   if (options.forceLexical !== undefined) containerOptions.forceLexical = options.forceLexical;
   if (options.onProgress !== undefined) containerOptions.onProgress = options.onProgress;
   const container = createContainer(containerOptions);
+  for (const warning of container.configWarnings) {
+    console.warn(`WARNING ${formatConfigWarning(warning)}`);
+  }
   try {
     await action(container);
   } finally {

@@ -187,7 +187,7 @@ clean config produces no report, on every call, for the life of the process.
 
 ### Phase 7: `ConfigWarning` type + `loadConfigReport` (design Decision 5)
 
-- [ ] 7.1 [RED] `config.test.ts`: add cases for `loadConfigReport` — one `invalid-value` warning per
+- [x] 7.1 [RED] `config.test.ts`: add cases for `loadConfigReport` — one `invalid-value` warning per
       invalid declared value for each of the four numeric keys; one `unknown-key` warning per
       unrecognized key under `chunk`, `embeddings`, `search` (including the legacy
       `search.excludedStatuses`), and `frontmatterFields` (including the `chunk.maxtokens` case
@@ -195,78 +195,78 @@ clean config produces no report, on every call, for the life of the process.
       unchanged, both named in the warning); `warnings === []` on a clean declared config **and** on no
       config file at all; `loadConfig(root)` equals `loadConfigReport(root).config`. Confirm all fail
       (`loadConfigReport` does not exist yet).
-- [ ] 7.2 [GREEN] `config.ts`: add `ConfigWarningKind`, `ConfigWarning`, `ConfigLoadReport`; implement
+- [x] 7.2 [GREEN] `config.ts`: add `ConfigWarningKind`, `ConfigWarning`, `ConfigLoadReport`; implement
       `loadConfigReport(root)` so each of `mergeConfig`'s four numeric fallbacks, the four whitelist
       drops, and the `minTokens > maxTokens` comparison push a `ConfigWarning`; `loadConfig` becomes a
       one-line wrapper (`= loadConfigReport(root).config`), **signature unchanged**.
-- [ ] 7.3 Add `formatConfigWarning(warning: ConfigWarning): string` — pure, one rendered line per
+- [x] 7.3 Add `formatConfigWarning(warning: ConfigWarning): string` — pure, one rendered line per
       warning kind, mirroring `formatEncodingNotice` (`index-documents.ts:43-45`). Exact wording is not
       spec-pinned (design's Open Question 3).
-- [ ] 7.4 Confirm 7.1 is green, and no case added in Slice 1 (Phases 1–3) was modified — additions only,
+- [x] 7.4 Confirm 7.1 is green, and no case added in Slice 1 (Phases 1–3) was modified — additions only,
       cumulative across both slices.
 
 ### Phase 8: `Container.configWarnings` (design Decisions 5, 6)
 
-- [ ] 8.1 [RED] Extend a composition-level test (or add one) asserting `createContainer` exposes
+- [x] 8.1 [RED] Extend a composition-level test (or add one) asserting `createContainer` exposes
       `configWarnings: ConfigWarning[]` sourced from `loadConfigReport`.
-- [ ] 8.2 [GREEN] `composition.ts`: switch the `loadConfig(options.root)` call at `:59` to
+- [x] 8.2 [GREEN] `composition.ts`: switch the `loadConfig(options.root)` call at `:59` to
       `loadConfigReport`, destructure `{ config, warnings }`, add `configWarnings: warnings` to the
       returned `Container`. Confirm `resolveRoots` still runs before `new SqliteIndexStore` (`:64-68`)
       — untouched (Decision 6's asserted invariant).
-- [ ] 8.3 Confirm `scripts/rank-probe.mjs` and `scripts/vector-reach.mjs` are untouched — both still
+- [x] 8.3 Confirm `scripts/rank-probe.mjs` and `scripts/vector-reach.mjs` are untouched — both still
       call `loadConfig`, whose signature does not move.
 
 ### Phase 9: CLI rendering (design Decision 6)
 
-- [ ] 9.1 [RED] `test/cli-subprocess.test.ts`: open a new `describe` block with its **own** dedicated
+- [x] 9.1 [RED] `test/cli-subprocess.test.ts`: open a new `describe` block with its **own** dedicated
       temp workdir (do not reuse the shared `workdir`). Spawn `dist/cli.js index --lexical` against a
       workdir with an invalid `chunk.maxTokens` in `compendio.config.json` — assert stderr contains a
       `WARNING` line naming the key, exit code is 0, and stdout is unaffected. Confirm fails (no
       rendering yet).
-- [ ] 9.2 [GREEN] `cli.ts`: in `withContainer` (all six actions that go through it) and in the `serve`
+- [x] 9.2 [GREEN] `cli.ts`: in `withContainer` (all six actions that go through it) and in the `serve`
       action, render each `container.configWarnings` entry via
       `` console.warn(`WARNING ${formatConfigWarning(w)}`) `` (stdout-adjacent actions) /
       `console.error` (serve, beside its existing startup line) — positioned immediately after
       container construction, before the action body runs.
-- [ ] 9.3 Confirm 9.1 is green. Add a second case: a clean/no-config workdir produces zero
+- [x] 9.3 Confirm 9.1 is green. Add a second case: a clean/no-config workdir produces zero
       `WARNING …` lines referencing config.
 
 ### Phase 10: `docs_overview` rendering (design Decision 6)
 
-- [ ] 10.1 [RED] `test/application/get-overview.test.ts`: `formatOverview(overview, sync,
+- [x] 10.1 [RED] `test/application/get-overview.test.ts`: `formatOverview(overview, sync,
       configWarnings)` renders a `Config:` block when `configWarnings` is non-empty; omits it entirely
       (never empty-rendered) when `[]` or `undefined`; the block is distinct from and never folded into
       `Sync:`; it renders on every call, not only the first, for the process's lifetime.
-- [ ] 10.2 [GREEN] `get-overview.ts`: `formatOverview` gains a third parameter
+- [x] 10.2 [GREEN] `get-overview.ts`: `formatOverview` gains a third parameter
       `configWarnings?: ConfigWarning[]`, appends a `Config:` block (one line per warning via
       `formatConfigWarning`) after the existing `Sync:` handling, omitted when empty/undefined.
-- [ ] 10.3 `server.ts`: pass `container.configWarnings` as `formatOverview`'s third argument at the
+- [x] 10.3 `server.ts`: pass `container.configWarnings` as `formatOverview`'s third argument at the
       `docs_overview` tool's call site (`:93`).
-- [ ] 10.4 Confirm 10.1 is green, and `search_docs`' response shape is byte-identical (no
+- [x] 10.4 Confirm 10.1 is green, and `search_docs`' response shape is byte-identical (no
       `configWarnings` field added there — Gate 6(e), design's "Rejected — surfacing on `search_docs`").
 
 ### Phase 11: Slice 2 regression (Gate 5 re-confirmed, Gate 6 end to end)
 
-- [ ] 11.1 `npm test`, `npm run typecheck`, `npm run build` — all green.
-- [ ] 11.2 `node dist/cli.js --root ejemplos eval` — unchanged (no config file there, `configWarnings`
+- [x] 11.1 `npm test`, `npm run typecheck`, `npm run build` — all green.
+- [x] 11.2 `node dist/cli.js --root ejemplos eval` — unchanged (no config file there, `configWarnings`
       is always `[]`).
-- [ ] 11.3 `git diff` confirms `config.test.ts`'s full diff across **both** slices is additions-only.
-- [ ] 11.4 Walk Gate 6(a)–(e) end to end against the finished PR 1 + PR 2 diff: (a) one warning per
+- [x] 11.3 `git diff` confirms `config.test.ts`'s full diff across **both** slices is additions-only.
+- [x] 11.4 Walk Gate 6(a)–(e) end to end against the finished PR 1 + PR 2 diff: (a) one warning per
       invalid value / unknown key / inverted pair; (b) `warnings === []` on clean and on no-config; (c)
       no `Config:` block on empty; (d) spawned `dist/cli.js index --lexical` against an invalid config
       prints `WARNING` on stderr, stdout/exit code unaffected; (e) `search_docs` response unchanged.
 
 ### Phase 12: Slice 2 docs + spec cross-check
 
-- [ ] 12.1 `README.md` (near the config table, `:162-164`): add one sentence stating an invalid
+- [x] 12.1 `README.md` (near the config table, `:162-164`): add one sentence stating an invalid
       declared value for `search.k`/`chunk.minTokens`/`chunk.maxTokens`/`sync.throttleMs` falls back to
       its default and is reported (CLI stderr; `docs_overview`).
-- [ ] 12.2 Cross-check `specs/configuration/spec.md`'s ADDED "Config Load Reports Invalid Values and
+- [x] 12.2 Cross-check `specs/configuration/spec.md`'s ADDED "Config Load Reports Invalid Values and
       Unrecognized Keys" requirement (4 scenarios), the MODIFIED `sync.throttleMs` requirement's
       "reported" scenario, and the MODIFIED "excludedStatuses Lives Under convention" legacy-key
       scenario against Phases 7–10. Confirm satisfied — do not edit the spec file.
-- [ ] 12.3 Cross-check `specs/mcp-contract/spec.md`'s ADDED "Config-Warning Visibility in
+- [x] 12.3 Cross-check `specs/mcp-contract/spec.md`'s ADDED "Config-Warning Visibility in
       `docs_overview` Response" requirement (3 scenarios) against Phase 10. Confirm satisfied.
-- [ ] 12.4 Confirm `CLAUDE.md` needs no further edit beyond Slice 1's bullet (6.1) — the reporting
+- [x] 12.4 Confirm `CLAUDE.md` needs no further edit beyond Slice 1's bullet (6.1) — the reporting
       channel is a rendering detail of the already-documented validation policy, not a new
       non-obvious decision. Record the confirmation; do not add a redundant bullet.

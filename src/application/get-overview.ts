@@ -1,5 +1,6 @@
 import { displaySummary, formatDocLine } from "../domain/index-markdown.js";
 import type { EncodingNotice, IndexStore } from "../domain/ports.js";
+import { formatConfigWarning, type ConfigWarning } from "../infrastructure/config.js";
 import { formatEncodingNotice, type SkippedFileReport } from "./index-documents.js";
 import type { SyncReport } from "./sync-index.js";
 
@@ -84,6 +85,7 @@ export function toSyncInfo(report: SyncReport | null): SyncInfo | null {
 export function formatOverview(
   overview: Overview,
   sync?: SyncInfo | null,
+  configWarnings?: ConfigWarning[],
 ): string {
   const lines: string[] = [];
   lines.push(`Indexed documents: ${overview.totalDocuments}`);
@@ -106,6 +108,19 @@ export function formatOverview(
     }
     for (const notice of sync.encodingNotices ?? []) {
       lines.push(`WARNING ${formatEncodingNotice(notice)}`);
+    }
+  }
+  // Distinct from `Sync:`, and never folded into it: a config-load report
+  // describes a property of the running process, constant for its lifetime,
+  // while `Sync:` describes the outcome of the most recent sync pass
+  // (design.md Decision 6). Omitted entirely -- never rendered empty -- when
+  // there is nothing to report, so a clean project shows no `Config:` block,
+  // ever (Gate 6c).
+  if (configWarnings !== undefined && configWarnings.length > 0) {
+    lines.push("");
+    lines.push("Config:");
+    for (const warning of configWarnings) {
+      lines.push(`WARNING ${formatConfigWarning(warning)}`);
     }
   }
   return lines.join("\n");

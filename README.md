@@ -166,6 +166,8 @@ Entirely optional — every field has a default, and Compendio works with no con
 
 Declaring only part of the `convention` block merges with the defaults field by field; it never wipes the siblings you didn't mention. `frontmatterFields` maps `type`/`module`/`status` onto non-standard frontmatter keys (e.g. `{ "status": "estado" }` reads a Spanish document's `estado:` field as `status`).
 
+Every numeric key (`search.k`, `chunk.minTokens`, `chunk.maxTokens`, `sync.throttleMs`) is honored only when it is a finite number greater than 0 — `search.k` must additionally be a whole number. Anything else, including a quoted number like `"480"`, falls back to the default exactly as an absent key would, and the fallback is reported: on stderr for every CLI command, and in `docs_overview`'s response for an MCP client. An unrecognized key under `embeddings`, `chunk` or `convention.frontmatterFields` (a typo such as `maxtokens`) is reported the same way. A config with nothing wrong reports nothing.
+
 ### Multiple documentation roots
 
 Declare more than one root to index several folders — `adr/`, `rfcs/`, a spec directory — as one searchable corpus:

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { formatOverview, GetOverview, toSyncInfo } from "../../src/application/get-overview";
+import { formatOverview, GetOverview, toSyncInfo, type Overview } from "../../src/application/get-overview";
 import type { SyncReport } from "../../src/application/sync-index";
 import type { DocumentMeta } from "../../src/domain/model";
+import type { ConfigWarning } from "../../src/infrastructure/config";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
 function fakeReport(overrides: Partial<SyncReport> = {}): SyncReport {
@@ -183,5 +184,69 @@ describe("formatOverview — sync block", () => {
     expect(salida).toContain("cp1252.md");
     expect(salida).toContain("windows-1252");
     store.close();
+  });
+});
+
+/**
+ * `Config:` block (design.md Decision 6, Slice 2, mcp-contract spec's
+ * "Config-Warning Visibility in `docs_overview` Response"). Distinct from
+ * `Sync:` -- a config-load report describes the running process' state, not
+ * the outcome of the most recent sync pass -- and MUST NOT render empty
+ * (Gate 6c: a clean/no-config project must show no `Config:` block, ever).
+ */
+describe("formatOverview — Config: block (design.md Decision 6, Slice 2)", () => {
+  function baseOverview(): Overview {
+    const store = new SqliteIndexStore(":memory:");
+    seed(store, { path: "a.md" });
+    const overview = new GetOverview(store).execute();
+    store.close();
+    return overview;
+  }
+
+  it("omits the Config: block when configWarnings is not passed at all", () => {
+    expect(formatOverview(baseOverview())).not.toContain("Config:");
+  });
+
+  it("omits the Config: block when configWarnings is an empty array (Gate 6c)", () => {
+    expect(formatOverview(baseOverview(), undefined, [])).not.toContain("Config:");
+  });
+
+  it("renders a Config: block naming the key when configWarnings is non-empty", () => {
+    const warnings: ConfigWarning[] = [
+      { kind: "invalid-value", key: "chunk.maxTokens", declared: "0", inEffect: 480 },
+    ];
+    const salida = formatOverview(baseOverview(), undefined, warnings);
+    expect(salida).toContain("Config:");
+    expect(salida).toContain("chunk.maxTokens");
+  });
+
+  it("keeps Config: distinct from, and never folded into, Sync: -- both render when both have content", () => {
+    const warnings: ConfigWarning[] = [{ kind: "unknown-key", key: "search.excludedStatuses" }];
+    const salida = formatOverview(
+      baseOverview(),
+      { skipped: [{ path: "roto.md", errors: ["permiso denegado"] }] },
+      warnings,
+    );
+    expect(salida).toContain("Sync:");
+    expect(salida).toContain("Config:");
+    expect(salida.indexOf("Sync:")).toBeLessThan(salida.indexOf("Config:"));
+  });
+
+  it("renders on every call, not only the first (config-load state is constant for the process' life)", () => {
+    const overview = baseOverview();
+    const warnings: ConfigWarning[] = [
+      { kind: "invalid-value", key: "chunk.maxTokens", declared: "0", inEffect: 480 },
+    ];
+    const first = formatOverview(overview, undefined, warnings);
+    const second = formatOverview(overview, undefined, warnings);
+    expect(first).toContain("Config:");
+    expect(second).toContain("Config:");
+  });
+
+  it("does not change search_docs' response shape -- formatOverview's own default 2-arg call is untouched", () => {
+    // Regression guard for Gate 6e: every pre-existing call site that omits
+    // the third argument keeps rendering exactly as before.
+    const salida = formatOverview(baseOverview());
+    expect(salida).not.toContain("Config:");
   });
 });
