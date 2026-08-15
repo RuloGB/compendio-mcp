@@ -250,3 +250,43 @@ describe("formatOverview — Config: block (design.md Decision 6, Slice 2)", () 
     expect(salida).not.toContain("Config:");
   });
 });
+
+/**
+ * Gate 3 (design.md Decision 6): pins the *data-integrity, not security*
+ * framing so a later reader cannot re-file this change as a security fix,
+ * and so a later change cannot quietly introduce real pollution. This is a
+ * standing invariant, not a reproduction -- it is expected to pass on both
+ * the pre-fix and post-fix tree (declared exception to strict_tdd's
+ * failing-first rule, tasks.md Task 1).
+ */
+describe("GetOverview — prototype integrity (non-regression, Gate 3)", () => {
+  it("leaves Object.prototype untouched when counting __proto__/constructor type values", () => {
+    const before = Object.getOwnPropertyNames(Object.prototype);
+
+    const store = new SqliteIndexStore(":memory:");
+    seed(store, { path: "a.md", type: "__proto__" });
+    seed(store, { path: "b.md", type: "constructor" });
+    new GetOverview(store).execute();
+    store.close();
+
+    // (a) no new own property appeared on Object.prototype.
+    const after = Object.getOwnPropertyNames(Object.prototype);
+    expect(after).toEqual(before);
+
+    // (b) no enumerable inheritance leak on a fresh, unrelated object.
+    expect(Object.keys({}).length).toBe(0);
+
+    // (c) `constructor` is a writable DATA property of Object.prototype --
+    // the exact member the `constructor` branch writes through. (a) alone
+    // is blind to a *value* change on an existing own property; this row
+    // is what turns the spec derivation into an observed fact.
+    //
+    // FORBIDDEN, on the record: `Object.prototype.hasOwnProperty('__proto__')
+    // === false` MUST NOT be used as a pollution predicate here. `__proto__`
+    // genuinely IS an own accessor property of a healthy `Object.prototype`,
+    // so that probe reports pollution on an unmodified runtime -- it already
+    // produced a false positive earlier in this project's history.
+    expect(({}).constructor).toBe(Object);
+    expect(Object.getPrototypeOf({})).toBe(Object.prototype);
+  });
+});
