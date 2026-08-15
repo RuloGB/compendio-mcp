@@ -1,4 +1,5 @@
 import type { DocumentMeta } from "./model.js";
+import { normalizeTags } from "./tags.js";
 
 export interface FrontmatterInput {
   /** Parsed YAML frontmatter, as returned by the markdown parser. */
@@ -30,7 +31,7 @@ export function resolveTags(data: Record<string, unknown>): TagsResult {
   const raw = data["tags"];
   if (raw === undefined || raw === null) return { tags: [] };
   if (Array.isArray(raw) && raw.every((e) => typeof e === "string")) {
-    return { tags: raw.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0) };
+    return { tags: normalizeTags(raw) };
   }
   return { tags: [], error: "'tags' must be a list of strings" };
 }

@@ -19,6 +19,8 @@ import { computeHash } from "../../src/application/index-pipeline";
 import { ReadDocument } from "../../src/application/read-document";
 import { SearchDocuments } from "../../src/application/search-documents";
 import { SyncIndex } from "../../src/application/sync-index";
+import { collectFacets } from "../../src/domain/search-diagnostics";
+import { normalizeTags } from "../../src/domain/tags";
 import { createConventionPolicy, type ConventionConfig } from "../../src/domain/convention";
 import { LEAD_EXCERPT_CHARS, SUPPORTING_EXCERPT_CHARS } from "../../src/domain/excerpt";
 import type { DiscoverResult, DocumentFile, DocumentSource } from "../../src/domain/ports";
@@ -517,15 +519,31 @@ describe("IndexDocuments — undecodable content is skipped under strict mode to
 
 function seedDoc(
   store: SqliteIndexStore,
-  overrides: { path: string; type?: string; status?: string; content: string },
+  overrides: {
+    path: string;
+    type?: string;
+    module?: string;
+    status?: string;
+    tags?: string[];
+    content: string;
+  },
 ): void {
+  const tags = overrides.tags ?? [];
+  // saveDocument persists meta.tags verbatim (JSON.stringify) — resolveTags
+  // never runs in this seam. A non-canonical seed builds a corpus the indexer
+  // cannot produce and would make the tags gates green before the fix and
+  // red after it. Fail loudly at the seed instead of hiding the mistake.
+  if (normalizeTags(tags).join(" ") !== tags.join(" ")) {
+    throw new Error(`seedDoc: tags must already be canonical, got ${JSON.stringify(tags)}`);
+  }
   const meta = {
     path: overrides.path,
     title: overrides.path,
     summary: "r",
-    tags: [],
+    tags,
     hash: overrides.path,
     ...(overrides.type !== undefined ? { type: overrides.type } : {}),
+    ...(overrides.module !== undefined ? { module: overrides.module } : {}),
     ...(overrides.status !== undefined ? { status: overrides.status } : {}),
   };
   store.saveDocument(meta, [{ heading: "H", content: overrides.content, position: 0 }]);
@@ -551,6 +569,143 @@ describe("SearchDocuments — open type filtering", () => {
 
     const response = await search.execute({ query: "unique content beta", type: "   " });
     expect(response.results.map((r) => r.path).sort()).toEqual(["a.md", "b.md"]);
+    store.close();
+  });
+});
+
+// design.md Gates 1, 3: a blank module filter must behave identically to an
+// omitted one, both when the corpus declares modules (case A) and when it
+// does not (case B) — the two module-less/module-bearing shapes each carry
+// their own precondition assertion so a corpus edit fails loudly instead of
+// silently changing which case is under test (design.md Decision 6).
+describe("SearchDocuments — module filter blank-input hygiene", () => {
+  it("Gate 1 (case A): an empty or whitespace-only module is treated as absent when the corpus declares modules", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    seedDoc(store, { path: "a.md", module: "identity", content: "unique content moduleblank alpha" });
+    seedDoc(store, { path: "b.md", module: "leads", content: "unique content moduleblank alpha" });
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
+
+    // Precondition, not decoration: with no declared module this test would
+    // silently measure case B, where dropImpossibleFilters fires and the
+    // "before" run is green for the wrong reason (design.md Decision 6).
+    expect(collectFacets(store.listDocuments()).modules).not.toEqual([]);
+
+    const omitted = await search.execute({ query: "unique content moduleblank alpha" });
+
+    const blank = await search.execute({ query: "unique content moduleblank alpha", module: "" });
+    expect(blank).toEqual(omitted);
+
+    const whitespace = await search.execute({
+      query: "unique content moduleblank alpha",
+      module: "   ",
+    });
+    expect(whitespace).toEqual(omitted);
+
+    store.close();
+  });
+
+  it("Gate 3 (case B): a blank module filter against a module-less corpus produces no configuration advice", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    seedDoc(store, { path: "a.md", content: "unique content modulewarn alpha" });
+    seedDoc(store, { path: "b.md", content: "unique content modulewarn alpha" });
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
+
+    // Precondition: this test's conclusion depends on the corpus declaring
+    // no module at all — pin the shape it is measuring.
+    expect(collectFacets(store.listDocuments()).modules).toEqual([]);
+
+    const omitted = await search.execute({ query: "unique content modulewarn alpha" });
+
+    const blank = await search.execute({ query: "unique content modulewarn alpha", module: "" });
+    expect(blank).toEqual(omitted);
+
+    store.close();
+  });
+
+  it("Gate 4: module filtering itself is unwidened — trimmed, still case-sensitive, unknown values still explained", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    seedDoc(store, { path: "a.md", module: "Identity", content: "unique content moduletrim alpha" });
+    seedDoc(store, { path: "b.md", module: "leads", content: "unique content moduletrim alpha" });
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
+
+    expect(collectFacets(store.listDocuments()).modules).not.toEqual([]);
+
+    // Case is preserved: a query for "identity" must not match a document
+    // declaring "Identity" — proves no lowercasing snuck in.
+    const wrongCase = await search.execute({
+      query: "unique content moduletrim alpha",
+      module: "identity",
+    });
+    expect(wrongCase.results.map((r) => r.path)).toEqual([]);
+
+    // A declared field with an unknown value is still an answerable
+    // request and still produces its noMatchReason.
+    const unknown = await search.execute({
+      query: "unique content moduletrim alpha",
+      module: "nonexistent",
+    });
+    expect(unknown.results).toEqual([]);
+    expect(unknown.noMatchReason).toContain('no document has module "nonexistent"');
+
+    store.close();
+  });
+});
+
+// design.md Gate 2: an untrimmed tag must match its trimmed stored form —
+// the query side is the only dirty side, `resolveTags` already trims and
+// lowercases what a document declares.
+describe("SearchDocuments — tags filter blank-input hygiene", () => {
+  it("Gate 2: a tag with surrounding whitespace matches its stored form, and a mixed array drops the blank entry", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    seedDoc(store, {
+      path: "a.md",
+      tags: ["api"],
+      content: "unique content tagtrim alpha",
+    });
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
+
+    const canonical = await search.execute({
+      query: "unique content tagtrim alpha",
+      tags: ["api"],
+    });
+    expect(canonical.results.map((r) => r.path)).toEqual(["a.md"]);
+
+    const padded = await search.execute({
+      query: "unique content tagtrim alpha",
+      tags: [" api"],
+    });
+    expect(padded).toEqual(canonical);
+
+    const mixed = await search.execute({
+      query: "unique content tagtrim alpha",
+      tags: ["api", "  "],
+    });
+    expect(mixed).toEqual(canonical);
+
+    store.close();
+  });
+
+  it("Gate 2 corollary: an array that becomes empty after trimming (the CLI's --tags \"\" shape) is treated as absent", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    seedDoc(store, { path: "a.md", tags: ["api"], content: "unique content tagblank alpha" });
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
+
+    const omitted = await search.execute({ query: "unique content tagblank alpha" });
+    const blank = await search.execute({ query: "unique content tagblank alpha", tags: [""] });
+    expect(blank).toEqual(omitted);
+
+    store.close();
+  });
+
+  it("Gate 4: tags: [] behaves exactly as absent — no new branch", async () => {
+    const store = new SqliteIndexStore(":memory:");
+    seedDoc(store, { path: "a.md", tags: ["api"], content: "unique content tagempty alpha" });
+    const search = new SearchDocuments(store, null, { k: 10, excludedStatuses: [] });
+
+    const omitted = await search.execute({ query: "unique content tagempty alpha" });
+    const empty = await search.execute({ query: "unique content tagempty alpha", tags: [] });
+    expect(empty).toEqual(omitted);
+
     store.close();
   });
 });

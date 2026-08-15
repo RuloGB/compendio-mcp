@@ -2,6 +2,7 @@ import { buildExcerpt, excerptBudget } from "../domain/excerpt.js";
 import { capPerDocument, reciprocalRankFusion } from "../domain/fusion.js";
 import { locateSpans, tokenizeQuery } from "../domain/match-location.js";
 import type { SearchFilters, SearchResponse, SearchResultItem } from "../domain/model.js";
+import { normalizeTags } from "../domain/tags.js";
 import {
   collectFacets,
   describeDroppedFilters,
@@ -12,7 +13,13 @@ import type { EmbeddingsProvider, IndexStore } from "../domain/ports.js";
 
 export interface SearchQuery {
   query: string;
-  /** Open string, project-defined; empty/whitespace-only is treated as absent. */
+  /**
+   * `type`, `module` and `tags` are open strings, project-defined. A blank
+   * value — empty or whitespace-only, and per-entry for `tags` — is treated as
+   * absent: the filter is not applied, and nothing is reported about it. `type`
+   * and `module` match verbatim and case-sensitively; `tags` match in canonical
+   * form (see `normalizeTags`).
+   */
   type?: string;
   module?: string;
   tags?: string[];
@@ -132,10 +139,10 @@ export class SearchDocuments {
     const filters: SearchFilters = {};
     const type = query.type?.trim();
     if (type !== undefined && type.length > 0) filters.type = type;
-    if (query.module !== undefined) filters.module = query.module;
-    if (query.tags !== undefined && query.tags.length > 0) {
-      filters.tags = query.tags.map((e) => e.toLowerCase());
-    }
+    const module = query.module?.trim();
+    if (module !== undefined && module.length > 0) filters.module = module;
+    const tags = query.tags === undefined ? [] : normalizeTags(query.tags);
+    if (tags.length > 0) filters.tags = tags;
     if (query.includeExcluded !== true && this.defaults.excludedStatuses.length > 0) {
       filters.excludedStatuses = this.defaults.excludedStatuses;
     }

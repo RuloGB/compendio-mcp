@@ -45,10 +45,32 @@ export interface IndexedChunk extends Chunk {
 
 export type SearchMode = "hybrid" | "lexical";
 
+/**
+ * Filters applied to a search, after normalization: every value present here
+ * is one the caller meaningfully asked for.
+ *
+ * The three caller-supplied fields carry an obligation on whoever constructs
+ * this object. `type` and `module` MUST be trimmed, and omitted entirely —
+ * never set to `""` — when the result is blank. `tags` MUST be passed through
+ * `normalizeTags` (`domain/tags.ts`), the same canonical form the indexer
+ * stores them in. A blank value is a client mistake, never a request to match
+ * the empty string, and it is dropped silently.
+ *
+ * `SearchDocuments.buildFilters` is the only producer in production code and
+ * the only place the rule is enforced. Consumers — `IndexStore.searchLexical`
+ * and `searchVector`, `buildFilterSql`, `dropImpossibleFilters`,
+ * `explainEmptyResult` — trust it and deliberately do not re-check. A new
+ * producer inherits the obligation, not the enforcement.
+ *
+ * `excludedStatuses` is exempt: it comes from the project's config, not from
+ * the request.
+ */
 export interface SearchFilters {
-  /** Open string, project-defined; empty/whitespace treated as absent by callers. */
+  /** Open string, project-defined; matched verbatim and case-sensitively. */
   type?: string;
+  /** Open string, project-defined; matched verbatim and case-sensitively — never lowercased. */
   module?: string;
+  /** Canonical tag values (trimmed, lowercased); an empty array means no tag filter. */
   tags?: string[];
   /** Deny-list: documents whose status is in this list are excluded; NULL status is never excluded. */
   excludedStatuses?: string[];
