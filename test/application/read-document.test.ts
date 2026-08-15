@@ -313,30 +313,30 @@ describe("formatFrontmatter — conditional rendering of absent fields", () => {
   }
 
   it("renders all three lines when type/module/status are present", () => {
-    const salida = formatFrontmatter(baseMeta({ type: "guia", module: "auth", status: "vigente" }));
-    expect(salida).toContain("type: guia");
-    expect(salida).toContain("module: auth");
-    expect(salida).toContain("status: vigente");
+    const output = formatFrontmatter(baseMeta({ type: "guia", module: "auth", status: "vigente" }));
+    expect(output).toContain("type: guia");
+    expect(output).toContain("module: auth");
+    expect(output).toContain("status: vigente");
   });
 
   it("omits only the module line when module is absent", () => {
-    const salida = formatFrontmatter(baseMeta({ type: "guia", status: "vigente" }));
-    expect(salida).toContain("type: guia");
-    expect(salida).not.toContain("module:");
-    expect(salida).toContain("status: vigente");
+    const output = formatFrontmatter(baseMeta({ type: "guia", status: "vigente" }));
+    expect(output).toContain("type: guia");
+    expect(output).not.toContain("module:");
+    expect(output).toContain("status: vigente");
   });
 
   it("omits type and status when only module is present", () => {
-    const salida = formatFrontmatter(baseMeta({ module: "auth" }));
-    expect(salida).not.toContain("type:");
-    expect(salida).toContain("module: auth");
-    expect(salida).not.toContain("status:");
+    const output = formatFrontmatter(baseMeta({ module: "auth" }));
+    expect(output).not.toContain("type:");
+    expect(output).toContain("module: auth");
+    expect(output).not.toContain("status:");
   });
 
   it("omits all three lines when none of type/module/status are present", () => {
-    const salida = formatFrontmatter(baseMeta());
-    expect(salida).not.toContain("type:");
-    expect(salida).not.toContain("module:");
-    expect(salida).not.toContain("status:");
+    const output = formatFrontmatter(baseMeta());
+    expect(output).not.toContain("type:");
+    expect(output).not.toContain("module:");
+    expect(output).not.toContain("status:");
   });
 });
