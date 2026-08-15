@@ -1,6 +1,7 @@
 import type { DocumentMeta, IndexedDocument } from "../domain/model.js";
 import type { IndexStore } from "../domain/ports.js";
 import { closestMatches, normalize } from "../domain/similarity.js";
+import { isFenceDelimiter } from "../domain/split-text.js";
 
 export interface ReadRequest {
   path: string;
@@ -109,11 +110,78 @@ export class ReadDocument {
   }
 }
 
-/** Titles of the H2-H6 heading lines present in a markdown fragment. */
+/** H2-H6 only. H1 is the document TITLE, not an addressable section:
+ * `execute` re-attaches it at :68 and the parser routes the first H1 to
+ * `outline.title`. Widening to `#{1,6}` would offer every document's own
+ * title as a "section" -- a new defect, not a wider fix.
+ *
+ * **Measured deviation from design.md's literal spec (`/^#{2,6}\s+(.+)$/`,
+ * no trailing `\r?`).** design.md's Decision 3 claimed CRLF behaviour would
+ * be unchanged -- "`split("\n")` leaves a trailing `\r` inside `(.+)`, and
+ * `.trim()` removes it -- exactly what `matchAll(/…/gm)` does today." That
+ * claim does not hold: without the `/m` flag, `$` asserts the literal end of
+ * the (per-line) string, and `.` never matches `\r`, so on a line like
+ * `"## 3. File names\r"` the greedy `(.+)` is stopped one character short by
+ * `.`'s exclusion of `\r`, leaving that `\r` unconsumed with nothing left to
+ * match `$` against -- the whole match FAILS, silently. Under `/gm` on the
+ * FULL string (the pre-fix code path), `$` instead matches immediately
+ * before ANY line terminator, including a bare `\r`, so the match succeeded
+ * there without ever needing `.trim()` to remove anything. This is not the
+ * documented, accepted parity-hole limitation -- it is a genuine regression,
+ * reproducible on this repository's OWN CRLF-encoded
+ * `docs/documentation-convention.md` ("## 3. File names", "## 10. Glossary",
+ * both real, unfenced H2s that stopped resolving). The explicit trailing
+ * `\r?` below is the fix: `(.+)` still cannot consume `\r` (unchanged), but
+ * an optional literal `\r` is now allowed between the captured text and `$`,
+ * which is what design.md's own commentary described but the specified
+ * regex did not actually implement. */
+const HEADING_LINE = /^#{2,6}\s+(.+)\r?$/;
+
+/**
+ * Titles of the H2-H6 heading lines a markdown fragment declares, excluding
+ * any that sit inside a fenced code block.
+ *
+ * Fence state is CHUNK-LOCAL -- this receives one chunk's content, never the
+ * document -- so suppression applies only when the fragment's delimiters are
+ * BALANCED. An odd count means the fragment begins or ends mid-fence and its
+ * state cannot be reconstructed from the fragment alone; toggling on a guess
+ * inverts it after a stray CLOSING delimiter and hides a REAL heading. Not
+ * suppressing merely reproduces the pre-fix behaviour for that fragment,
+ * which is recoverable. design.md Decision 3/4.
+ *
+ * `isFenceDelimiter` is the chunker's own predicate (`domain/split-text.ts`)
+ * and NOT a stricter CommonMark scanner, on purpose: `read_doc` agreeing with
+ * the boundaries the indexer produced matters more than either being
+ * individually more correct. design.md Decision 1.
+ *
+ * Known, documented, accepted limitation: `balanced` cannot distinguish one
+ * complete self-contained fence from one stray closer (continuing a fence
+ * opened in an earlier chunk) followed by one stray opener (starting a fence
+ * that continues into a later chunk) -- both read as 2 delimiters, both
+ * "balanced". In that narrow, chunk-local-indistinguishable shape, a real
+ * heading between the two stray delimiters is suppressed. Accepted on
+ * reachability grounds (tasks.md, "Resolution of the parity-hole open
+ * decision"; design.md Decision 4's orchestrator note) rather than fixed --
+ * see `mcp-contract/spec.md`'s fourth non-guarantee.
+ */
 function headingsIn(markdown: string): string[] {
+  const lines = markdown.split("\n");
+  const balanced = lines.filter(isFenceDelimiter).length % 2 === 0;
+
   const titles: string[] = [];
-  for (const match of markdown.matchAll(/^#{2,6}\s+(.+)$/gm)) {
-    titles.push(match[1]!.trim());
+  let inFence = false;
+  for (const line of lines) {
+    if (isFenceDelimiter(line)) {
+      // A delimiter line is neither content nor a heading: toggle, then skip
+      // it. HEADING_LINE and isFenceDelimiter are disjoint patterns, so this
+      // ordering is observationally identical to the chunker's toggle-then-
+      // test one (design.md, findings table).
+      if (balanced) inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const match = HEADING_LINE.exec(line);
+    if (match !== null) titles.push(match[1]!.trim());
   }
   return titles;
 }
