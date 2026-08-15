@@ -47,16 +47,30 @@ export class GetOverview {
 
   execute(): Overview {
     const documents = this.store.listDocuments();
-    const byType: Record<string, number> = {};
-    const byModule: Record<string, number> = {};
+    // Counted in a `Map`, NOT a plain object. A plain object's read walks the
+    // prototype chain, so `byType["__proto__"] ?? 0` returns the inherited member
+    // and the `?? 0` fallback never fires. Measured on this runtime: a `type` of
+    // `__proto__` is lost outright (the Annex B setter ignores a non-object value,
+    // so the write is a silent no-op) and a `type` of `constructor` becomes the
+    // string "function Object() { [native code] }1". `type` and `module` are open,
+    // project-defined strings -- a folder named `docs/constructor/` is the reachable
+    // case. Map keys are values, not properties: no key can collide with an
+    // inherited member.
+    const byType = new Map<string, number>();
+    const byModule = new Map<string, number>();
     for (const doc of documents) {
-      if (doc.type !== undefined) byType[doc.type] = (byType[doc.type] ?? 0) + 1;
-      if (doc.module !== undefined) byModule[doc.module] = (byModule[doc.module] ?? 0) + 1;
+      if (doc.type !== undefined) byType.set(doc.type, (byType.get(doc.type) ?? 0) + 1);
+      if (doc.module !== undefined) byModule.set(doc.module, (byModule.get(doc.module) ?? 0) + 1);
     }
     return {
       totalDocuments: documents.length,
-      byType,
-      byModule,
+      // `Object.fromEntries` DEFINES properties (CreateDataPropertyOrThrow), so a
+      // `__proto__` key becomes a genuine own data property. Do NOT "simplify" this
+      // into `for (const [k, v] of byType) out[k] = v` -- assignment reintroduces the
+      // identical defect at the conversion instead of the accumulation, and every
+      // line of it looks correct in review (design.md Decision 2).
+      byType: Object.fromEntries(byType),
+      byModule: Object.fromEntries(byModule),
       documents: documents.map((doc) => {
         const line: OverviewLine = { path: doc.path, summary: displaySummary(doc) };
         if (doc.type !== undefined) line.type = doc.type;
