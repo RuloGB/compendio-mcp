@@ -49,9 +49,9 @@ describe("GetOverview — empty taxonomy omission", () => {
     expect(overview.byType).toEqual({});
     expect(overview.byModule).toEqual({});
 
-    const salida = formatOverview(overview);
-    expect(salida).not.toContain("By type:");
-    expect(salida).not.toContain("By module:");
+    const output = formatOverview(overview);
+    expect(output).not.toContain("By type:");
+    expect(output).not.toContain("By module:");
     store.close();
   });
 });
@@ -66,9 +66,9 @@ describe("GetOverview — partial type coverage", () => {
     expect(overview.byType).toEqual({ guia: 1 });
     expect(overview.totalDocuments).toBe(2);
 
-    const salida = formatOverview(overview);
-    expect(salida).toContain("By type: guia (1)");
-    expect(salida).not.toContain("undefined");
+    const output = formatOverview(overview);
+    expect(output).toContain("By type: guia (1)");
+    expect(output).not.toContain("undefined");
     store.close();
   });
 });
@@ -83,11 +83,11 @@ describe("GetOverview — per-document line ordering and segment omission", () =
     const overview = new GetOverview(store).execute();
     expect(overview.documents.map((d) => d.path)).toEqual(["a.md", "m.md", "z.md"]);
 
-    const salida = formatOverview(overview);
-    const lineas = salida.split("\n").filter((l) => l.startsWith("- "));
-    expect(lineas[0]).toBe("- a.md — content");
-    expect(lineas[1]).toBe("- [adr] m.md — content");
-    expect(lineas[2]).toBe("- [guia] z.md — content (vigente)");
+    const output = formatOverview(overview);
+    const lines = output.split("\n").filter((l) => l.startsWith("- "));
+    expect(lines[0]).toBe("- a.md — content");
+    expect(lines[1]).toBe("- [adr] m.md — content");
+    expect(lines[2]).toBe("- [guia] z.md — content (vigente)");
     store.close();
   });
 });
@@ -165,15 +165,15 @@ describe("formatOverview — sync block", () => {
     seed(store, { path: "a.md" });
     const overview = new GetOverview(store).execute();
 
-    const salida = formatOverview(overview, {
+    const output = formatOverview(overview, {
       skipped: [{ path: "roto.md", errors: ["permiso denegado"] }],
       embeddingsWarning: "embeddings unavailable: search runs in lexical mode",
     });
 
-    expect(salida).toContain("Sync");
-    expect(salida).toContain("roto.md");
-    expect(salida).toContain("permiso denegado");
-    expect(salida).toContain("embeddings unavailable: search runs in lexical mode");
+    expect(output).toContain("Sync");
+    expect(output).toContain("roto.md");
+    expect(output).toContain("permiso denegado");
+    expect(output).toContain("embeddings unavailable: search runs in lexical mode");
     store.close();
   });
 
@@ -182,14 +182,14 @@ describe("formatOverview — sync block", () => {
     seed(store, { path: "a.md" });
     const overview = new GetOverview(store).execute();
 
-    const salida = formatOverview(overview, {
+    const output = formatOverview(overview, {
       skipped: [],
       encodingNotices: [{ path: "cp1252.md", encoding: "windows-1252" }],
     });
 
-    expect(salida).toContain("Sync");
-    expect(salida).toContain("cp1252.md");
-    expect(salida).toContain("windows-1252");
+    expect(output).toContain("Sync");
+    expect(output).toContain("cp1252.md");
+    expect(output).toContain("windows-1252");
     store.close();
   });
 });
@@ -222,21 +222,21 @@ describe("formatOverview — Config: block (design.md Decision 6, Slice 2)", () 
     const warnings: ConfigWarning[] = [
       { kind: "invalid-value", key: "chunk.maxTokens", declared: "0", inEffect: 480 },
     ];
-    const salida = formatOverview(baseOverview(), undefined, warnings);
-    expect(salida).toContain("Config:");
-    expect(salida).toContain("chunk.maxTokens");
+    const output = formatOverview(baseOverview(), undefined, warnings);
+    expect(output).toContain("Config:");
+    expect(output).toContain("chunk.maxTokens");
   });
 
   it("keeps Config: distinct from, and never folded into, Sync: -- both render when both have content", () => {
     const warnings: ConfigWarning[] = [{ kind: "unknown-key", key: "search.excludedStatuses" }];
-    const salida = formatOverview(
+    const output = formatOverview(
       baseOverview(),
       { skipped: [{ path: "roto.md", errors: ["permiso denegado"] }] },
       warnings,
     );
-    expect(salida).toContain("Sync:");
-    expect(salida).toContain("Config:");
-    expect(salida.indexOf("Sync:")).toBeLessThan(salida.indexOf("Config:"));
+    expect(output).toContain("Sync:");
+    expect(output).toContain("Config:");
+    expect(output.indexOf("Sync:")).toBeLessThan(output.indexOf("Config:"));
   });
 
   it("renders on every call, not only the first (config-load state is constant for the process' life)", () => {
@@ -253,8 +253,8 @@ describe("formatOverview — Config: block (design.md Decision 6, Slice 2)", () 
   it("does not change search_docs' response shape -- formatOverview's own default 2-arg call is untouched", () => {
     // Regression guard for Gate 6e: every pre-existing call site that omits
     // the third argument keeps rendering exactly as before.
-    const salida = formatOverview(baseOverview());
-    expect(salida).not.toContain("Config:");
+    const output = formatOverview(baseOverview());
+    expect(output).not.toContain("Config:");
   });
 });
 
@@ -345,9 +345,9 @@ describe("GetOverview — byType/byModule counter safety (spec: Taxonomy Counter
     expect(typeof overview.byType.constructor).toBe("number");
     expect(overview.byType.constructor).toBe(1);
 
-    const salida = formatOverview(overview);
-    expect(salida).toContain("constructor (1)");
-    expect(salida).not.toContain("native code");
+    const output = formatOverview(overview);
+    expect(output).toContain("constructor (1)");
+    expect(output).not.toContain("native code");
     store.close();
   });
 
@@ -398,9 +398,9 @@ describe("GetOverview — byType/byModule counter safety (spec: Taxonomy Counter
     expect(typeof overview.byModule.constructor).toBe("number");
     expect(overview.byModule.constructor).toBe(1);
 
-    const salida = formatOverview(overview);
-    expect(salida).toContain("By module: constructor (1)");
-    expect(salida).not.toContain("native code");
+    const output = formatOverview(overview);
+    expect(output).toContain("By module: constructor (1)");
+    expect(output).not.toContain("native code");
     store.close();
   });
 
@@ -417,10 +417,10 @@ describe("GetOverview — byType/byModule counter safety (spec: Taxonomy Counter
     expect(overview.byType.constructor).toBe(1);
     expect(overview.byType.guide).toBe(1);
 
-    const salida = formatOverview(overview);
-    expect(salida).toContain("__proto__ (1)");
-    expect(salida).toContain("constructor (1)");
-    expect(salida).toContain("guide (1)");
+    const output = formatOverview(overview);
+    expect(output).toContain("__proto__ (1)");
+    expect(output).toContain("constructor (1)");
+    expect(output).toContain("guide (1)");
     store.close();
   });
 });
@@ -431,8 +431,8 @@ describe("GetOverview — byType/byModule counter safety (spec: Taxonomy Counter
  * `By type:` line with a matching count. Discriminates "correctly absent"
  * from "silently lost" without hard-coding any expected value.
  */
-function assertByTypeSelfConsistency(overview: Overview, salida: string): void {
-  const lines = salida.split("\n");
+function assertByTypeSelfConsistency(overview: Overview, output: string): void {
+  const lines = output.split("\n");
   const docLines = lines.filter((l) => l.startsWith("- "));
 
   // Mandatory anti-vacuity guard (design.md Decision 5): without this, a
@@ -465,8 +465,8 @@ describe("GetOverview — byType self-consistency invariant (Gate 1b, design.md 
     seed(store, { path: "c.md", type: "guide" });
 
     const overview = new GetOverview(store).execute();
-    const salida = formatOverview(overview);
-    assertByTypeSelfConsistency(overview, salida);
+    const output = formatOverview(overview);
+    assertByTypeSelfConsistency(overview, output);
     store.close();
   });
 
@@ -476,8 +476,8 @@ describe("GetOverview — byType self-consistency invariant (Gate 1b, design.md 
     seed(store, { path: "b.md" });
 
     const overview = new GetOverview(store).execute();
-    const salida = formatOverview(overview);
-    assertByTypeSelfConsistency(overview, salida);
+    const output = formatOverview(overview);
+    assertByTypeSelfConsistency(overview, output);
     store.close();
   });
 });
@@ -495,15 +495,15 @@ describe("GetOverview — byModule twin-corpus differential (Gate 2, design.md D
   it("renders a By module: line for the hostile corpus exactly as it does for the control corpus", () => {
     const controlStore = new SqliteIndexStore(":memory:");
     seed(controlStore, { path: "a.md", module: "guides" });
-    const controlSalida = formatOverview(new GetOverview(controlStore).execute());
+    const controlOutput = formatOverview(new GetOverview(controlStore).execute());
     controlStore.close();
 
     const hostileStore = new SqliteIndexStore(":memory:");
     seed(hostileStore, { path: "a.md", module: "__proto__" });
-    const hostileSalida = formatOverview(new GetOverview(hostileStore).execute());
+    const hostileOutput = formatOverview(new GetOverview(hostileStore).execute());
     hostileStore.close();
 
-    expect(controlSalida).toContain("By module: guides (1)");
-    expect(hostileSalida).toContain("By module: __proto__ (1)");
+    expect(controlOutput).toContain("By module: guides (1)");
+    expect(hostileOutput).toContain("By module: __proto__ (1)");
   });
 });
