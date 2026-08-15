@@ -174,9 +174,46 @@ function headingsIn(markdown: string): string[] {
   states the rule instead of relying on it.
 - **`balanced` is computed before the loop, not maintained during it.** A single-pass "fix it up at
   the end" cannot un-suppress lines already dropped.
-- **CRLF behaviour is unchanged.** `split("\n")` leaves a trailing `\r` inside `(.+)`, and `.trim()`
-  removes it — exactly what `matchAll(/…/gm)` does today. Do not "fix" this; it would be a behaviour
-  change dressed as cleanup.
+- ~~**CRLF behaviour is unchanged.** `split("\n")` leaves a trailing `\r` inside `(.+)`, and
+  `.trim()` removes it — exactly what `matchAll(/…/gm)` does today. Do not "fix" this; it would be a
+  behaviour change dressed as cleanup.~~ **← MEASURED FALSE during apply. See the correction below.**
+
+> **Correction (apply phase, measured; recorded here by the orchestrator after `sdd-verify`
+> WARNING-1 flagged this artifact as still asserting the wrong thing).**
+>
+> The struck-through claim above is wrong twice over, and following it literally would have shipped a
+> regression far worse than the bug this change fixes.
+>
+> `.` **never** matches `\r` — it is a line terminator in JS regex — so `(.+)` does not "leave a
+> trailing `\r` inside" the capture at all. It stops *before* the `\r`. And `$` **without** `/m`
+> matches only at end-of-input, which is now one character further along. The match therefore fails
+> outright; `.trim()` never gets the chance to run. Measured:
+>
+> ```
+> line = "## Title\r"
+> per-line, no /m     -> null        <-- every heading lost
+> per-line, with \r?  -> "Title"
+> matchAll /gm        -> "Title"     <-- what the old code did, and why it worked
+> ```
+>
+> The old `matchAll(/…/gm)` was safe only because `/m` makes `$` match *before* any line terminator.
+> That property is silently lost the moment the expression is evaluated per-line, which is exactly
+> what Decision 3's rewrite does.
+>
+> **Blast radius, had this shipped as written**: `docs/documentation-convention.md` — this repo's own
+> corpus, and the very file Gate 1 measures — has **275 CRLF terminators**. Every heading in it would
+> have stopped resolving, not just the 17 phantoms. The change would have "fixed" phantom sections by
+> deleting all the real ones.
+>
+> **The shipped fix** is an explicit `\r?` before `$` in `HEADING_LINE`, with a red-then-green
+> regression test. `sdd-verify` independently confirmed the mechanism, the blast radius, and the
+> completeness of the fix.
+>
+> **The lesson worth more than the regex**: this design asserted a runtime behaviour it had reasoned
+> about but not executed, and stated it in the imperative ("Do not fix this"). Two of the three
+> applies in this cycle found their own upstream artifact factually wrong. An instruction not to
+> change something is exactly as fallible as an instruction to change it, and deserves the same
+> measurement before it is obeyed.
 
 **Rejected — the naive toggle with no precondition** (the proposal's Approach, taken literally). It
 is the fix as everyone will first write it, and it *creates* the failure the proposal ranks as the
