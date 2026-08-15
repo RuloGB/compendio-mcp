@@ -82,7 +82,20 @@ function splitBlocks(text: string, maxTokens: number): string[] {
   return packUnits(blocks, "\n\n", maxTokens, (block) => splitOversizedBlock(block, maxTokens));
 }
 
-function isFenceDelimiter(line: string): boolean {
+/**
+ * True when `line` opens or closes a fenced code block (` ``` ` or `~~~`,
+ * either style, arbitrary leading whitespace, an info string ignored).
+ *
+ * A deliberate CommonMark *approximation*, not a stricter parser: it does not
+ * distinguish an opener from a closer (a bare ` ``` ` is syntactically both),
+ * does not check fence-character run length, and does not track nesting
+ * between the two styles. This is intentional — see this module's own
+ * splitting policy and `read-document.ts`'s `headingsIn`, its second
+ * consumer, for why: one shared, imperfect definition of "this line is a
+ * fence delimiter" keeps every consumer agreeing with the chunker, which
+ * matters more than any one of them being independently more correct.
+ */
+export function isFenceDelimiter(line: string): boolean {
   return /^\s*(```|~~~)/.test(line);
 }
 

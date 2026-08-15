@@ -307,6 +307,258 @@ describe("ReadDocument — the 'no-sections' variant (Decision 4, the stale-corp
   });
 });
 
+// --- headingsIn's fence-aware rewrite (design.md Decision 3/4, Phase 3) ---
+//
+// Every case here targets the second `||` branch of the match filter and the
+// listing fallback (`read-document.ts:76-80`, `:86-92`) — the only branch
+// this change touches. Task-level expectations, recorded precisely so a
+// green run is not mistaken for a red one:
+//   - 3.1, 3.2: guard cases against over-pruning (Gate 2a/2b). Already pass
+//     on today's unfixed tree (it has no fence logic to break them at all) —
+//     written anyway so the REWRITE cannot regress them.
+//   - 3.3: fails on today's unfixed tree (a phantom fenced heading currently
+//     resolves) — the requirement's core scenario (Gate 2d).
+//   - 3.4: THE LOAD-BEARING CASE (Gate 2c). Green today AND green after
+//     Decision 3's guarded fix — the ONLY case in this change that would go
+//     red against the naive, unguarded `inFence` toggle the proposal
+//     originally specified. Never cut, never weaken, never shrink.
+//   - 3.5: fails on today's unfixed tree (nothing is suppressed yet) and
+//     passes once 3.6 lands — but the assertion it passes with is that the
+//     heading is SUPPRESSED, a documented, ACCEPTED limitation (the
+//     parity-hole resolution, tasks.md), not a defect this PR closes.
+
+describe("ReadDocument — headingsIn's fence-aware rewrite (design.md Decision 3/4)", () => {
+  it("[3.1 / Gate 2a] resolves a real H4-H6 heading that exists only inside chunk content, outside any fence", () => {
+    const store = new SqliteIndexStore(":memory:");
+    try {
+      const meta: DocumentMeta = { path: "deep.md", title: "Deep", summary: "s", tags: [], hash: "h" };
+      store.saveDocument(meta, [
+        {
+          heading: "Parent section",
+          content: "## Parent section\n\nSome intro text.\n\n#### Deep subheading\n\nDetail body.",
+          position: 0,
+        },
+      ]);
+      const read = new ReadDocument(store);
+
+      const result = read.execute({ path: "deep.md", section: "deep subheading" });
+
+      expect(result.type).toBe("section");
+      if (result.type !== "section") return;
+      expect(result.content).toContain("Detail body.");
+    } finally {
+      store.close();
+    }
+  });
+
+  it("[found during apply, not in tasks.md — a genuine regression, not the documented parity hole] a real heading found only inside chunk content still resolves on CRLF-encoded documents", () => {
+    // Discovered while running Gate 1 against this repository's own
+    // CRLF-encoded docs/documentation-convention.md: split("\n") leaves a
+    // trailing "\r" on every line, and without the "/m" flag (now applied
+    // per-line rather than via matchAll(/…/gm) on the whole string) "$"
+    // asserts the literal end of the line string. "." never matches "\r", so
+    // "(.+)$" (design.md's literal specified pattern) fails to match ANY
+    // heading line on a CRLF document -- not only fenced ones. This is
+    // unrelated to fences: it silently broke the second `||` branch for
+    // every CRLF document, contradicting design.md's own claim that CRLF
+    // behaviour would be unchanged (measured, not assumed -- that claim did
+    // not hold). HEADING_LINE gained an explicit `\r?` before `$` to fix it.
+    const store = new SqliteIndexStore(":memory:");
+    try {
+      const meta: DocumentMeta = { path: "crlf.md", title: "CRLF", summary: "s", tags: [], hash: "h" };
+      store.saveDocument(meta, [
+        {
+          heading: "Parent section",
+          content: "## Parent section\r\n\r\nIntro text.\r\n\r\n#### Deep subheading\r\n\r\nDetail body.",
+          position: 0,
+        },
+      ]);
+      const read = new ReadDocument(store);
+
+      const result = read.execute({ path: "crlf.md", section: "deep subheading" });
+
+      expect(result.type).toBe("section");
+      if (result.type !== "section") return;
+      expect(result.content).toContain("Detail body.");
+    } finally {
+      store.close();
+    }
+  });
+
+  it("[3.2 / Gate 2b] resolves a tiny section that survives only merged inside a bigger chunk by mergeTinyPieces", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-read-merge-"));
+    try {
+      const bigSection = "Contenido amplio de la seccion principal repetido varias veces. ".repeat(10);
+      writeFileSync(
+        join(dir, "merge.md"),
+        `# Documento con fusion\n\n## Big section\n\n${bigSection}\n\n## Tiny section\n\nUn detalle breve.\n`,
+      );
+
+      const store = new SqliteIndexStore(":memory:");
+      const indexer = new IndexDocuments(
+        new FileDocumentSource(dir, []),
+        new RemarkMarkdownParser(),
+        store,
+        null,
+        createConventionPolicy(LOOSE),
+        { chunking: DEFAULT_CONFIG.chunk, noChunking: NO_CHUNKING },
+      );
+      const read = new ReadDocument(store);
+
+      try {
+        const report = await indexer.execute();
+        expect(report.skipped).toEqual([]);
+
+        const doc = store.getDocumentByPath("merge.md");
+        expect(doc).not.toBeNull();
+        if (doc === null) return;
+        const chunks = store.getChunksByDocument(doc.id);
+        // Confirm the tiny section was actually merged into a bigger chunk,
+        // not kept as its own -- otherwise this case would not exercise the
+        // second `||` branch at all.
+        expect(chunks.some((c) => c.heading === "Tiny section")).toBe(false);
+        expect(chunks.some((c) => c.content.includes("## Tiny section"))).toBe(true);
+
+        const result = read.execute({ path: "merge.md", section: "tiny section" });
+        expect(result.type).toBe("section");
+        if (result.type !== "section") return;
+        expect(result.content).toContain("Un detalle breve.");
+      } finally {
+        store.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("[3.3 / Gate 2d] a phantom heading inside a balanced backtick fence is not resolvable or listed; a real heading after it still is", () => {
+    const store = new SqliteIndexStore(":memory:");
+    try {
+      const meta: DocumentMeta = { path: "fenced.md", title: "Fenced", summary: "s", tags: [], hash: "h" };
+      store.saveDocument(meta, [
+        {
+          heading: "Section",
+          content: "```\n## Phantom\n```\n\n## Real\n\nReal content here.",
+          position: 0,
+        },
+      ]);
+      const read = new ReadDocument(store);
+
+      const phantomResult = read.execute({ path: "fenced.md", section: "phantom" });
+      expect(phantomResult.type).toBe("section-not-found");
+      if (phantomResult.type === "section-not-found") {
+        expect(phantomResult.availableSections).not.toContain("Phantom");
+      }
+
+      const realResult = read.execute({ path: "fenced.md", section: "real" });
+      expect(realResult.type).toBe("section");
+      if (realResult.type !== "section") return;
+      expect(realResult.content).toContain("Real content here.");
+    } finally {
+      store.close();
+    }
+  });
+
+  it("[3.3 sibling] both fence marker styles suppress the phantom heading: a tilde fence behaves identically to backticks", () => {
+    const store = new SqliteIndexStore(":memory:");
+    try {
+      const meta: DocumentMeta = { path: "tilde.md", title: "Tilde", summary: "s", tags: [], hash: "h" };
+      store.saveDocument(meta, [
+        {
+          heading: "Section",
+          content: "~~~\n## Phantom\n~~~\n\n## Real\n\nReal content here.",
+          position: 0,
+        },
+      ]);
+      const read = new ReadDocument(store);
+
+      const phantomResult = read.execute({ path: "tilde.md", section: "phantom" });
+      expect(phantomResult.type).toBe("section-not-found");
+
+      const realResult = read.execute({ path: "tilde.md", section: "real" });
+      expect(realResult.type).toBe("section");
+    } finally {
+      store.close();
+    }
+  });
+
+  it("[3.4 / Gate 2c — THE LOAD-BEARING CASE, never cut, never weaken] a lone unbalanced fence delimiter must not suppress a real heading after it", () => {
+    // Exactly ONE delimiter line (odd, unbalanced): a chunk that begins
+    // mid-fence, as if a fence opened in a preceding chunk and this chunk
+    // only carries its closer. This is green on today's unfixed tree AND
+    // green after Decision 3's guarded fix -- it is the ONLY case in this
+    // change that would go red against the naive, unguarded `inFence` toggle
+    // the proposal originally specified: that toggle would set `inFence =
+    // true` at the lone closer and suppress everything after it in the
+    // chunk, including "Real". This case exists to prove the balanced-
+    // delimiter guard is present, not to prove the fix "works" in general.
+    // Do not shrink this fixture or substitute an assertion that would also
+    // pass under the naive toggle.
+    const store = new SqliteIndexStore(":memory:");
+    try {
+      const meta: DocumentMeta = { path: "midfence.md", title: "Midfence", summary: "s", tags: [], hash: "h" };
+      store.saveDocument(meta, [
+        {
+          heading: "Section",
+          content: "const x = 1;\n```\nprose\n\n#### Real\n\nReal body content.",
+          position: 0,
+        },
+      ]);
+      const read = new ReadDocument(store);
+
+      const result = read.execute({ path: "midfence.md", section: "real" });
+      expect(result.type).toBe("section");
+      if (result.type !== "section") return;
+      expect(result.content).toContain("Real body content.");
+
+      const notFound = read.execute({ path: "midfence.md", section: "made-up section" });
+      expect(notFound.type).toBe("section-not-found");
+      if (notFound.type !== "section-not-found") return;
+      expect(notFound.availableSections).toContain("Real");
+    } finally {
+      store.close();
+    }
+  });
+
+  it("[3.5 — pins KNOWN-WRONG, documented, accepted behaviour; do not silently delete] the misaligned-even parity hole suppresses a real heading between a stray closer and a stray opener", () => {
+    // This is a DOCUMENTED, ACCEPTED limitation (design.md Decision 4's
+    // orchestrator note, resolved in tasks.md's "Resolution of the
+    // parity-hole open decision" section) -- NOT a defect this PR closes. The
+    // balanced-delimiter guard is `count(isFenceDelimiter) % 2 === 0`, which
+    // cannot distinguish one complete, self-contained fence from one stray
+    // closer (continuing a fence opened in an earlier chunk) followed by one
+    // stray opener (starting a fence that continues into a later chunk) --
+    // both read as "balanced" (2 delimiters). This fixture is exactly that
+    // shape: chunk-locally indistinguishable from a genuine self-contained
+    // fence, so the guard suppresses a heading that a document-wide view
+    // would have kept addressable. This test PINS that behaviour so a future
+    // change cannot silently regress it further, or "fix" it, without a
+    // deliberate decision. If this fixture does NOT reproduce suppression,
+    // that is a STOP condition -- the reachability reasoning behind accepting
+    // the hole must be re-opened and reported, not silently dropped here.
+    const store = new SqliteIndexStore(":memory:");
+    try {
+      const meta: DocumentMeta = { path: "parityhole.md", title: "Parity hole", summary: "s", tags: [], hash: "h" };
+      store.saveDocument(meta, [
+        {
+          heading: "Section",
+          content:
+            "```\nReal prose leading into a heading\n#### Real subheading between stray delimiters\n\nbody\n```",
+          position: 0,
+        },
+      ]);
+      const read = new ReadDocument(store);
+
+      const result = read.execute({ path: "parityhole.md", section: "real subheading between stray delimiters" });
+      expect(result.type).toBe("section-not-found");
+      if (result.type !== "section-not-found") return;
+      expect(result.availableSections).not.toContain("Real subheading between stray delimiters");
+    } finally {
+      store.close();
+    }
+  });
+});
+
 describe("formatFrontmatter — conditional rendering of absent fields", () => {
   function baseMeta(overrides: Partial<DocumentMeta> = {}): DocumentMeta {
     return { path: "a.md", title: "A", summary: "r", tags: [], hash: "h", ...overrides };
