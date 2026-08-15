@@ -15,7 +15,7 @@ can capture a request.
 **One of three changes split from the same review pass** (`code-review-src-2026-08-14.md`, findings
 1.3/1.4/1.5). Siblings: `filter-input-hygiene` (1.3) and `overview-counter-safety` (1.5), proposed in
 parallel. They share an origin document and an exploration artifact
-(`openspec/changes/2026-08-15-code-review-findings-1.3-1.5/exploration.md`) and nothing else — no
+(`openspec/changes/archive/2026-08-15-code-review-findings-1.3-1.5/exploration.md`) and nothing else — no
 file, no test, no spec requirement. They are not to be bundled; see that exploration's comparison
 table and its recorded user decision.
 
