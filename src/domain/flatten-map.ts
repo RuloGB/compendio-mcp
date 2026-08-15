@@ -9,6 +9,8 @@
  * instead of something that has to be argued.
  */
 
+import { isFenceDelimiter } from "./split-text.js";
+
 export interface FlatText {
   text: string;
   /**
@@ -69,9 +71,27 @@ export function toFlatOffset(flat: FlatText, rawOffset: number): number {
   return lo;
 }
 
+/** Anchor-free and prefix-only, deliberately: `split("\n")` leaves a trailing
+ * `\r` on every line of a CRLF document, and `.` never matches it. Adding a
+ * `$` here would silently stop matching every heading on
+ * `docs/documentation-convention.md`. See read-document.ts:120-138. Stateless
+ * (no `g` flag), so module scope is safe — unlike trackedReplace's regexes,
+ * which are cloned at :117-118 precisely because they carry `lastIndex`. */
+const HEADING_LINE_PREFIX = /^\s*#{1,6}\s/;
+
 /**
- * S1: drops heading lines (`/^\s*#{1,6}\s/`), joining the kept lines with a
- * single space. Every kept line character keeps its own raw offset; the
+ * S1: drops heading lines (`HEADING_LINE_PREFIX`) OUTSIDE any fenced code
+ * block, joining the kept lines with a single space. A heading-pattern line
+ * INSIDE a balanced fence (chunk-local fence-delimiter-line count is even —
+ * design.md Decision 1) is author-written content, not a real heading, so it
+ * is kept. An unbalanced (odd-count) chunk means the fence begins or ends
+ * mid-chunk; fence state cannot be trusted there, so every heading-pattern
+ * line is still stripped, exactly as before this fence-awareness existed.
+ *
+ * Fence delimiter lines themselves are ALWAYS kept, never dropped — S2 (the
+ * caller's next step) needs both delimiters of a pair present in this
+ * function's OWN output to recognize and drop a fence at all (design.md
+ * Decision 2). Every kept line character keeps its own raw offset; the
  * separator space between two consecutive kept lines maps to the raw offset
  * of the line that FOLLOWS it, per design.md's S1 row.
  */
@@ -84,12 +104,21 @@ function stripHeadingLines(markdown: string): FlatText {
     offset += line.length + 1; // +1 accounts for the removed "\n"
   }
 
+  // Chunk-local fence state, trusted only when the delimiter count is even.
+  const balanced = lines.filter(isFenceDelimiter).length % 2 === 0;
+
   const chars: string[] = [];
   const map: number[] = [];
   let emittedAnyLine = false;
+  let inFence = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
-    if (/^\s*#{1,6}\s/.test(line)) continue;
+    if (isFenceDelimiter(line)) {
+      if (balanced) inFence = !inFence;
+      // NO `continue` — a delimiter line is CONTENT here. See D2.
+    } else if (!inFence && HEADING_LINE_PREFIX.test(line)) {
+      continue;
+    }
     if (emittedAnyLine) {
       chars.push(" ");
       map.push(lineStarts[i]!);

@@ -241,6 +241,31 @@ The MCP surface stays exactly these 3 tools — **`compendio sync` is a human-on
   suppressed. Unlike (2), this is the regression direction (a real heading becomes unreachable), and it
   is a deliberately accepted, documented limitation (design.md Decision 4's orchestrator note,
   `read-doc-fence-aware-sections`), not a defect — see `mcp-contract/spec.md`'s fourth non-guarantee.
+- **`search_docs` excerpt flattening (`stripHeadingLines`, `src/domain/flatten-map.ts`) is fence-aware,
+  chunk-local, and balanced-only, sharing the same `isFenceDelimiter` predicate as `read_doc`'s section
+  lookup above** (`excerpt-fence-aware-flatten`) — the counterpart change to the `read_doc` bullet above,
+  not its copy: the fence-interior heading-pattern line is **kept**, not skipped, because S1's output
+  feeds the next flatten step (`` /```[^`]*```/g ``), which needs both delimiters of a pair present to
+  recognize and drop a fence at all — a copied `continue` would silently disable that drop corpus-wide
+  while every existing invariant stayed green. The same four shapes are uncovered, but shape 4 (a
+  misaligned-even chunk: stray closer, then content, then stray opener) has the **opposite, milder**
+  consequence here: a real document heading is misread as fence-interior and **retained**, leaking its
+  text into the excerpt as prose, rather than a real section becoming unreachable. Shapes 1-3 (unterminated
+  fence, chunk-crossing fence, 4-space-indented block) fail toward today's behaviour, same as `read_doc`'s.
+  One measured, deliberately unfixed residual risk: a fence-interior heading-pattern line can now carry a
+  backtick, and an ODD backtick count breaks `` /```[^`]*```/g ``'s pairing, leaking the whole fence into
+  the excluded-pass excerpt too — measured as zero live instances on this repo's own corpus (0 of 21 newly
+  retained fence-interior lines carry a backtick), and recorded rather than fixed, since fixing it means
+  designing and CRLF-verifying a second regex for a step (S2) this change deliberately did not touch. The
+  probe script for this gate lives beside `section-lookup.mjs`:
+  `scripts/excerpt-flatten-probe.mjs <root>` (needs `node dist/cli.js --root . index --lexical` first).
+- **`isFenceDelimiter`'s revisit trigger (`read-doc-fence-aware-sections`'s Decision 1: "move it to its
+  own domain module when a third consumer appears… the candidate is already identified:
+  `src/domain/flatten-map.ts:92`") has now fired — `excerpt-fence-aware-flatten` is that third consumer —
+  and was deliberately deferred again, not acted on.** The function stays exported from
+  `src/domain/split-text.ts`, imported by `flatten-map.ts` and `read-document.ts` both. Recording it here,
+  in the same greppable sentence as the S2 follow-up above, is the point: the previous deferral survived
+  only as one line in an archived change's report and had to be rediscovered by a whole new SDD cycle.
 - **The `HEADING_LINE` regex needs an explicit `\r?` before its `$` anchor, or CRLF documents lose every
   content-derived heading, silently.** Discovered live on this repository's OWN CRLF-encoded
   `docs/documentation-convention.md` during `read-doc-fence-aware-sections`: `String.split("\n")`
