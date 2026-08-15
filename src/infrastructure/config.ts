@@ -105,7 +105,7 @@ export function loadConfigReport(root: string): ConfigLoadReport {
     parsed = JSON.parse(raw);
   } catch (error) {
     throw new Error(
-      `${CONFIG_FILE} no es JSON valido: ${error instanceof Error ? error.message : String(error)}`,
+      `${CONFIG_FILE} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   const warnings: ConfigWarning[] = [];

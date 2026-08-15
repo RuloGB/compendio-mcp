@@ -42,7 +42,7 @@ export function formatDocLine(doc: {
 }
 
 /** Default ordering: alphabetical by `path` (the zero-config/loose default). */
-function compararAlfabetico(a: IndexEntry, b: IndexEntry): number {
+function compareAlphabetical(a: IndexEntry, b: IndexEntry): number {
   return a.path.localeCompare(b.path);
 }
 
@@ -54,7 +54,7 @@ function compararAlfabetico(a: IndexEntry, b: IndexEntry): number {
  */
 export function renderIndexMd(
   docs: IndexEntry[],
-  compare: (a: IndexEntry, b: IndexEntry) => number = compararAlfabetico,
+  compare: (a: IndexEntry, b: IndexEntry) => number = compareAlphabetical,
 ): string {
   const lines = [...docs].sort(compare).map((doc) =>
     formatDocLine({

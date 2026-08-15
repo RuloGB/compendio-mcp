@@ -1,6 +1,5 @@
 /**
- * Core domain model. Field names in Spanish mirror the public data contract
- * (database columns and MCP tool responses).
+ * Core domain model.
  */
 
 /** Metadata of an indexed markdown document (one per .md file). */
