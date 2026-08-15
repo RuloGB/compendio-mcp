@@ -94,6 +94,30 @@ script asserts the resulting invariant (cosines monotonically non-increasing dow
 normalized vectors make ascending L2 order identical to descending cosine order) and exits non-zero if
 it breaks. Numbers for both runs live in the change's `verify-report.md`, not here.
 
+Manual gate (`read-doc-fence-aware-sections`): proves `read_doc`'s section lookup no longer treats a
+heading-pattern line inside a fenced code block as an addressable section. `read_doc` is MCP-only (no
+`read` CLI command), so this follows the `vector-reach.mjs` precedent — a script that drives
+`ReadDocument` directly, no model download:
+
+```bash
+node dist/cli.js --root . index --lexical
+node scripts/section-lookup.mjs . "docs/documentation-convention.md" "Business rules"
+```
+
+`scripts/section-lookup.mjs` prints the `ReadResult` discriminant, the matched chunk(s)' own stored
+`heading` and fence-delimiter-line count, and — for `section-not-found` — the full sorted
+`availableSections`. Its one asserted self-check exits non-zero when a `section` result's matched
+chunk has no OWN heading matching the request (the defect's exact shape: the match came only from a
+line inside chunk *content*).
+
+Measured before/after against this repository's own `docs/documentation-convention.md` (its
+"12. Templates" chunk contains a fenced functional-spec template with `## Business rules` inside it):
+
+| | Result type | availableSections | Self-check exit code |
+|---|---|---|---|
+| Before | `section` (wrong chunk: "12. Templates") | n/a | **1** (non-zero — match came only from content) |
+| After | `section-not-found` | 19, none of the 17 phantom fenced-heading names among them | **0** |
+
 Manual gate 2 (`bounded-chunk-size`): proves the fix at full-corpus scale — the shape Gate 1b's
 6-document fixture only approximates — using the same generator's default profile (38 documents, one
 167 KB heading-less document, pre-change baseline **242 chunks / 367 s** at `maxTokens: 800`):
@@ -194,6 +218,36 @@ The MCP surface stays exactly these 3 tools — **`compendio sync` is a human-on
 - **A structurally impossible filter is dropped, not honoured** (`dropImpossibleFilters` in `src/domain/search-diagnostics.ts`). An agent told to go straight to `search_docs` cannot know the project's taxonomy, so it infers `type` from directory names (`docs/uc/` → `type: "uc"`); against a project whose frontmatter keys were never mapped, that filter can never match. Prose could not stop this — parameter descriptions saying "never infer it from directory names" were observed being ignored three times in one session, with the agent escalating `k` from 5 to 10 rather than dropping the filter `noMatchReason` told it to drop. So the mechanism changed instead: a filter targeting a field **no document declares** is removed, the search re-runs unfiltered, and `filterWarning` says what was ignored and names `convention.frontmatterFields` as the real fix. Nothing is hidden — the fallback is loud. The narrower line matters: a filter on a *declared* field with an unknown value is kept, because that request is answerable and the caller gets the real values back to correct itself with.
 - **An empty `search_docs` result explains itself** via `noMatchReason` (`explainEmptyResult`), covering the value-does-not-exist case (declared values listed), individually-valid filters whose combination matches nothing, and the project's own `convention.excludedStatuses` deny-list — that last being the case a caller cannot possibly guess, since it comes from config rather than the request. Deliberately absent on an *unfiltered* miss: a bare query matching nothing needs no explanation, and inventing one would be noise on every empty search.
 - **`read_doc` tolerates one leading path segment** (`ReadDocument.resolve`, unchanged by `multiple-doc-roots` — the strip-fallback branch was already correct once every indexed path carries its root alias). Indexed paths are root-alias-prefixed (`docs/func/x.md`), so a caller holding the on-disk project-relative path now hits the **exact** match; the strip fallback is reserved for a genuinely over-prefixed value (`repo/docs/func/x.md` → strips to `docs/func/x.md`). Only attempted when the literal path misses, and only one segment deep, so a genuine document at `a/b.md` always wins over stripping into `b.md`. **One documented non-guarantee**: with multiple declared roots, a miss whose stripped form happens to equal another root's real path resolves to that document instead of `path-not-found` (`docsDir: ["docs","adr"]`, requesting the non-existent `docs/adr/x.md` strips to the real `adr/x.md`) — the mechanism cannot distinguish this from the over-prefixing case it exists to serve. A bare basename (`x.md`) no longer resolves at all, since a single-segment path has no leading segment to strip; it returns `path-not-found` with the 3 closest matches.
+- **`read_doc`'s section lookup is fence-aware, chunk-local, and shares the chunker's own
+  `isFenceDelimiter` predicate — not a stricter parser, deliberately.** `headingsIn`
+  (`src/application/read-document.ts`) excludes a `##`-`######` line that sits inside a fenced code
+  block from both section matching and the `section-not-found` available-sections listing, using the
+  exact same fence-delimiter regex `splitToBound` uses (`src/domain/split-text.ts`'s exported
+  `isFenceDelimiter`) — the same argument as the sqlite-vec/normalized-vectors bullets above:
+  `read_doc` agreeing with the boundaries the indexer actually produced matters more than either being
+  independently more CommonMark-correct. Fence state is evaluated per **stored chunk**, never across
+  chunk boundaries, and only suppresses a heading when that chunk's own fence-delimiter-line count is
+  even (balanced) — an odd count means the chunk begins or ends mid-fence and nothing in it is
+  suppressed. Four named non-guarantees, not covered by this fence-awareness: **(1)** an unterminated
+  fence (no closing delimiter anywhere in the chunk) still produces phantom headings; **(2)** a chunk
+  that begins mid-fence (no opening delimiter, because the fence opened in a preceding chunk) is
+  unaffected — safe direction, the heading stays reachable; **(3)** a 4-space-indented code block
+  carries no fence delimiter to detect at all; **(4)** a chunk whose fence-delimiter count is even but
+  *misaligned* — one stray closer (from a fence opened in an earlier chunk) immediately followed by one
+  stray opener (starting a fence that continues into a later chunk) — reads as "balanced" like a
+  genuine self-contained fence, so a real heading sitting between the two stray delimiters is
+  suppressed. Unlike (2), this is the regression direction (a real heading becomes unreachable), and it
+  is a deliberately accepted, documented limitation (design.md Decision 4's orchestrator note,
+  `read-doc-fence-aware-sections`), not a defect — see `mcp-contract/spec.md`'s fourth non-guarantee.
+- **The `HEADING_LINE` regex needs an explicit `\r?` before its `$` anchor, or CRLF documents lose every
+  content-derived heading, silently.** Discovered live on this repository's OWN CRLF-encoded
+  `docs/documentation-convention.md` during `read-doc-fence-aware-sections`: `String.split("\n")`
+  leaves a trailing `\r` on every line, and — unlike the previous `matchAll(/…/gm)` on the WHOLE
+  document, where `$` (multiline mode) matches immediately before ANY line terminator including a bare
+  `\r` — a per-line `.exec()` without the `/m` flag requires `$` to sit at the literal end of that
+  line's string. `.` never matches `\r`, so `(.+)$` (with no trailing `\r?`) fails to match every
+  single heading line on a CRLF document, not merely fenced ones. `HEADING_LINE` is
+  `/^#{2,6}\s+(.+)\r?$/`, not `/^#{2,6}\s+(.+)$/`, precisely to keep this working.
 - **The excerpt budget is graduated by rank, not uniform** (`src/domain/excerpt.ts`'s `excerptBudget`). A flat cap loses either way: small enough to keep `k` results affordable is too small to answer with. Measured over `ejemplos/` + a 17-doc external corpus, the previous flat 240 truncated ~93% of fragments and withheld ~70% of their content, so `search_docs` paid answer prices for router value while `read_doc` stayed mandatory anyway. The policy is only sound because rank 1 usually *is* the answer (hybrid MRR 0.943, top-1 20/22 on `ejemplos/`) — if that regresses, revisit this first.
 - A file that is unreadable, genuinely undecodable (neither valid UTF-8 nor plausibly CP1252 — see `decode-text.ts` above), fails frontmatter parsing, or (under `strict`) fails validation is skipped and reported in `skipped` — both by `index` and by `index-md` — never a hard failure of the whole run; these resilience reasons are mode-independent (identical under `loose` and `strict`). A file that decodes successfully under a non-UTF-8 encoding is not skipped — it is indexed normally and reported separately as transcoded.
 - Test doubles: `test/helpers/fake-embeddings.ts` provides a deterministic embeddings stub (stem-grouped, no model download) used by integration tests against the real `ejemplos/` corpus. `test/fixtures/strict/` is a small synthetic corpus + `compendio.config.json` that exercises `convention.mode: "strict"` end to end.
