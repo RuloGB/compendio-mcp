@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { splitToBound } from "../../src/domain/split-text";
+import { isFenceDelimiter, splitToBound } from "../../src/domain/split-text";
 import * as tokensModule from "../../src/domain/tokens";
 import { estimateTokens } from "../../src/domain/tokens";
 
@@ -193,6 +193,44 @@ describe("splitToBound", () => {
 
     // Nothing from the source is lost.
     expect(pieces.join("")).toContain(hugeCell);
+  });
+});
+
+// --- `isFenceDelimiter` — direct coverage of the chunker's own predicate ---
+//
+// Exported for read_doc's fence-aware section lookup (design.md Decision 1/2,
+// read-doc-fence-aware-sections). This is a deliberate CommonMark
+// approximation, not a stricter parser — these cases pin the approximation's
+// exact edges so a future PR cannot "fix" it into disagreeing with the
+// chunker (design.md, "Consistency beats correctness here").
+
+describe("isFenceDelimiter", () => {
+  it("recognizes a plain backtick fence", () => {
+    expect(isFenceDelimiter("```")).toBe(true);
+  });
+
+  it("recognizes a plain tilde fence", () => {
+    expect(isFenceDelimiter("~~~")).toBe(true);
+  });
+
+  it("recognizes four backticks (a longer fence run)", () => {
+    expect(isFenceDelimiter("````")).toBe(true);
+  });
+
+  it("recognizes a fence with arbitrary leading whitespace", () => {
+    expect(isFenceDelimiter("   ```")).toBe(true);
+  });
+
+  it("recognizes a fence carrying an info string", () => {
+    expect(isFenceDelimiter("```markdown")).toBe(true);
+  });
+
+  it("does not recognize two backticks", () => {
+    expect(isFenceDelimiter("``")).toBe(false);
+  });
+
+  it("does not recognize a line that merely contains backticks later in the line", () => {
+    expect(isFenceDelimiter("some text with ``` backticks later")).toBe(false);
   });
 });
 
