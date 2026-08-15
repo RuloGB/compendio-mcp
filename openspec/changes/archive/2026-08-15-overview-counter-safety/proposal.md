@@ -12,7 +12,7 @@ this change is scoped, sized and reviewed.
 **One of three changes split from the same review pass** (`code-review-src-2026-08-14.md`, finding
 1.5). The siblings are `filter-input-hygiene` (1.3) and `read-doc-fence-aware-sections` (1.4),
 proposed in parallel. They share an origin document and a shared exploration
-(`openspec/changes/2026-08-15-code-review-findings-1.3-1.5/exploration.md`) and nothing else. The
+(`openspec/changes/archive/2026-08-15-code-review-findings-1.3-1.5/exploration.md`) and nothing else. The
 1.4-vs-1.5 split was put to the user explicitly on 2026-08-15 and resolved in favour of separating
 them; it is not to be re-opened by a later phase.
 

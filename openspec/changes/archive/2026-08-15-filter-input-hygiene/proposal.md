@@ -12,7 +12,7 @@ The consequence is not cosmetic. A `module: ""` arriving from an MCP client reac
 never meaningfully made.
 
 **This is one of three changes split from the same exploration**
-(`openspec/changes/2026-08-15-code-review-findings-1.3-1.5/exploration.md`, finding 1.3). The siblings
+(`openspec/changes/archive/2026-08-15-code-review-findings-1.3-1.5/exploration.md`, finding 1.3). The siblings
 are `read-doc-fence-aware-sections` (1.4) and `overview-counter-safety` (1.5), proposed in parallel.
 They share an origin document and nothing else — different spec capabilities, different files, zero
 shared code. They are not to be bundled.
