@@ -18,8 +18,8 @@ function entry(overrides: Partial<IndexEntry>): IndexEntry {
   };
 }
 
-function listedPaths(salida: string): string[] {
-  return salida
+function listedPaths(output: string): string[] {
+  return output
     .split("\n")
     .filter((line) => line.startsWith("- "))
     .map((line) => line.split(" — ")[0]!.replace(/^- (\[[^\]]+\] )?/, ""));
@@ -27,19 +27,19 @@ function listedPaths(salida: string): string[] {
 
 describe("renderIndexMd", () => {
   it("defaults to alphabetical order by path with no comparator supplied", () => {
-    const salida = renderIndexMd([entry({ path: "b.md" }), entry({ path: "a.md" })]);
-    expect(listedPaths(salida)).toEqual(["a.md", "b.md"]);
+    const output = renderIndexMd([entry({ path: "b.md" }), entry({ path: "a.md" })]);
+    expect(listedPaths(output)).toEqual(["a.md", "b.md"]);
   });
 
   it("uses an injected comparator when supplied", () => {
     const inverso = (a: IndexEntry, b: IndexEntry) => b.path.localeCompare(a.path);
-    const salida = renderIndexMd([entry({ path: "a.md" }), entry({ path: "b.md" })], inverso);
-    expect(listedPaths(salida)).toEqual(["b.md", "a.md"]);
+    const output = renderIndexMd([entry({ path: "a.md" }), entry({ path: "b.md" })], inverso);
+    expect(listedPaths(output)).toEqual(["b.md", "a.md"]);
   });
 
   it("collapses whitespace and truncates long summaries", () => {
-    const salida = renderIndexMd([entry({ summary: `linea\nrota   ${"x".repeat(200)}` })]);
-    const linea = salida.split("\n").find((l) => l.startsWith("- "))!;
+    const output = renderIndexMd([entry({ summary: `linea\nrota   ${"x".repeat(200)}` })]);
+    const linea = output.split("\n").find((l) => l.startsWith("- "))!;
     const summary = linea.split(" — ")[1]!.replace(/ \(vigente\)$/, "");
     expect(summary).toContain("linea rota");
     expect(summary).toHaveLength(MAX_SUMMARY_CHARS);
@@ -47,15 +47,15 @@ describe("renderIndexMd", () => {
   });
 
   it("falls back to the title when the summary is empty", () => {
-    const salida = renderIndexMd([entry({ summary: "  ", title: "Guía de despliegue" })]);
-    expect(salida).toContain("- [guia] auth/doc.md — Guía de despliegue (vigente)");
+    const output = renderIndexMd([entry({ summary: "  ", title: "Guía de despliegue" })]);
+    expect(output).toContain("- [guia] auth/doc.md — Guía de despliegue (vigente)");
   });
 
   it("renders only the header for an empty corpus", () => {
-    const salida = renderIndexMd([]);
-    expect(salida).toContain("# Documentation index");
-    expect(salida).not.toContain("- [");
-    expect(salida.endsWith("\n")).toBe(true);
+    const output = renderIndexMd([]);
+    expect(output).toContain("# Documentation index");
+    expect(output).not.toContain("- [");
+    expect(output.endsWith("\n")).toBe(true);
   });
 });
 

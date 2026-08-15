@@ -97,8 +97,8 @@ describe("GenerateIndexMd — loose mode over inline fixtures", () => {
 
     expect(report.documents).toBe(2);
     expect(report.skipped).toEqual([]);
-    const lineas = writer.content!.split("\n").filter((l) => l.startsWith("- "));
-    expect(lineas).toEqual(["- a.md — Summary A.", "- b.md — Summary B."]);
+    const lines = writer.content!.split("\n").filter((l) => l.startsWith("- "));
+    expect(lines).toEqual(["- a.md — Summary A.", "- b.md — Summary B."]);
   });
 
   it("never lists INDEX.md itself, even when the source yields it", async () => {
