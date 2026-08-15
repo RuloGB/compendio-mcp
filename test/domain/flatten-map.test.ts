@@ -1,16 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { flattenWithMap, toFlatOffset, type FlatText } from "../../src/domain/flatten-map";
+import { isFenceDelimiter } from "../../src/domain/split-text";
 
 /**
  * I4 golden reference: a duplicate copy of today's private `flatten()`
  * chain (`excerpt.ts:61-74`), kept only to prove `flattenWithMap` produces
  * byte-identical text. `flatten`'s exact output is the excerpt contract,
  * and this refactor is otherwise free to change it silently.
+ *
+ * Rewritten 2026-08-16 by `excerpt-fence-aware-flatten` (design.md Decision
+ * 4): the fence-BLIND filter this used to carry is the defect under study,
+ * not the contract to preserve. Only the fence-delimiter *predicate* is
+ * shared with production (`isFenceDelimiter`) — the balanced-count + toggle
+ * loop below stays an independently hand-written witness, deliberately
+ * still a separate loop from `stripHeadingLines`'s.
  */
 function referenceFlatten(markdown: string, dropFencedBlocks: boolean): string {
-  const withoutHeadings = markdown
-    .split("\n")
-    .filter((line) => !/^\s*#{1,6}\s/.test(line))
+  const lines = markdown.split("\n");
+  const balanced = lines.filter(isFenceDelimiter).length % 2 === 0;
+  let inFence = false;
+  const withoutHeadings = lines
+    .filter((line) => {
+      if (isFenceDelimiter(line)) {
+        if (balanced) inFence = !inFence;
+        return true; // kept, unlike a plain heading strip — design.md Decision 2
+      }
+      return inFence || !/^\s*#{1,6}\s/.test(line);
+    })
     .join(" ");
   const body = dropFencedBlocks
     ? withoutHeadings.replace(/```[^`]*```/g, " ")
@@ -66,6 +82,26 @@ const GENERATED_INPUTS: { name: string; markdown: string }[] = [
   {
     name: "blockquote marker",
     markdown: "> A quoted line\nNormal line after.",
+  },
+  // Added 2026-08-16 by `excerpt-fence-aware-flatten` (design.md Decision 4)
+  // — none of the fixtures above put a `#`-line INSIDE a fence, so I4 could
+  // not detect the fence-blindness defect this change fixes.
+  {
+    name: "backtick fence containing a fence-interior heading-pattern line",
+    markdown: "Prose before.\n\n```python\n# a python comment\nprint('hi')\n```\n\nProse after.",
+  },
+  {
+    name: "fence-interior heading-pattern line with an odd backtick count",
+    markdown:
+      "Before text.\n\n```js\n# a comment with an odd ` backtick\nconst x = 1;\n```\n\nAfter text.",
+  },
+  {
+    name: "unterminated fence (odd delimiter count) with a heading-pattern line inside",
+    markdown: "Prose before.\n\n```python\n# not really a heading\nprint('unterminated')\n\nProse after, no closing fence.",
+  },
+  {
+    name: "misaligned-even fence: stray closer, real heading, stray opener",
+    markdown: "Some prose before.\n```\n## Real Heading\n```\nSome prose after.",
   },
 ];
 

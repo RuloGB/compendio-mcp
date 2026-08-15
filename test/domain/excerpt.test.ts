@@ -185,6 +185,90 @@ describe("buildExcerpt — window centred on a matched span (Decision 5/6)", () 
   });
 });
 
+describe("buildExcerpt — fence-aware S1 (excerpt-fence-aware-flatten, design.md D1-D5)", () => {
+  it("falls back to fenced content that now includes a retained fence-interior heading-pattern line", () => {
+    // Traces spec scenario "A fence-interior heading-pattern line is
+    // retained when the excluded pass is empty" — the chunk is entirely one
+    // fenced block, so the fenced-blocks-excluded pass yields no text and
+    // the fallback (excerpt.ts:68) fires.
+    const excerpt = buildExcerpt("```python\n# a python comment\nprint('hi')\n```");
+    expect(excerpt).toContain("a python comment");
+  });
+
+  it("D3: a span on a retained fence-interior heading-pattern line becomes locatable and survives filtering", () => {
+    // Uses a tilde fence, which is outside S2's backtick-only regex
+    // (exploration.md §0, row 3) — this isolates D3's map-locatability claim
+    // from S2's fence-drop behaviour, which the Gate 2 case below covers
+    // separately. Before this change, S1 unconditionally stripped every
+    // heading-pattern line, so the marker's raw offset never survived
+    // flattening: toFlatOffset resolved it forward past the whole fence,
+    // collapsing the span to end === start, and it was filtered out at
+    // excerpt.ts:98 — the excerpt would fall through to prefixExcerpt and
+    // never contain the marker.
+    const marker = "TARGETMARKER";
+    const before = words(150);
+    const after = words(150);
+    const markdown = `${before}\n\n~~~\n# ${marker} inside a tilde fence\n~~~\n\n${after}`;
+    const rawStart = markdown.indexOf(marker);
+    const spans: MatchSpan[] = [{ start: rawStart, end: rawStart + marker.length, term: marker.toLowerCase() }];
+
+    const excerpt = buildExcerpt(markdown, 60, spans);
+
+    expect(excerpt).toContain(marker);
+  });
+
+  it("Gate 2: a fence holding a retained heading-pattern line is still recognized and dropped by the excluded pass", () => {
+    // Traces spec scenario of the same name. dropFencedBlocks: true must be
+    // byte-identical before and after this change — proof that delimiter
+    // lines survived S1 for S2 to still recognize and drop the whole fence.
+    // dropFencedBlocks: false (S2 skipped) now surfaces the retained line's
+    // own text, which used to be silently dropped by S1 regardless of S2.
+    const markdown = "Prose before.\n\n```python\n# a python comment\nprint('hi')\n```\n\nProse after.";
+
+    const withFencesExcluded = flattenWithMap(markdown, true).text;
+    const withFencesIncluded = flattenWithMap(markdown, false).text;
+
+    expect(withFencesExcluded).toBe("Prose before. Prose after.");
+    expect(withFencesIncluded).toContain("a python comment");
+  });
+
+  // Gate 4 (measurement-only, design.md D5/M1): a fence-interior
+  // heading-pattern line carrying an ODD number of backticks injects a
+  // stray backtick into the string S2 scans, which can break
+  // `/```[^`]*```/g` where it previously matched cleanly. Decision: measure
+  // it, record the outcome, do not fix it (fixing it means designing and
+  // CRLF-verifying a second regex for S2, which is out of scope). There is
+  // no required pass/fail outcome here — the only failing outcome is not
+  // measuring it.
+  //
+  // Measured verbatim, both directions, on 2026-08-16 (git-stash comparison
+  // against the pre-fix `stripHeadingLines`):
+  //
+  //   BEFORE (fence-blind S1 — the `#` line, and its stray backtick, never
+  //   reached S2 at all):
+  //     dropFencedBlocks: true  -> "Before text. After text."
+  //     dropFencedBlocks: false -> "Before text. js const x = 1; After text."
+  //
+  //   AFTER (fence-aware S1 — the retained line's lone backtick makes three
+  //   backticks appear between the fence's two real delimiters, an odd
+  //   count `/```[^`]*```/g` cannot pair, so S2 makes ZERO replacements and
+  //   the accepted outcome fires: the whole fence leaks into BOTH passes,
+  //   identically):
+  //     dropFencedBlocks: true  -> "Before text. js # a comment with an odd backtick const x = 1; After text."
+  //     dropFencedBlocks: false -> "Before text. js # a comment with an odd backtick const x = 1; After text."
+  it("Gate 4 (measurement-only): odd-backtick fence-interior heading line — recorded, not asserted pass/fail", () => {
+    const markdown =
+      "Before text.\n\n```js\n# a comment with an odd ` backtick\nconst x = 1;\n```\n\nAfter text.";
+
+    const withFencesExcluded = flattenWithMap(markdown, true).text;
+
+    // The only required check: the mechanism (S2 makes zero replacements,
+    // so this output equals the false-pass output) is reproducible, not
+    // that it takes any particular shape.
+    expect(withFencesExcluded).toBe(flattenWithMap(markdown, false).text);
+  });
+});
+
 describe("excerptBudget", () => {
   it("gives the lead fragment room to answer and the rest room to signpost", () => {
     expect(excerptBudget(0)).toBe(LEAD_EXCERPT_CHARS);
