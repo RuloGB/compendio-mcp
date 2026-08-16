@@ -103,6 +103,30 @@ const GENERATED_INPUTS: { name: string; markdown: string }[] = [
     name: "misaligned-even fence: stray closer, real heading, stray opener",
     markdown: "Some prose before.\n```\n## Real Heading\n```\nSome prose after.",
   },
+  // Added 2026-08-16 by `excerpt-fence-drop-generalization` (design.md D2,
+  // D9) — none of the fixtures above use `~~~` delimiters or fence nesting,
+  // so I1-I4 could not exercise the new regex's second branch or its
+  // nearest-closer pairing.
+  {
+    name: "tilde-delimited fence (LF)",
+    markdown: "Prose before.\n\n~~~json\n{ \"key\": \"value\" }\n~~~\n\nProse after.",
+  },
+  {
+    name: "tilde-delimited fence (CRLF)",
+    markdown: "Prose before.\r\n\r\n~~~json\r\n{ \"key\": \"value\" }\r\n~~~\r\n\r\nProse after.",
+  },
+  {
+    name: "backtick fence nested in a tilde fence",
+    markdown: "Prose before.\n\n~~~md\n```js\nconst x = 1;\n```\n~~~\n\nProse after.",
+  },
+  {
+    name: "tilde fence nested in a backtick fence",
+    markdown: "Prose before.\n\n```md\n~~~js\nconst x = 1;\n~~~\n```\n\nProse after.",
+  },
+  {
+    name: "two adjacent same-kind fences with prose between",
+    markdown: "```a\ncode a\n```\n\nProse between.\n\n```b\ncode b\n```",
+  },
 ];
 
 describe("flattenWithMap invariants (I1-I3)", () => {
@@ -125,6 +149,26 @@ describe("flattenWithMap I4 — matches today's flatten() output exactly", () =>
       });
     }
   }
+});
+
+// Gate 3b (design.md D2/D3): the ONE explicit content assertion outside the
+// golden-reference suite. `*?` (non-greedy) is load-bearing for
+// `flatten-map.ts:35` — a greedy `[\s\S]*` would match from the chunk's
+// FIRST delimiter to its LAST, merging both fences and deleting the prose
+// between them. I1-I3 hold happily on a wrong (over-merged) string, and I4
+// cannot catch a symmetric greedy typo either, because `referenceFlatten`
+// carries the textually identical literal (design.md D3). This is the one
+// assertion a symmetric greedy-regex typo in both literals would not be
+// caught by I4. Direct `toBe`, deliberately NOT routed through
+// `referenceFlatten`.
+describe("flattenWithMap — Gate 3b: adjacent same-kind fences do not merge (excerpt-fence-drop-generalization, design.md D2)", () => {
+  it("drops both fences independently and keeps the prose between them", () => {
+    const markdown = "```a\ncode a\n```\n\nProse between.\n\n```b\ncode b\n```";
+
+    const flat = flattenWithMap(markdown, true);
+
+    expect(flat.text).toBe("Prose between.");
+  });
 });
 
 function assertInvariants(flat: FlatText, raw: string): void {

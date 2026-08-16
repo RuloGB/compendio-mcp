@@ -256,16 +256,62 @@ describe("buildExcerpt — fence-aware S1 (excerpt-fence-aware-flatten, design.m
   //   identically):
   //     dropFencedBlocks: true  -> "Before text. js # a comment with an odd backtick const x = 1; After text."
   //     dropFencedBlocks: false -> "Before text. js # a comment with an odd backtick const x = 1; After text."
-  it("Gate 4 (measurement-only): odd-backtick fence-interior heading line — recorded, not asserted pass/fail", () => {
+  //
+  //   AFTER `excerpt-fence-drop-generalization` (S2 crosses the interior
+  //   backtick and pairs on the nearest real closer):
+  //     dropFencedBlocks: true  -> "Before text. After text."
+  //     dropFencedBlocks: false -> "Before text. js # a comment with an odd backtick const x = 1; After text."
+  //
+  // DO NOT "REPAIR" THIS BY REVERTING flatten-map.ts:35. The equality this
+  // test used to assert WAS the defect (S2 made zero replacements). Its
+  // divergence is the fix working. See excerpt-fence-drop-generalization.
+  it("the interior-backtick fence is dropped from the excluded pass (was: the pinned defect)", () => {
     const markdown =
       "Before text.\n\n```js\n# a comment with an odd ` backtick\nconst x = 1;\n```\n\nAfter text.";
 
     const withFencesExcluded = flattenWithMap(markdown, true).text;
+    const withFencesIncluded = flattenWithMap(markdown, false).text;
 
-    // The only required check: the mechanism (S2 makes zero replacements,
-    // so this output equals the false-pass output) is reproducible, not
-    // that it takes any particular shape.
-    expect(withFencesExcluded).toBe(flattenWithMap(markdown, false).text);
+    expect(withFencesExcluded).toBe("Before text. After text.");
+    // The two passes must now DIVERGE. Asserted separately from the toBe
+    // above because equality was the defect's signature, and this is the
+    // line a future reader is most likely to try to "repair".
+    expect(withFencesExcluded).not.toBe(withFencesIncluded);
+    for (const leaked of ["js", "# a comment with an odd", "const x = 1;"]) {
+      expect(withFencesExcluded).not.toContain(leaked);
+    }
+  });
+});
+
+describe("buildExcerpt — S2 fence drop generalization (excerpt-fence-drop-generalization, design.md D2-D7)", () => {
+  // Traces spec scenario "A tilde-fenced block is excluded from the lead
+  // excerpt": before this change S2's regex was spelled entirely in
+  // backticks, so a `~~~`-delimited fence was never recognized in either
+  // pass.
+  it("drops a tilde-delimited fence from the excluded pass, keeping the prose", () => {
+    const markdown =
+      "Opening prose paragraph.\n\n~~~json\n{ \"docsDir\": [\"docs\"] }\n~~~\n\nClosing prose paragraph.";
+
+    const withFencesExcluded = flattenWithMap(markdown, true).text;
+
+    expect(withFencesExcluded).toBe("Opening prose paragraph. Closing prose paragraph.");
+    expect(withFencesExcluded).not.toContain("~~~");
+    expect(withFencesExcluded).not.toContain("docsDir");
+  });
+
+  // Traces spec scenario "A CRLF-encoded tilde fence is excluded identically
+  // to an LF-encoded one" — neither S1's line-splitting nor S2's new regex
+  // carries an anchor, so a `\r` left on a kept line is harmless (CLAUDE.md's
+  // HEADING_LINE house rule: anchor-free and prefix-only, always).
+  it("drops a CRLF-encoded tilde-delimited fence identically to the LF case", () => {
+    const markdown =
+      "Opening prose paragraph.\r\n\r\n~~~json\r\n{ \"docsDir\": [\"docs\"] }\r\n~~~\r\n\r\nClosing prose paragraph.";
+
+    const withFencesExcluded = flattenWithMap(markdown, true).text;
+
+    expect(withFencesExcluded).toBe("Opening prose paragraph. Closing prose paragraph.");
+    expect(withFencesExcluded).not.toContain("~~~");
+    expect(withFencesExcluded).not.toContain("docsDir");
   });
 });
 
