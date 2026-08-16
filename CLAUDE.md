@@ -118,6 +118,44 @@ Measured before/after against this repository's own `docs/documentation-conventi
 | Before | `section` (wrong chunk: "12. Templates") | n/a | **1** (non-zero — match came only from content) |
 | After | `section-not-found` | 19, none of the 17 phantom fenced-heading names among them | **0** |
 
+Manual gate (`excerpt-fence-drop-generalization`): proves `search_docs`'s fenced-blocks-excluded excerpt
+pass now recognizes and drops both delimiter styles (`` ``` `` and `~~~`), including a fence whose
+interior carries a stray backtick. Follows the `excerpt-flatten-probe.mjs` precedent — a script that
+drives `flattenWithMap` and the compiled `SqliteIndexStore` directly, no model download:
+
+```bash
+node dist/cli.js --root test/fixtures/excerpt-fence-drop index --lexical
+node scripts/excerpt-fence-drop-probe.mjs test/fixtures/excerpt-fence-drop
+```
+
+`scripts/excerpt-fence-drop-probe.mjs` counts, over every stored chunk in the target database:
+**C1** — chunks whose `dropFencedBlocks: true` output still contains `~~~` (must be 0 after the fix);
+**C2** — chunks whose raw content contains a `~~~` line at all (the anti-vacuity denominator, must be
+`> 0` in every run or the corpus has nothing to falsify against); **C3** — chunks with 2+ fence
+delimiter runs whose `true` output is byte-identical to their `false` output (must be 0 after the fix);
+**C4** — whether the two `*-crlf.md` documents' STORED chunk content contains `\r\n` (proves CRLF
+survived `decode-text.ts`, the parser and chunking, not just the file on disk); **C5** — the control
+fixture's `true`-pass output, printed verbatim, reported rather than gated. The one asserted self-check
+exits non-zero unless `C2 > 0 && C4 holds && C1 === 0 && C3 === 0`, with two distinct failure messages
+(`GATE IS VACUOUS` for a C2/C4 failure, `THE FIX DID NOT LAND` for a C1/C3 failure) so the two causes
+are never conflated.
+
+The anti-vacuity guard is itself verified against a known-fence-free corpus, in both tree states:
+
+```bash
+node dist/cli.js --root test/fixtures/excerpt-window index --lexical
+node scripts/excerpt-fence-drop-probe.mjs test/fixtures/excerpt-window
+```
+
+This MUST exit non-zero on `C2 === 0` (`GATE IS VACUOUS`) whether run before or after the production
+fix — a probe never observed failing on a corpus known to contain no fences has not been verified.
+
+| | C1 | C2 | C3 | C4 holds | Exit code |
+|---|---|---|---|---|---|
+| Before (fixture corpus) | 2 | 2 | 4 | true | **1** (`THE FIX DID NOT LAND`) |
+| After (fixture corpus) | 0 | 2 | 0 | true | **0** |
+| Either (excerpt-window, fence-free) | 0 | 0 | 0 | false | **1** (`GATE IS VACUOUS`) |
+
 Manual gate 2 (`bounded-chunk-size`): proves the fix at full-corpus scale — the shape Gate 1b's
 6-document fixture only approximates — using the same generator's default profile (38 documents, one
 167 KB heading-less document, pre-change baseline **242 chunks / 367 s** at `maxTokens: 800`):
@@ -256,9 +294,48 @@ The MCP surface stays exactly these 3 tools — **`compendio sync` is a human-on
   backtick, and an ODD backtick count breaks `` /```[^`]*```/g ``'s pairing, leaking the whole fence into
   the excluded-pass excerpt too — measured as zero live instances on this repo's own corpus (0 of 21 newly
   retained fence-interior lines carry a backtick), and recorded rather than fixed, since fixing it means
-  designing and CRLF-verifying a second regex for a step (S2) this change deliberately did not touch. The
+  designing and CRLF-verifying a second regex for a step (S2) this change deliberately did not touch
+  — closed by `excerpt-fence-drop-generalization`; see the next bullet. The 0-of-21 measurement stands as
+  the reason it was safe to defer, not as a live risk. The
   probe script for this gate lives beside `section-lookup.mjs`:
   `scripts/excerpt-flatten-probe.mjs <root>` (needs `node dist/cli.js --root . index --lexical` first).
+- **S2's fence drop (`flatten-map.ts:35`) is delimiter-agnostic, interior-agnostic, and — unlike every
+  other fence mechanism in this codebase — NOT balanced-gated** (`excerpt-fence-drop-generalization`).
+  The regex is `` /```[\s\S]*?```|~~~[\s\S]*?~~~/g ``, not the old `` /```[^`]*```/g ``: the old form
+  identified a fence by *character-class exclusion* over a string S1 had already stripped of newlines,
+  which spelled the delimiter in backticks (so a `~~~` fence was **never** dropped from any excerpt,
+  in either pass) and could not cross an interior backtick (so **one** stray backtick inside a fence
+  made the pair unmatchable, leaking the entire fence — delimiters, body and all — into the
+  `dropFencedBlocks: true` excerpt byte-identically to the `false` pass). Both are closed. `*?` is
+  load-bearing: a greedy `[\s\S]*` would match a chunk's first delimiter to its last, merging every
+  fence and deleting the prose between them, and neither I1-I3 nor I4 would notice (I4 carries the
+  same literal by design). **The accepted divergence**: S1, `read_doc`'s `headingsIn` and the chunker
+  all refuse to act on a chunk whose fence-delimiter-line count is ODD; S2 has no such whole-chunk
+  gate and will still drop a well-formed pair inside one, leaving the stray third delimiter as text
+  (S3 then blanks it). So S1 and S2 can now answer "do we trust this chunk's fence state?"
+  **differently for the same chunk**. This is not content loss — strictly more genuinely-fenced
+  content is correctly dropped than before — but it does break the "every mechanism shares one
+  fence-state rule" pattern the two prior cycles established as a value. Closing it would require S2
+  to consult whole-chunk parity before matching, which is the S1-fusion architecture this change
+  exists to avoid. One further non-guarantee, from `*?`'s nearest-closer rule: **improperly
+  interleaved** fences (`~~~ a ``` b ~~~ c ``` `) pair across the two styles and leave a residue.
+  Nesting either way round is handled correctly — the outer fence is consumed whole, which is what a
+  nested fence *is*. The gate corpus is `test/fixtures/excerpt-fence-drop/docs/`, whose two
+  `*-crlf.md` documents are pinned CRLF by `.gitattributes` **on purpose**: the CRLF half of the gate
+  is real evidence only if the line endings survive checkout. Probe:
+  `node scripts/excerpt-fence-drop-probe.mjs test/fixtures/excerpt-fence-drop` (needs
+  `node dist/cli.js --root test/fixtures/excerpt-fence-drop index --lexical` first). **A second,
+  discovered-at-apply-time consequence, folded in here rather than opened as a new location**: this
+  same style-agnostic recognition narrows the sibling `excerpt-fence-aware-flatten` bullet's own D3
+  guarantee — that a span on a retained fence-interior heading-pattern line stays locatable — to the
+  fenced-blocks-INCLUDED (fallback) pass only. Before this change, a retained line inside a `~~~`
+  fence happened to stay locatable even on the excluded pass, purely because that pass's
+  fence-recognition was backtick-only and blind to `~~~`; that was always an accident of the gap this
+  change closes, never a designed guarantee, and it stops holding for every fence style once
+  recognition is style-agnostic. `test/domain/excerpt.test.ts`'s own D3 test was rewritten to observe
+  this claim directly against `flattenWithMap`/`toFlatOffset` rather than through `buildExcerpt`,
+  since no fence shape can isolate S1 from S2 through `buildExcerpt` any more — see
+  `mcp-contract/spec.md`'s narrowed requirement for the same fence-retention bullet above.
 - **`isFenceDelimiter`'s revisit trigger (`read-doc-fence-aware-sections`'s Decision 1: "move it to its
   own domain module when a third consumer appears… the candidate is already identified:
   `src/domain/flatten-map.ts:92`") has now fired — `excerpt-fence-aware-flatten` is that third consumer —
@@ -266,6 +343,11 @@ The MCP surface stays exactly these 3 tools — **`compendio sync` is a human-on
   `src/domain/split-text.ts`, imported by `flatten-map.ts` and `read-document.ts` both. Recording it here,
   in the same greppable sentence as the S2 follow-up above, is the point: the previous deferral survived
   only as one line in an archived change's report and had to be rediscovered by a whole new SDD cycle.
+  **Third occurrence, `excerpt-fence-drop-generalization` (2026-08-16): the trigger did NOT re-fire and
+  the deferral stands.** That change touches only S2's regex literal, which never imports the predicate,
+  so the consumer count is still exactly three. Recorded here rather than in an archived report for the
+  same reason the sentence above exists. **The next thing that adds a fourth importer should move it**
+  — three deferrals is the point at which "cheap later" stops being an argument.
 - **The `HEADING_LINE` regex needs an explicit `\r?` before its `$` anchor, or CRLF documents lose every
   content-derived heading, silently.** Discovered live on this repository's OWN CRLF-encoded
   `docs/documentation-convention.md` during `read-doc-fence-aware-sections`: `String.split("\n")`
