@@ -233,14 +233,14 @@ here" point** — see the note at the top of Phase 4.
 | Spec scenario | Task(s) |
 |---|---|
 | Fences nested one inside the other are excluded as a single outer fence | 3.6, 4.5 |
-| Improperly interleaved fences leave a residue | design D2 non-guarantee, recorded 6.2 — no dedicated test required beyond 3.6's nesting cases |
+| Improperly interleaved fences leave a residue | design D2 non-guarantee, recorded 6.2 — **automated** in `flatten-map.test.ts`'s "pins the interleaved-fence residue" test (added post-`sdd-verify`, closing that WARNING) |
 | A tilde-fenced block is excluded from the lead excerpt | 3.3, 1.1, 2.6, 5.3 |
 | A tilde-fenced block is excluded from a supporting excerpt | 5.1 |
 | A CRLF-encoded tilde fence is excluded identically to an LF-encoded one | 3.4, 1.2, 2.3 (C4), 5.1, 5.3 |
 | A tilde fence carrying an info string is excluded in full | 1.1 (fixture carries `~~~json`) |
-| An indented tilde fence is excluded in full | 3.6 (regex trace covers indentation; no anchor) |
+| An indented tilde fence is excluded in full | 3.6 (regex trace covers indentation; no anchor) — **automated** in `flatten-map.test.ts`'s "drops a ~~~ fence whose delimiter lines carry leading whitespace" test (added post-`sdd-verify`, closing that WARNING; **this is a positive behavioural claim, not a non-guarantee** — see `verify-report.md`'s Resolution section for the framing correction) |
 | A backtick fence with an interior backtick is now excluded, diverging from the included pass | 3.1, 1.3, 2.6, 5.3 |
 | A fence with no interior same-character content is unaffected | 1.5 (control fixture), 4.5, 2.4 (C5) |
 | An unterminated fence is still not excluded | 4.5 (existing fixture unmodified, D4 Gate 3) |
 | The fenced-blocks-included fallback pass is unaffected | design's out-of-scope assertion on `excerpt.ts:68`, covered by 4.5's byte-identity check |
-| A well-formed inner fence pair is dropped even when the chunk's total delimiter count is odd | design D2/D7's balanced-parity divergence, recorded 6.2 |
+| A well-formed inner fence pair is dropped even when the chunk's total delimiter count is odd | design D2/D7's balanced-parity divergence, recorded 6.2 — **automated** in `flatten-map.test.ts`'s "pins the odd-delimiter-count case" test (added post-`sdd-verify`, closing that WARNING) |

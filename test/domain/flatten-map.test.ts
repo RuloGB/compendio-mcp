@@ -171,6 +171,56 @@ describe("flattenWithMap — Gate 3b: adjacent same-kind fences do not merge (ex
   });
 });
 
+// Closes an sdd-verify WARNING: three mcp-contract/spec.md scenarios for
+// excerpt-fence-drop-generalization had no automated test. Expected values
+// below were re-measured against the compiled flattenWithMap (not guessed)
+// before writing these assertions.
+describe("flattenWithMap — remaining spec.md scenario coverage (excerpt-fence-drop-generalization)", () => {
+  // Traces spec scenario "An indented tilde fence is excluded in full". This
+  // is a POSITIVE behavioural claim, not a non-guarantee: an indented fence
+  // (e.g. inside a list item or blockquote) is ordinary markdown, and
+  // neither isFenceDelimiter's `^\s*` prefix nor the anchor-free S2 regex
+  // treats indentation specially, so exclusion must hold exactly as for an
+  // unindented fence.
+  it("drops a ~~~ fence whose delimiter lines carry leading whitespace, in full", () => {
+    const markdown = 'Prose before.\n\n  ~~~json\n  { "key": "value" }\n  ~~~\n\nProse after.';
+
+    const flat = flattenWithMap(markdown, true);
+
+    expect(flat.text).toBe("Prose before. Prose after.");
+  });
+
+  // Traces spec scenario "Improperly interleaved fences leave a residue".
+  // Pins a NAMED, ACCEPTED NON-GUARANTEE (design.md D2, mcp-contract/spec.md):
+  // a malformed document that interleaves a ~~~ fence and a backtick fence
+  // without nesting them pairs the opener with the NEAREST following
+  // delimiter of the same style, across styles, leaving the trailing
+  // residue as text. This exists so a future change to the regex cannot
+  // alter this shape silently — not because the outcome is desirable.
+  it("pins the interleaved-fence residue: nearest-style pairing leaves the tail as text", () => {
+    const markdown = "~~~ a ``` b ~~~ c ```";
+
+    const flat = flattenWithMap(markdown, true);
+
+    expect(flat.text).toBe("c");
+  });
+
+  // Traces spec scenario "A well-formed inner fence pair is dropped even
+  // when the chunk's total delimiter count is odd". Pins a NAMED, ACCEPTED
+  // NON-GUARANTEE (design.md D7's balanced-parity divergence): unlike S1,
+  // S2 has no whole-chunk parity gate, so it still drops a well-formed pair
+  // even when a further, unmatched delimiter makes the chunk's total count
+  // odd — leaving that trailing delimiter's line as leftover text. Pinned
+  // so a future change cannot alter this shape without someone deciding to.
+  it("pins the odd-delimiter-count case: the well-formed pair is dropped, the stray opener's line remains", () => {
+    const markdown = "Before.\n\n```js\ncode\n```\n\nAfter.\n\n```js\nmore code, no closer";
+
+    const flat = flattenWithMap(markdown, true);
+
+    expect(flat.text).toBe("Before. After. js more code, no closer");
+  });
+});
+
 function assertInvariants(flat: FlatText, raw: string): void {
   // I1: map.length === text.length
   expect(flat.map.length).toBe(flat.text.length);
