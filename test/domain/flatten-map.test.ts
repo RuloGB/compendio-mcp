@@ -29,7 +29,7 @@ function referenceFlatten(markdown: string, dropFencedBlocks: boolean): string {
     })
     .join(" ");
   const body = dropFencedBlocks
-    ? withoutHeadings.replace(/```[^`]*```/g, " ")
+    ? withoutHeadings.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, " ")
     : withoutHeadings;
   return body
     .replace(/[`*_>|]/g, " ")
