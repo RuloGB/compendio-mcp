@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flattenWithMap } from "../../src/domain/flatten-map";
+import { flattenWithMap, toFlatOffset } from "../../src/domain/flatten-map";
 import {
   buildExcerpt,
   excerptBudget,
@@ -195,26 +195,50 @@ describe("buildExcerpt — fence-aware S1 (excerpt-fence-aware-flatten, design.m
     expect(excerpt).toContain("a python comment");
   });
 
-  it("D3: a span on a retained fence-interior heading-pattern line becomes locatable and survives filtering", () => {
-    // Uses a tilde fence, which is outside S2's backtick-only regex
-    // (exploration.md §0, row 3) — this isolates D3's map-locatability claim
-    // from S2's fence-drop behaviour, which the Gate 2 case below covers
-    // separately. Before this change, S1 unconditionally stripped every
-    // heading-pattern line, so the marker's raw offset never survived
-    // flattening: toFlatOffset resolved it forward past the whole fence,
-    // collapsing the span to end === start, and it was filtered out at
-    // excerpt.ts:98 — the excerpt would fall through to prefixExcerpt and
-    // never contain the marker.
+  it("D3: a span on a retained fence-interior heading-pattern line stays locatable through flattening", () => {
+    // Asserts S1's map-locatability claim (excerpt-fence-aware-flatten,
+    // design.md Decision 3): a heading-pattern line INSIDE a balanced fence
+    // is retained by stripHeadingLines rather than dropped, and every
+    // character it kept carries a correct raw-offset map entry, so a span
+    // pointing at that line's raw text resolves through toFlatOffset to the
+    // SAME text in the flattened output.
+    //
+    // Observed via flattenWithMap(markdown, false) + toFlatOffset directly,
+    // NOT through buildExcerpt (which always tries the fenced-blocks-
+    // EXCLUDED pass first). Before excerpt-fence-drop-generalization this
+    // test drove buildExcerpt with a tilde fence specifically because S2's
+    // regex was backtick-only, so the tilde fence was invisible to S2 and
+    // the excluded pass left the marker untouched — an accident of S2's old
+    // character-class, not a designed property. flatten-map.ts:35's regex
+    // generalization (`` /```[\s\S]*?```|~~~[\s\S]*?~~~/g ``) makes EVERY
+    // fence style visible to S2, so no fence shape can isolate S1 from S2
+    // through buildExcerpt any more (verified: an unterminated fence makes
+    // the chunk's delimiter count odd, which flips `balanced` to false and
+    // makes S1 strip the heading-pattern line again from the other
+    // direction; a 4-space-indented block carries no fence delimiter for S1
+    // to retain it under in the first place — there is no third option).
+    // This test now exercises the map claim at the layer it actually lives
+    // in, which no longer requires a fence at all.
+    //
+    // DO NOT restore the tilde-fence isolation — it cannot work after
+    // flatten-map.ts:35's regex generalization. See
+    // excerpt-fence-drop-generalization. The fenced-blocks-EXCLUDED-pass
+    // case for a fence-interior heading-pattern line is now covered by the
+    // fallback test above ("falls back to fenced content that now includes
+    // a retained fence-interior heading-pattern line"), which is the only
+    // pass on which a retained heading-pattern line can still be located —
+    // see the "S1 and S2" describe block below.
     const marker = "TARGETMARKER";
     const before = words(150);
     const after = words(150);
-    const markdown = `${before}\n\n~~~\n# ${marker} inside a tilde fence\n~~~\n\n${after}`;
+    const markdown = `${before}\n\n\`\`\`\n# ${marker} inside a backtick fence\n\`\`\`\n\n${after}`;
     const rawStart = markdown.indexOf(marker);
-    const spans: MatchSpan[] = [{ start: rawStart, end: rawStart + marker.length, term: marker.toLowerCase() }];
 
-    const excerpt = buildExcerpt(markdown, 60, spans);
+    const flat = flattenWithMap(markdown, false);
+    const flatStart = toFlatOffset(flat, rawStart);
+    const flatEnd = toFlatOffset(flat, rawStart + marker.length);
 
-    expect(excerpt).toContain(marker);
+    expect(flat.text.slice(flatStart, flatEnd)).toBe(marker);
   });
 
   it("Gate 2: a fence holding a retained heading-pattern line is still recognized and dropped by the excluded pass", () => {
@@ -256,16 +280,62 @@ describe("buildExcerpt — fence-aware S1 (excerpt-fence-aware-flatten, design.m
   //   identically):
   //     dropFencedBlocks: true  -> "Before text. js # a comment with an odd backtick const x = 1; After text."
   //     dropFencedBlocks: false -> "Before text. js # a comment with an odd backtick const x = 1; After text."
-  it("Gate 4 (measurement-only): odd-backtick fence-interior heading line — recorded, not asserted pass/fail", () => {
+  //
+  //   AFTER `excerpt-fence-drop-generalization` (S2 crosses the interior
+  //   backtick and pairs on the nearest real closer):
+  //     dropFencedBlocks: true  -> "Before text. After text."
+  //     dropFencedBlocks: false -> "Before text. js # a comment with an odd backtick const x = 1; After text."
+  //
+  // DO NOT "REPAIR" THIS BY REVERTING flatten-map.ts:35. The equality this
+  // test used to assert WAS the defect (S2 made zero replacements). Its
+  // divergence is the fix working. See excerpt-fence-drop-generalization.
+  it("the interior-backtick fence is dropped from the excluded pass (was: the pinned defect)", () => {
     const markdown =
       "Before text.\n\n```js\n# a comment with an odd ` backtick\nconst x = 1;\n```\n\nAfter text.";
 
     const withFencesExcluded = flattenWithMap(markdown, true).text;
+    const withFencesIncluded = flattenWithMap(markdown, false).text;
 
-    // The only required check: the mechanism (S2 makes zero replacements,
-    // so this output equals the false-pass output) is reproducible, not
-    // that it takes any particular shape.
-    expect(withFencesExcluded).toBe(flattenWithMap(markdown, false).text);
+    expect(withFencesExcluded).toBe("Before text. After text.");
+    // The two passes must now DIVERGE. Asserted separately from the toBe
+    // above because equality was the defect's signature, and this is the
+    // line a future reader is most likely to try to "repair".
+    expect(withFencesExcluded).not.toBe(withFencesIncluded);
+    for (const leaked of ["js", "# a comment with an odd", "const x = 1;"]) {
+      expect(withFencesExcluded).not.toContain(leaked);
+    }
+  });
+});
+
+describe("buildExcerpt — S2 fence drop generalization (excerpt-fence-drop-generalization, design.md D2-D7)", () => {
+  // Traces spec scenario "A tilde-fenced block is excluded from the lead
+  // excerpt": before this change S2's regex was spelled entirely in
+  // backticks, so a `~~~`-delimited fence was never recognized in either
+  // pass.
+  it("drops a tilde-delimited fence from the excluded pass, keeping the prose", () => {
+    const markdown =
+      "Opening prose paragraph.\n\n~~~json\n{ \"docsDir\": [\"docs\"] }\n~~~\n\nClosing prose paragraph.";
+
+    const withFencesExcluded = flattenWithMap(markdown, true).text;
+
+    expect(withFencesExcluded).toBe("Opening prose paragraph. Closing prose paragraph.");
+    expect(withFencesExcluded).not.toContain("~~~");
+    expect(withFencesExcluded).not.toContain("docsDir");
+  });
+
+  // Traces spec scenario "A CRLF-encoded tilde fence is excluded identically
+  // to an LF-encoded one" — neither S1's line-splitting nor S2's new regex
+  // carries an anchor, so a `\r` left on a kept line is harmless (CLAUDE.md's
+  // HEADING_LINE house rule: anchor-free and prefix-only, always).
+  it("drops a CRLF-encoded tilde-delimited fence identically to the LF case", () => {
+    const markdown =
+      "Opening prose paragraph.\r\n\r\n~~~json\r\n{ \"docsDir\": [\"docs\"] }\r\n~~~\r\n\r\nClosing prose paragraph.";
+
+    const withFencesExcluded = flattenWithMap(markdown, true).text;
+
+    expect(withFencesExcluded).toBe("Opening prose paragraph. Closing prose paragraph.");
+    expect(withFencesExcluded).not.toContain("~~~");
+    expect(withFencesExcluded).not.toContain("docsDir");
   });
 });
 

@@ -30,9 +30,9 @@ export function flattenWithMap(markdown: string, dropFencedBlocks: boolean): Fla
   // S1: split("\n").filter(heading).join(" ")
   let flat = stripHeadingLines(markdown);
 
-  // S2: .replace(/```[^`]*```/g, " ") — conditional
+  // S2: .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, " ") — conditional
   if (dropFencedBlocks) {
-    flat = trackedReplace(flat, /```[^`]*```/g, (m) => singleSpaceAt(flat, m.index));
+    flat = trackedReplace(flat, /```[\s\S]*?```|~~~[\s\S]*?~~~/g, (m) => singleSpaceAt(flat, m.index));
   }
 
   // S3: .replace(/[`*_>|]/g, " ") — 1:1, offsets unchanged

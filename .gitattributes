@@ -3,3 +3,11 @@
 # sensitive. Without this, a Windows checkout under core.autocrlf=true would
 # rewrite every newline to CRLF and silently shift them.
 test/fixtures/vector-reach/** text eol=lf
+
+# excerpt-fence-drop's gate corpus encodes line endings AS EVIDENCE. The two
+# *-crlf.md documents exist to prove the S2 regex is anchor-free under CRLF;
+# an autocrlf=input checkout would normalise them to LF and the CRLF half of
+# Gate 1 would pass without ever having run. The rest are pinned to LF so
+# "byte-identical before and after" means the same thing on every machine.
+test/fixtures/excerpt-fence-drop/** text eol=lf
+test/fixtures/excerpt-fence-drop/docs/*-crlf.md text eol=crlf

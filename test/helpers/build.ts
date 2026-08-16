@@ -71,6 +71,19 @@ export const VECTOR_REACH_DOCS = fileURLToPath(
   new URL("../fixtures/vector-reach/docs", import.meta.url),
 );
 
+/**
+ * `excerpt-fence-drop-generalization` fixture corpus (design.md D5): five
+ * documents, each one chunk, proving S2's fence drop against both symptoms
+ * it closes — a `~~~`-delimited fence (never dropped before this change)
+ * and a backtick fence with a stray interior backtick (leaked whole before
+ * this change) — plus a control fence unaffected by either symptom. Two of
+ * the five are pinned CRLF on disk via `.gitattributes`, so the corpus also
+ * proves the fix is anchor-free under CRLF, not just LF.
+ */
+export const EXCERPT_FENCE_DROP_DOCS = fileURLToPath(
+  new URL("../fixtures/excerpt-fence-drop/docs", import.meta.url),
+);
+
 export interface TestHarness {
   store: SqliteIndexStore;
   index: IndexDocuments;
