@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
@@ -73,33 +73,75 @@ export const SCHEMA_DDL = `
  * SQLite adapter: documents + chunks, FTS5 (BM25, diacritics-insensitive) for
  * the lexical leg and sqlite-vec for the vector leg. If the sqlite-vec
  * extension cannot be loaded the store still works in lexical-only mode.
+ *
+ * Lazy lifecycle: the constructor performs no filesystem work. The database
+ * directory and file are created on the first write operation (`reset()`,
+ * `saveDocument()`, `upsertDocument()`, `deleteDocument()`,
+ * `saveEmbeddings()`, `replaceEmbeddings()`). Read methods short-circuit to
+ * empty results when the database file does not exist (or the store is
+ * `:memory:` and has not been opened by a write yet — `:memory:` counts as
+ * "exists", keeping test semantics).
  */
 export class SqliteIndexStore implements IndexStore {
   /** Not `readonly`: `reset()` replaces the connection when it has to recreate
-   * the file (see `recreateFile`). */
-  private db!: Database.Database;
-  private vectorsEnabled!: boolean;
+    * the file (see `recreateFile`). Nullable: the constructor is inert. */
+  private db: Database.Database | null = null;
+  private vectorsEnabled = false;
 
   constructor(private readonly dbPath: string) {
-    if (dbPath !== ":memory:") {
-      mkdirSync(dirname(dbPath), { recursive: true });
+    // :memory: databases cannot be probed by file existence and are free to
+    // open (no filesystem work), so they are opened eagerly. This preserves
+    // the existing test semantics where a :memory: store is immediately
+    // usable for reads and writes alike.
+    if (dbPath === ":memory:") {
+      this.open();
     }
-    this.open();
+  }
+
+  /** True when the database file is present on disk, or the store is
+    * `:memory:` (which always counts as "exists" — an in-memory database
+    * cannot be probed by file existence). */
+  private databaseExists(): boolean {
+    if (this.dbPath === ":memory:") return true;
+    return existsSync(this.dbPath);
   }
 
   /** Opens (or reopens) the connection and brings it to the current schema.
-   * Every field the rest of the class reads is (re)established here, so a
-   * reopened store is indistinguishable from a freshly constructed one. */
+    * Every field the rest of the class reads is (re)established here, so a
+    * reopened store is indistinguishable from a freshly constructed one. */
   private open(): void {
+    if (this.dbPath !== ":memory:") {
+      mkdirSync(dirname(this.dbPath), { recursive: true });
+    }
     this.db = new Database(this.dbPath);
     this.db.pragma("journal_mode = WAL");
     this.vectorsEnabled = this.loadVectorExtension();
     this.migrate();
   }
 
+  /** Ensures the database connection is open. Called by every write method
+    * before touching `this.db`. Idempotent: a second call after the first
+    * initialization is a no-op. */
+  private ensureOpen(): void {
+    if (this.db !== null) return;
+    this.open();
+  }
+
+  /** Opens the database if a file from a previous run exists on disk.
+    * Called by read methods so they can serve data left by a prior process
+    * without requiring a write first. Returns true when the store is now
+    * open (either was already, or just opened), false when there is nothing
+    * to read. */
+  private openIfExists(): boolean {
+    if (this.db !== null) return true;
+    if (!this.databaseExists()) return false;
+    this.open();
+    return true;
+  }
+
   private loadVectorExtension(): boolean {
     try {
-      sqliteVec.load(this.db);
+      sqliteVec.load(this.db!);
       return true;
     } catch {
       return false;
@@ -115,7 +157,7 @@ export class SqliteIndexStore implements IndexStore {
    * `reset()` instead, which only runs at the start of an `index` run.
    */
   private migrate(): void {
-    this.db.exec(SCHEMA_DDL);
+    this.db!.exec(SCHEMA_DDL);
   }
 
   /**
@@ -125,20 +167,24 @@ export class SqliteIndexStore implements IndexStore {
    * in place, with no manual deletion of `.compendio/` required. The single
    * transaction shrinks (does not eliminate) the window in which a
    * concurrent reader could observe a missing table.
+   *
+   * No-op when the database file does not exist: there is nothing to drop.
    */
   reset(): void {
+    if (!this.databaseExists()) return;
+    this.ensureOpen();
     if (!this.vectorsEnabled && this.tableExists("chunks_vec")) {
       this.recreateFile();
       return;
     }
-    const run = this.db.transaction((): void => {
-      this.db.exec(`
+    const run = this.db!.transaction((): void => {
+      this.db!.exec(`
         DROP TABLE IF EXISTS chunks_vec;
         DROP TABLE IF EXISTS chunks_fts;
         DROP TABLE IF EXISTS chunks;
         DROP TABLE IF EXISTS documents;
       `);
-      this.db.exec(SCHEMA_DDL);
+      this.db!.exec(SCHEMA_DDL);
     });
     run();
   }
@@ -167,7 +213,8 @@ export class SqliteIndexStore implements IndexStore {
    * in-place path already carries (see `reset`'s transaction note).
    */
   private recreateFile(): void {
-    this.db.close();
+    this.db!.close();
+    this.db = null;
     if (this.dbPath !== ":memory:") {
       for (const suffix of ["", "-wal", "-shm"]) {
         rmSync(`${this.dbPath}${suffix}`, { force: true });
@@ -177,7 +224,8 @@ export class SqliteIndexStore implements IndexStore {
   }
 
   saveDocument(meta: DocumentMeta, chunks: Chunk[]): SavedDocument {
-    const run = this.db.transaction((): SavedDocument =>
+    this.ensureOpen();
+    const run = this.db!.transaction((): SavedDocument =>
       this.insertDocumentAndChunks(meta, chunks, null, null),
     );
     return run();
@@ -195,15 +243,15 @@ export class SqliteIndexStore implements IndexStore {
     embeddings: Float32Array[] | null,
     insertVec: Database.Statement | null,
   ): SavedDocument {
-    const insertDocument = this.db.prepare(`
+    const insertDocument = this.db!.prepare(`
       INSERT INTO documents (path, title, summary, type, module, status, owner, tags, updated, hash)
       VALUES (@path, @title, @summary, @type, @module, @status, @owner, @tags, @updated, @hash)
     `);
-    const insertChunk = this.db.prepare(`
+    const insertChunk = this.db!.prepare(`
       INSERT INTO chunks (document_id, heading, content, position)
       VALUES (?, ?, ?, ?)
     `);
-    const insertFts = this.db.prepare(`
+    const insertFts = this.db!.prepare(`
       INSERT INTO chunks_fts(rowid, content, heading) VALUES (?, ?, ?)
     `);
 
@@ -246,27 +294,29 @@ export class SqliteIndexStore implements IndexStore {
    * composed inside `deleteDocument` and `upsertDocument` alike.
    */
   private deleteDocumentRows(documentId: number): void {
-    const chunks = this.db
+    const chunks = this.db!
       .prepare(`SELECT id, content, heading FROM chunks WHERE document_id = ?`)
       .all(documentId) as { id: number; content: string; heading: string }[];
     const vecGuarded = this.vectorsEnabled && this.tableExists("chunks_vec");
-    const deleteFts = this.db.prepare(
+    const deleteFts = this.db!.prepare(
       `INSERT INTO chunks_fts(chunks_fts, rowid, content, heading) VALUES ('delete', ?, ?, ?)`,
     );
     const deleteVec = vecGuarded
-      ? this.db.prepare(`DELETE FROM chunks_vec WHERE chunk_id = ?`)
+      ? this.db!.prepare(`DELETE FROM chunks_vec WHERE chunk_id = ?`)
       : null;
     for (const chunk of chunks) {
       deleteFts.run(chunk.id, chunk.content, chunk.heading);
       if (deleteVec !== null) deleteVec.run(BigInt(chunk.id));
     }
-    this.db.prepare(`DELETE FROM chunks WHERE document_id = ?`).run(documentId);
-    this.db.prepare(`DELETE FROM documents WHERE id = ?`).run(documentId);
+    this.db!.prepare(`DELETE FROM chunks WHERE document_id = ?`).run(documentId);
+    this.db!.prepare(`DELETE FROM documents WHERE id = ?`).run(documentId);
   }
 
   deleteDocument(path: string): void {
-    const run = this.db.transaction((): void => {
-      const doc = this.db.prepare(`SELECT id FROM documents WHERE path = ?`).get(path) as
+    if (!this.databaseExists()) return;
+    this.ensureOpen();
+    const run = this.db!.transaction((): void => {
+      const doc = this.db!.prepare(`SELECT id FROM documents WHERE path = ?`).get(path) as
         | { id: number }
         | undefined;
       if (doc === undefined) return;
@@ -280,13 +330,14 @@ export class SqliteIndexStore implements IndexStore {
     chunks: Chunk[],
     embeddings: Float32Array[] | null,
   ): SavedDocument {
+    this.ensureOpen();
     // Write-side guard: vectorsEnabled alone (NOT deleteDocumentRows' extra
     // tableExists guard) — a brand-new project's very first upsertDocument
     // call must still create chunks_vec lazily and persist the embedding.
     if (embeddings !== null && embeddings.length > 0) {
       this.ensureVectorTable(embeddings[0]!.length);
     }
-    const findExisting = this.db.prepare(`SELECT id FROM documents WHERE path = ?`);
+    const findExisting = this.db!.prepare(`SELECT id FROM documents WHERE path = ?`);
     // Prepared only when the table is actually present (either created just
     // now above, or by a prior upsertDocument/saveEmbeddings call) — the
     // vectorsEnabled-alone guard governs WHETHER embeddings get written, not
@@ -294,10 +345,10 @@ export class SqliteIndexStore implements IndexStore {
     // exist yet (e.g. embeddings is null and chunks_vec was never created).
     const insertVec =
       this.vectorsEnabled && this.tableExists("chunks_vec")
-        ? this.db.prepare(`INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)`)
+        ? this.db!.prepare(`INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)`)
         : null;
 
-    const run = this.db.transaction((): SavedDocument => {
+    const run = this.db!.transaction((): SavedDocument => {
       const existing = findExisting.get(meta.path) as { id: number } | undefined;
       if (existing !== undefined) {
         this.deleteDocumentRows(existing.id);
@@ -310,14 +361,19 @@ export class SqliteIndexStore implements IndexStore {
   /** Deliberately not `this.vectorsEnabled && this.tableExists("chunks_vec")`
    * — the table is created lazily on first write, and including its
    * existence would reproduce the `hasVectors()` trap: it would report
-   * `false` on a brand-new project before the first vector is ever written. */
+   * `false` on a brand-new project before the first vector is ever written.
+   * When the store has never been opened (no DB file exists), the answer is
+   * still `true` for a healthy installation — the capability is about the
+   * extension, not the file. */
   canPersistVectors(): boolean {
+    if (this.db === null) return true;
     return this.vectorsEnabled;
   }
 
   listChunksMissingVectors(): ChunkMissingVector[] {
+    if (!this.openIfExists()) return [];
     if (!this.vectorsEnabled || !this.tableExists("chunks_vec")) return [];
-    return this.db
+    return this.db!
       .prepare(
         `SELECT c.id AS chunkId, d.path AS path, c.heading AS heading, c.content AS content
          FROM chunks c
@@ -330,14 +386,15 @@ export class SqliteIndexStore implements IndexStore {
 
   replaceEmbeddings(items: ChunkEmbedding[]): void {
     if (items.length === 0) return;
+    this.ensureOpen();
     if (!this.vectorsEnabled) {
       throw new Error("the sqlite-vec extension is not available in this installation");
     }
     const dimension = items[0]!.embedding.length;
     this.ensureVectorTable(dimension);
-    const del = this.db.prepare(`DELETE FROM chunks_vec WHERE chunk_id = ?`);
-    const insert = this.db.prepare(`INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)`);
-    const run = this.db.transaction(() => {
+    const del = this.db!.prepare(`DELETE FROM chunks_vec WHERE chunk_id = ?`);
+    const insert = this.db!.prepare(`INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)`);
+    const run = this.db!.transaction(() => {
       for (const item of items) {
         del.run(BigInt(item.chunkId));
         insert.run(BigInt(item.chunkId), toBlob(item.embedding));
@@ -348,13 +405,14 @@ export class SqliteIndexStore implements IndexStore {
 
   saveEmbeddings(items: ChunkEmbedding[]): void {
     if (items.length === 0) return;
+    this.ensureOpen();
     if (!this.vectorsEnabled) {
       throw new Error("the sqlite-vec extension is not available in this installation");
     }
     const dimension = items[0]!.embedding.length;
     this.ensureVectorTable(dimension);
-    const insert = this.db.prepare(`INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)`);
-    const run = this.db.transaction(() => {
+    const insert = this.db!.prepare(`INSERT INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)`);
+    const run = this.db!.transaction(() => {
       for (const item of items) {
         // vec0 requires a strictly typed INTEGER key: bind as BigInt.
         insert.run(BigInt(item.chunkId), toBlob(item.embedding));
@@ -375,7 +433,7 @@ export class SqliteIndexStore implements IndexStore {
    * once covers all three instead of at each call site individually. */
   private ensureVectorTable(dimension: number): void {
     if (!this.vectorsEnabled) return;
-    this.db.exec(`
+    this.db!.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(
         chunk_id INTEGER PRIMARY KEY,
         embedding FLOAT[${dimension}]
@@ -384,23 +442,25 @@ export class SqliteIndexStore implements IndexStore {
   }
 
   hasVectors(): boolean {
+    if (!this.openIfExists()) return false;
     if (!this.vectorsEnabled || !this.tableExists("chunks_vec")) return false;
-    const row = this.db.prepare(`SELECT COUNT(*) AS n FROM chunks_vec`).get() as { n: number };
+    const row = this.db!.prepare(`SELECT COUNT(*) AS n FROM chunks_vec`).get() as { n: number };
     return row.n > 0;
   }
 
   private tableExists(name: string): boolean {
-    const row = this.db
+    const row = this.db!
       .prepare(`SELECT COUNT(*) AS n FROM sqlite_master WHERE type IN ('table','view') AND name = ?`)
       .get(name) as { n: number };
     return row.n > 0;
   }
 
   searchLexical(query: string, filters: SearchFilters, limit: number): number[] {
+    if (!this.openIfExists()) return [];
     const match = toFtsQuery(query);
     if (match === null) return [];
     const { sql, params } = buildFilterSql(filters);
-    const rows = this.db
+    const rows = this.db!
       .prepare(
         `SELECT c.id FROM chunks_fts f
          JOIN chunks c ON c.id = f.rowid
@@ -414,10 +474,11 @@ export class SqliteIndexStore implements IndexStore {
   }
 
   searchVector(embedding: Float32Array, filters: SearchFilters, limit: number): number[] {
+    if (!this.openIfExists()) return [];
     if (!this.vectorsEnabled || !this.tableExists("chunks_vec")) return [];
     // Over-fetch from the KNN index, then keep only chunks passing the
     // metadata filters (vec0 KNN cannot join against other tables).
-    const candidates = this.db
+    const candidates = this.db!
       .prepare(
         `SELECT chunk_id FROM chunks_vec
          WHERE embedding MATCH ? AND k = ?
@@ -428,7 +489,7 @@ export class SqliteIndexStore implements IndexStore {
 
     const ids = candidates.map((c) => c.chunk_id);
     const { sql, params } = buildFilterSql(filters);
-    const allowedRows = this.db
+    const allowedRows = this.db!
       .prepare(
         `SELECT c.id FROM chunks c
          JOIN documents d ON d.id = c.document_id
@@ -440,21 +501,24 @@ export class SqliteIndexStore implements IndexStore {
   }
 
   listDocuments(): IndexedDocument[] {
-    const rows = this.db
+    if (!this.openIfExists()) return [];
+    const rows = this.db!
       .prepare(`SELECT * FROM documents ORDER BY path`)
       .all() as DocumentRow[];
     return rows.map(toDocument);
   }
 
   getDocumentByPath(path: string): IndexedDocument | null {
-    const row = this.db.prepare(`SELECT * FROM documents WHERE path = ?`).get(path) as
+    if (!this.openIfExists()) return null;
+    const row = this.db!.prepare(`SELECT * FROM documents WHERE path = ?`).get(path) as
       | DocumentRow
       | undefined;
     return row === undefined ? null : toDocument(row);
   }
 
   getChunksByDocument(documentId: number): IndexedChunk[] {
-    const rows = this.db
+    if (!this.openIfExists()) return [];
+    const rows = this.db!
       .prepare(`SELECT * FROM chunks WHERE document_id = ? ORDER BY position`)
       .all(documentId) as ChunkRow[];
     return rows.map(toChunk);
@@ -462,7 +526,8 @@ export class SqliteIndexStore implements IndexStore {
 
   getChunksByIds(ids: number[]): IndexedChunk[] {
     if (ids.length === 0) return [];
-    const rows = this.db
+    if (!this.openIfExists()) return [];
+    const rows = this.db!
       .prepare(`SELECT * FROM chunks WHERE id IN (${ids.map(() => "?").join(",")})`)
       .all(...ids) as ChunkRow[];
     const byId = new Map(rows.map((row) => [row.id, toChunk(row)]));
@@ -475,14 +540,18 @@ export class SqliteIndexStore implements IndexStore {
   getDocumentsByIds(ids: number[]): Map<number, IndexedDocument> {
     const unique = [...new Set(ids)];
     if (unique.length === 0) return new Map();
-    const rows = this.db
+    if (!this.openIfExists()) return new Map();
+    const rows = this.db!
       .prepare(`SELECT * FROM documents WHERE id IN (${unique.map(() => "?").join(",")})`)
       .all(...unique) as DocumentRow[];
     return new Map(rows.map((row) => [row.id, toDocument(row)]));
   }
 
   close(): void {
-    this.db.close();
+    if (this.db !== null) {
+      this.db.close();
+      this.db = null;
+    }
   }
 }
 

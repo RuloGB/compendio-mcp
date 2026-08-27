@@ -49,6 +49,11 @@ export class FileDocumentSource implements DocumentSource {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       if (isRoot) {
+        // A missing root (ENOENT) is zero files, not an error: the project
+        // may not have a docs folder yet. Genuine I/O failures (EACCES, etc.)
+        // still throw, preserving the all-fail semantics at the composite
+        // level.
+        if (reason.includes("ENOENT")) return;
         throw new Error(`cannot read the documentation directory "${this.docsDir}": ${reason}`);
       }
       readErrors.push({ path: prefix, error: reason });

@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { DocumentMeta } from "../../src/domain/model";
 import { SqliteIndexStore, toFtsQuery } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
@@ -397,5 +400,144 @@ describe("SqliteIndexStore — reset() schema guarantee (Pre-existing NOT NULL s
     expect(doc!.type).toBeUndefined();
 
     store.close();
+  });
+});
+
+describe("SqliteIndexStore — lazy lifecycle", () => {
+  it("constructor creates no file or directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-lazy-"));
+    const dbPath = join(dir, ".compendio", "compendio.db");
+    try {
+      const store = new SqliteIndexStore(dbPath);
+      expect(existsSync(dbPath)).toBe(false);
+      expect(existsSync(join(dir, ".compendio"))).toBe(false);
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("read methods return empty results when uninitialized (no DB file)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-lazy-read-"));
+    const dbPath = join(dir, ".compendio", "compendio.db");
+    try {
+      const store = new SqliteIndexStore(dbPath);
+      expect(store.listDocuments()).toEqual([]);
+      expect(store.getDocumentByPath("any.md")).toBeNull();
+      expect(store.getChunksByDocument(1)).toEqual([]);
+      expect(store.getChunksByIds([1, 2])).toEqual([]);
+      expect(store.getDocumentsByIds([1, 2])).toEqual(new Map());
+      expect(store.searchLexical("query", {}, 10)).toEqual([]);
+      expect(store.searchVector(new Float32Array([1, 0]), {}, 10)).toEqual([]);
+      expect(store.hasVectors()).toBe(false);
+      expect(store.listChunksMissingVectors()).toEqual([]);
+      // No file created by reads
+      expect(existsSync(dbPath)).toBe(false);
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("close() is safe when the store was never opened", () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-lazy-close-"));
+    const dbPath = join(dir, ".compendio", "compendio.db");
+    try {
+      const store = new SqliteIndexStore(dbPath);
+      expect(() => store.close()).not.toThrow();
+      expect(existsSync(dbPath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("first write creates the database file and directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-lazy-write-"));
+    const dbPath = join(dir, ".compendio", "compendio.db");
+    try {
+      const store = new SqliteIndexStore(dbPath);
+      store.saveDocument(
+        { path: "a.md", title: "A", summary: "r", tags: [], hash: "h" },
+        [{ heading: "A", content: "x", position: 0 }],
+      );
+      expect(existsSync(dbPath)).toBe(true);
+      expect(store.listDocuments()).toHaveLength(1);
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reset() is a no-op when the database file does not exist", () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-lazy-reset-"));
+    const dbPath = join(dir, ".compendio", "compendio.db");
+    try {
+      const store = new SqliteIndexStore(dbPath);
+      expect(() => store.reset()).not.toThrow();
+      expect(existsSync(dbPath)).toBe(false);
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reset() clears stale rows when the database file exists", () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-lazy-reset2-"));
+    const dbPath = join(dir, ".compendio", "compendio.db");
+    try {
+      // Create and populate
+      const store1 = new SqliteIndexStore(dbPath);
+      store1.saveDocument(
+        { path: "a.md", title: "A", summary: "r", tags: [], hash: "h" },
+        [{ heading: "A", content: "x", position: 0 }],
+      );
+      store1.close();
+
+      // Reopen and reset
+      const store2 = new SqliteIndexStore(dbPath);
+      store2.reset();
+      expect(store2.listDocuments()).toEqual([]);
+      store2.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("deleteDocument() is a no-op when the database file does not exist", () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-lazy-del-"));
+    const dbPath = join(dir, ".compendio", "compendio.db");
+    try {
+      const store = new SqliteIndexStore(dbPath);
+      expect(() => store.deleteDocument("any.md")).not.toThrow();
+      expect(existsSync(dbPath)).toBe(false);
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it(":memory: counts as exists — reads return empty, writes work, reset clears", () => {
+    const store = new SqliteIndexStore(":memory:");
+    expect(store.listDocuments()).toEqual([]);
+    store.saveDocument(
+      { path: "a.md", title: "A", summary: "r", tags: [], hash: "h" },
+      [{ heading: "A", content: "x", position: 0 }],
+    );
+    expect(store.listDocuments()).toHaveLength(1);
+    store.reset();
+    expect(store.listDocuments()).toEqual([]);
+    store.close();
+  });
+
+  it("canPersistVectors() returns true before any file is created (capability, not content)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-lazy-vec-"));
+    const dbPath = join(dir, ".compendio", "compendio.db");
+    try {
+      const store = new SqliteIndexStore(dbPath);
+      expect(store.canPersistVectors()).toBe(true);
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

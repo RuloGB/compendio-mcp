@@ -162,4 +162,29 @@ describe("CompositeDocumentSource", () => {
 
     await expect(composite.discover()).rejects.toThrow(/no documentation root could be read: "docs"/);
   });
+
+  it("a single root returning zero files (ENOENT at FileDocumentSource level) succeeds with empty result", async () => {
+    // Simulates what FileDocumentSource does for a missing root: returns
+    // empty files, no readErrors, no throw.
+    const composite = new CompositeDocumentSource([
+      root("docs", new FakeSource()),
+    ]);
+
+    const result = await composite.discover();
+
+    expect(result.files).toEqual([]);
+    expect(result.readErrors).toEqual([]);
+  });
+
+  it("one root returns empty (ENOENT), the other has files — succeeds with only the second root's files", async () => {
+    const composite = new CompositeDocumentSource([
+      root("docs", new FakeSource()), // missing root → empty
+      root("openspec", new FakeSource([{ path: "openspec/a.md", content: "a" }])),
+    ]);
+
+    const result = await composite.discover();
+
+    expect(result.files).toEqual([{ path: "openspec/a.md", content: "a" }]);
+    expect(result.readErrors).toEqual([]);
+  });
 });

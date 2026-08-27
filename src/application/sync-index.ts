@@ -120,6 +120,29 @@ export class SyncIndex {
     const start = Date.now();
     this.report({ phase: "discovery", kind: "start" });
     const { files, readErrors, encodingNotices } = await this.source.discover();
+
+    // Early exit when there is nothing to upsert AND nothing to delete:
+    // avoids opening the database at all (canPersistVectors() would
+    // otherwise force initialization). An existing DB with rows still
+    // goes through the full flow so missing documents are purged.
+    if (files.length === 0) {
+      const existing = this.store.listDocuments();
+      if (existing.length === 0) {
+        return {
+          mode: "lexical",
+          indexed: [],
+          deleted: [],
+          skipped: readErrors.map((e) => ({ path: e.path, errors: [e.error] })),
+          totalChunks: 0,
+          durationMs: Date.now() - start,
+          reconciled: [],
+          ...(encodingNotices !== undefined && encodingNotices.length > 0
+            ? { encodingNotices }
+            : {}),
+        };
+      }
+    }
+
     const existing = this.store.listDocuments();
 
     const state: PassState = {

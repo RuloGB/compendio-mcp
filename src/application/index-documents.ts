@@ -82,11 +82,28 @@ export class IndexDocuments {
     this.report({ phase: "discovery", kind: "start" });
     const { files, readErrors, encodingNotices } = await this.source.discover();
 
-    const indexed: IndexedFileReport[] = [];
     const skipped: SkippedFileReport[] = readErrors.map((e) => ({
       path: e.path,
       errors: [e.error],
     }));
+
+    // Zero discovered files: reset only clears an existing DB (no-op when
+    // the file is absent), then return an empty report. No database is
+    // created by this path.
+    if (files.length === 0) {
+      this.store.reset();
+      const report: IndexReport = {
+        mode: "lexical",
+        indexed: [],
+        skipped,
+        totalChunks: 0,
+        durationMs: Date.now() - start,
+      };
+      if (encodingNotices !== undefined && encodingNotices.length > 0) report.encodingNotices = encodingNotices;
+      return report;
+    }
+
+    const indexed: IndexedFileReport[] = [];
     const pending: { chunkId: number; text: string }[] = [];
 
     this.store.reset();

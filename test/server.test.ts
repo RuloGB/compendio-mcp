@@ -1,6 +1,8 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { Container } from "../src/composition.js";
+import { createContainer, type Container } from "../src/composition.js";
 import { createMcpServer, SERVER_VERSION } from "../src/server.js";
 
 /**
@@ -139,5 +141,76 @@ describe("SERVER_VERSION", () => {
     const { version } = JSON.parse(readFileSync(manifest, "utf8")) as { version: string };
 
     expect(SERVER_VERSION).toBe(version);
+  });
+});
+
+/**
+ * No-docs MCP coverage: verifies the server starts and all three tools return
+ * well-formed empty responses when no database exists and no documents are
+ * present. Uses a real container pointed at an empty temp directory.
+ */
+describe("MCP tools — no documents, no database", () => {
+  function withEmptyContainer(fn: (container: Container) => void | Promise<void>): Promise<void> {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-server-empty-"));
+    const container = createContainer({ root: dir, forceLexical: true });
+    return Promise.resolve(fn(container)).finally(() => {
+      container.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+  }
+
+  it("docs_overview returns zero documents with no fabricated buckets", async () => {
+    await withEmptyContainer(async (container) => {
+      const server = createMcpServer(container);
+      const tool = getRegisteredTool(server, "docs_overview");
+      const result = (await tool.handler({})) as { content: { type: string; text: string }[] };
+      const text = result.content[0]!.text;
+      expect(text).toContain("Indexed documents: 0");
+      expect(text).not.toContain("By type:");
+      expect(text).not.toContain("By module:");
+    });
+  });
+
+  it("search_docs returns normal mode with empty results", async () => {
+    await withEmptyContainer(async (container) => {
+      const server = createMcpServer(container);
+      const tool = getRegisteredTool(server, "search_docs");
+      const result = (await tool.handler({ query: "anything" })) as { content: { type: string; text: string }[] };
+      const payload = JSON.parse(result.content[0]!.text) as { mode: string; results: unknown[] };
+      expect(payload.mode).toBe("lexical");
+      expect(payload.results).toEqual([]);
+    });
+  });
+
+  it("read_doc returns path-not-found with no suggestions", async () => {
+    await withEmptyContainer(async (container) => {
+      const server = createMcpServer(container);
+      const tool = getRegisteredTool(server, "read_doc");
+      const result = (await tool.handler({ path: "anything.md" })) as { content: { type: string; text: string }[] };
+      const text = result.content[0]!.text;
+      expect(text).toContain("No indexed document exists at path");
+    });
+  });
+
+  it("search_docs with filters returns empty results, not an error, when no database exists", async () => {
+    await withEmptyContainer(async (container) => {
+      const server = createMcpServer(container);
+      const tool = getRegisteredTool(server, "search_docs");
+      const result = (await tool.handler({
+        query: "anything",
+        type: "guide",
+        module: "auth",
+        tags: ["setup"],
+      })) as { content: { type: string; text: string }[] };
+      const payload = JSON.parse(result.content[0]!.text) as {
+        mode: string;
+        results: unknown[];
+        filterWarning?: string;
+      };
+      expect(payload.mode).toBe("lexical");
+      expect(payload.results).toEqual([]);
+      // Filters targeting undeclared fields are dropped with a warning, not an error.
+      expect(payload.filterWarning).toBeDefined();
+    });
   });
 });

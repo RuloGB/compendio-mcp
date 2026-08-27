@@ -834,3 +834,32 @@ describe("SyncIndex — Gate 7: SyncReport.reconciled reports written, never att
     close();
   });
 });
+
+describe("SyncIndex — empty-work early exit", () => {
+  it("returns an empty report without opening the DB when files=0 and existing=0", async () => {
+    const { sync, store, close } = buildHarness(null);
+    // No files, no existing documents → early exit, no DB created
+    const report = await sync.execute();
+
+    expect(report.indexed).toEqual([]);
+    expect(report.deleted).toEqual([]);
+    expect(report.skipped).toEqual([]);
+    expect(report.totalChunks).toBe(0);
+    expect(report.mode).toBe("lexical");
+    expect(report.reconciled).toEqual([]);
+    // Store was never written to — listDocuments returns empty via short-circuit
+    expect(store.listDocuments()).toEqual([]);
+    close();
+  });
+
+  it("preserves readErrors on the empty-work path", async () => {
+    const { sync, source, close } = buildHarness(null);
+    source.readErrors = [{ path: "docs", error: "simulated read failure" }];
+
+    const report = await sync.execute();
+
+    expect(report.skipped).toEqual([{ path: "docs", errors: ["simulated read failure"] }]);
+    expect(report.indexed).toEqual([]);
+    close();
+  });
+});

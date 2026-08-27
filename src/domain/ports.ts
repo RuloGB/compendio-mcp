@@ -124,7 +124,8 @@ export interface IndexFileWriter {
 
 /** Persistence port: SQLite (FTS5 + sqlite-vec) in production. */
 export interface IndexStore {
-  /** Drops all indexed data (full reindex model of the MVP). */
+  /** Drops all indexed data (full reindex model of the MVP). No-op when the
+   * database file does not exist — there is nothing to drop. */
   reset(): void;
   saveDocument(meta: DocumentMeta, chunks: Chunk[]): SavedDocument;
   saveEmbeddings(items: ChunkEmbedding[]): void;

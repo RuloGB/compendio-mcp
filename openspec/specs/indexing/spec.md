@@ -436,9 +436,9 @@ The `IndexStore` port MUST provide operations to delete a single document by `pa
 - WHEN it is re-indexed after a content change
 - THEN its old chunks, FTS rows, and vector rows are fully replaced, with no stale or duplicate rows for that `path`
 
-### Requirement: Incremental Sync Triggers — Startup and Throttled Pre-Tool-Call Check
+### Requirement: Incremental Sync Triggers — Startup and Pre-Tool Check
 
-`compendio serve` MUST run one incremental sync pass at startup, before answering any tool call. The three MCP tool handlers (`docs_overview`, `search_docs`, `read_doc`) MUST share a single pre-call hook that runs at most one incremental sync pass per throttle window (see Configuration spec); calls within the same window MUST reuse the already-current index without triggering another diff.
+`compendio serve` MUST run one incremental sync pass at startup, before answering any tool call. The three MCP tool handlers (`docs_overview`, `search_docs`, `read_doc`) MUST share a single pre-call hook that runs at most one incremental sync pass per throttle window (see Configuration spec); calls within the same window MUST reuse the already-current index without triggering another diff. An empty pass MUST avoid database creation.
 
 #### Scenario: Startup sync catches offline edits
 
@@ -452,11 +452,17 @@ The `IndexStore` port MUST provide operations to delete a single document by `pa
 - WHEN both calls are handled
 - THEN the first reuses the current index with no new diff, and the second triggers a fresh sync pass before being answered
 
-#### Scenario: No database file needs no special-casing
+#### Scenario: Missing database with a non-empty corpus initializes on write
 
-- GIVEN no `.compendio/compendio.db` file exists yet
+- GIVEN no database exists and discovery finds an indexable document
 - WHEN `serve` starts
-- THEN `migrate()` creates the current schema and the startup sync pass indexes every discovered document as new, with no additional branch for the empty-index case
+- THEN startup creates the schema on first write and indexes it
+
+#### Scenario: Empty startup remains database-free
+
+- GIVEN all roots are missing or empty
+- WHEN `serve` starts
+- THEN startup succeeds without a database
 
 ### Requirement: Incremental Sync Trigger — Manual `compendio sync` Invocation
 
@@ -488,7 +494,7 @@ The `IndexStore` port MUST provide operations to delete a single document by `pa
 
 ### Requirement: Read Failures Protect the Affected `path` Subtree From Deletion
 
-`DocumentSource.discover()` MUST report a failure to read a directory below a declared root in `readErrors`, instead of silently returning as it does today. Every file beneath a directory that failed to be read is absent from `files` for that pass, so an unreported directory failure would make the incremental diff treat that entire subtree as deleted.
+`DocumentSource.discover()` MUST report a failure to read a directory below a declared root in `readErrors`, instead of silently returning as it does today. Every file beneath a directory that failed to be read is absent from `files` for that pass, so an unreported directory failure would make the incremental diff treat that entire subtree as deleted. A missing or empty root MUST be treated as zero files, and `index` MUST succeed with “nothing to index”.
 
 For every entry in `readErrors`, an incremental sync pass MUST exclude from that pass's delete-candidate set both the reported `path` itself and every indexed `path` beneath it (prefix `<path>/`), MUST retain those existing rows as-is, and MUST report the failure in `skipped`. A `ReadError` for a declared root's own read failure MUST carry that root's alias as its `path` value — not the declared root string — because delete-protection and subtree matching operate on the alias-prefixed `path` shape every indexed document uses; the declared root string MAY still appear in the failure's human-readable message text.
 
@@ -501,11 +507,11 @@ A failure to read one declared root's directory MUST NOT throw by itself: it MUS
 - WHEN an incremental sync pass runs
 - THEN the directory failure is reported in `readErrors`, every indexed `path` under `guides/` is excluded from the delete-candidate set and retained as-is, and the failure is reported in `skipped`
 
-#### Scenario: One of several declared roots is unreadable — reported, run continues
+#### Scenario: One of several declared roots is missing — run continues
 
 - GIVEN `docsDir: ["docs", "openspec"]` and no `openspec/` directory exists in this project
 - WHEN `compendio index` runs
-- THEN the run completes with exit code 0, every `docs/` document is indexed, and the missing root is reported (in `skipped`/`readErrors` shape) with `ReadError.path` equal to `"openspec"` (its alias)
+- THEN the run completes with exit code 0, every `docs/` document is indexed, and the missing root contributes zero files without a read error
 
 #### Scenario: The sole declared root failing is "every root failing" and still throws
 
@@ -743,4 +749,26 @@ The `ejemplos/` reference corpus MUST retain its Spanish prose, its Spanish fron
 - GIVEN a change to `path` production that leaves the evaluation corpus's `esperado` addresses in the old, now-incorrect shape
 - WHEN `compendio eval` is run against the updated index
 - THEN recall@5 and MRR drop toward zero because no `esperado` address matches any indexed `path`, and this is a measurable, reportable outcome of actually running the evaluation — not something a passing `npm test` run can substitute for
+
+### Requirement: Lazy Database Creation and Empty Reindex
+
+The store MUST defer database creation until a write. Uninitialized reads MUST return empty results. Empty `index` MUST reset an existing database but MUST NOT create one; empty `sync` MUST also avoid initialization.
+
+#### Scenario: Missing root is empty index work
+
+- GIVEN the configured root does not exist
+- WHEN `compendio index` runs
+- THEN it succeeds with “nothing to index” and creates no `.compendio/`
+
+#### Scenario: Empty reindex clears stale rows
+
+- GIVEN an existing database has rows and discovery finds none
+- WHEN `compendio index` runs
+- THEN it has the current empty schema with no document rows
+
+#### Scenario: First discovered write initializes the store
+
+- GIVEN no database exists and discovery finds a document
+- WHEN `compendio index` persists it
+- THEN the database is created and it is indexed
 
