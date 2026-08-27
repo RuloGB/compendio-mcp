@@ -67,7 +67,7 @@ To update Compendio later, run that same command again — it always pulls the l
 
 **2. Register it as an MCP server** in your client, pointed at your project root.
 
-**Claude Code** (`.mcp.json` at the repo root):
+**Claude Code** (`.mcp.json` at the repo root or `{USER_FOLDER} .claude.json` to global install):
 
 ```json
 {
