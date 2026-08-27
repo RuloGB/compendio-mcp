@@ -123,15 +123,12 @@ To update Compendio later, run that same command again — it always pulls the l
 
 **Codex** (`.codex/config.toml`):
 
-```json
+> [mcp_servers.compendio]
+ command = "npx"
+ args = ["compendio-mcp", "serve"]
+ enabled = true
+ startup_timeout_sec = 60
 
-[mcp_servers.compendio]
-command = "npx"
-args = ["compendio-mcp", "serve"]
-enabled = true
-startup_timeout_sec = 60
-
-```
 
 **3. Build the index once**, from the project root:
 
