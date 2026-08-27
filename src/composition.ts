@@ -67,10 +67,10 @@ export interface Container {
 
 export function createContainer(options: ContainerOptions): Container {
   const { config, warnings: configWarnings } = loadConfigReport(options.root);
-  // Runs, and can throw, before `new SqliteIndexStore` below: `migrate()`
-  // creates `.compendio/` on every construction, so an invalid root set must
-  // be rejected first (design.md Decision 6) — this is what makes "no
-  // `.compendio/` afterward" literally true for a colliding config.
+  // Runs, and can throw, before `new SqliteIndexStore` below: an invalid root
+  // set must be rejected first (design.md Decision 6) — the store is lazy and
+  // performs no filesystem work until the first write, so a colliding config
+  // leaves no `.compendio/` behind regardless.
   const roots = resolveRoots(
     options.root,
     options.docsDir !== undefined ? [options.docsDir] : config.docsDir,

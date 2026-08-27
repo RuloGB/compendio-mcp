@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { IndexFileWriter, IndexWriteResult } from "../../domain/ports.js";
@@ -5,7 +6,9 @@ import type { IndexFileWriter, IndexWriteResult } from "../../domain/ports.js";
 /**
  * Writes the generated index into the docs directory, skipping the write when
  * the file already has exactly the generated content (keeps mtimes and VCS
- * status clean on no-op runs).
+ * status clean on no-op runs). Creates the target directory if it does not
+ * exist (the first declared root may be missing when the project has no docs
+ * folder yet).
  */
 export class FileIndexWriter implements IndexFileWriter {
   constructor(
@@ -27,6 +30,7 @@ export class FileIndexWriter implements IndexFileWriter {
     if (existing !== null && normalizeEol(existing) === content) {
       return { path, changed: false };
     }
+    await mkdir(this.docsDir, { recursive: true });
     await writeFile(path, content, "utf8");
     return { path, changed: true };
   }

@@ -464,3 +464,92 @@ describe("CLI subprocess: config-load warnings on stderr (design.md Decision 6)"
     expect(run.stderr).not.toMatch(/WARNING embeddings\./);
   });
 });
+
+describe("CLI subprocess: no-database scenarios", () => {
+  let emptyDir: string;
+
+  beforeAll(() => {
+    ensureBuilt();
+    emptyDir = mkdtempSync(join(tmpdir(), "compendio-cli-empty-"));
+    // No docs directory, no config — zero-config, missing root
+  });
+
+  afterAll(() => {
+    if (emptyDir !== undefined) rmSync(emptyDir, { recursive: true, force: true });
+  });
+
+  it("index with missing root exits 0, reports nothing to index, creates no .compendio/", () => {
+    const run = runCli(["--root", emptyDir, "index", "--lexical"]);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("Nothing to index");
+    expect(existsSync(join(emptyDir, ".compendio"))).toBe(false);
+  });
+
+  it("search with no database exits 0 and reports empty results", () => {
+    const run = runCli(["--root", emptyDir, "search", "anything", "--lexical"]);
+    expect(run.status).toBe(0);
+    const payload = JSON.parse(run.stdout) as { mode: string; results: unknown[] };
+    expect(payload.mode).toBe("lexical");
+    expect(payload.results).toEqual([]);
+  });
+
+  it("overview with no database exits 0 and reports zero documents", () => {
+    const run = runCli(["--root", emptyDir, "overview"]);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("Indexed documents: 0");
+  });
+
+  it("index-md with missing root writes header-only INDEX.md and creates no .compendio/", () => {
+    const run = runCli(["--root", emptyDir, "index-md"]);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("0 documents");
+    // The first root (docs/) is created by FileIndexWriter
+    expect(existsSync(join(emptyDir, "docs", "INDEX.md"))).toBe(true);
+    expect(existsSync(join(emptyDir, ".compendio"))).toBe(false);
+  });
+});
+
+/**
+ * `compendio index-md` reads the filesystem, not the database. Even when a
+ * stale DB with old document rows exists, INDEX.md must reflect only what is
+ * currently on disk — header-only when no docs are found.
+ */
+describe("CLI subprocess: index-md ignores stale database rows", () => {
+  let staleDbDir: string;
+
+  beforeAll(() => {
+    ensureBuilt();
+    staleDbDir = mkdtempSync(join(tmpdir(), "compendio-cli-stale-db-"));
+    // Copy the corpus and index it, creating a DB with 5 documents.
+    cpSync(join(FIXTURE, "docs"), join(staleDbDir, "docs"), { recursive: true });
+    cpSync(join(FIXTURE, "compendio.config.json"), join(staleDbDir, "compendio.config.json"));
+    const indexRun = runCli(["--root", staleDbDir, "index", "--lexical"]);
+    if (indexRun.status !== 0) {
+      throw new Error(`index failed: ${indexRun.stderr}`);
+    }
+    // Verify the DB was created.
+    if (!existsSync(join(staleDbDir, ".compendio", "compendio.db"))) {
+      throw new Error("expected .compendio/compendio.db to exist after index");
+    }
+    // Delete all doc files, leaving the DB intact (stale rows).
+    rmSync(join(staleDbDir, "docs"), { recursive: true, force: true });
+  }, 120_000);
+
+  afterAll(() => {
+    if (staleDbDir !== undefined) rmSync(staleDbDir, { recursive: true, force: true });
+  });
+
+  it("index-md writes header-only INDEX.md even when a stale DB with old documents exists", () => {
+    const run = runCli(["--root", staleDbDir, "index-md"]);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("0 documents");
+
+    const indexPath = join(staleDbDir, "docs", "INDEX.md");
+    expect(existsSync(indexPath)).toBe(true);
+    const content = readFileSync(indexPath, "utf8");
+    // Header is present but no document entries (lines starting with "- ").
+    expect(content).toContain("# Documentation index");
+    const docLines = content.split("\n").filter((l) => l.startsWith("- "));
+    expect(docLines).toEqual([]);
+  });
+});

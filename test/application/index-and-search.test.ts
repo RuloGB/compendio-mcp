@@ -1035,3 +1035,21 @@ describe("multi-root integration — two declared roots, index -> search -> read
     }
   });
 });
+
+describe("IndexDocuments — zero-file early exit", () => {
+  it("returns an empty report when discovery finds no files, without creating the DB", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "compendio-empty-index-"));
+    try {
+      const container = createContainer({ root: projectDir, forceLexical: true });
+      // No docs directory exists → discovery finds zero files
+      const report = await container.indexDocuments.execute();
+
+      expect(report.indexed).toEqual([]);
+      expect(report.totalChunks).toBe(0);
+      expect(report.mode).toBe("lexical");
+      container.close();
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+});

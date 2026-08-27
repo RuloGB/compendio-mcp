@@ -46,4 +46,14 @@ describe("FileIndexWriter", () => {
     expect(result.changed).toBe(false);
     expect(await readFile(join(dir, "INDEX.md"), "utf8")).toContain("\r\n");
   });
+
+  it("creates the target directory when it does not exist", async () => {
+    const missingDir = join(dir, "missing-root");
+    const writer = new FileIndexWriter(missingDir, "INDEX.md");
+    const result = await writer.write("# Header only\n");
+
+    expect(result.changed).toBe(true);
+    expect(result.path).toBe(join(missingDir, "INDEX.md"));
+    expect(await readFile(join(missingDir, "INDEX.md"), "utf8")).toBe("# Header only\n");
+  });
 });

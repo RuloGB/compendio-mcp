@@ -504,6 +504,34 @@ When `read_doc` is called with a `path` that does not match any indexed document
 - WHEN `read_doc` is called with `path: "docs/authh/login.md"`
 - THEN the response returns the 3 closest matching `path` values rather than throwing an error
 
+### Requirement: MCP Tools Operate Without Documents or an Index
+
+`compendio serve` MUST start successfully when all configured document roots are missing or empty and no database exists. Each MCP tool MUST return its normal response shape with empty content, rather than throwing because the store has not been initialized.
+
+#### Scenario: Server starts without docs
+
+- GIVEN no configured document root contains any indexable file and no database exists
+- WHEN `compendio serve` starts
+- THEN the server starts normally and is ready to accept tool calls
+
+#### Scenario: Empty overview is well formed
+
+- GIVEN the server is running without an index
+- WHEN `docs_overview` is called
+- THEN it succeeds with zero documents, no document lines, and no fabricated taxonomy buckets
+
+#### Scenario: Empty search is well formed
+
+- GIVEN the server is running without an index
+- WHEN `search_docs` is called
+- THEN it succeeds with the normal `mode` field and `results: []`, without a database error
+
+#### Scenario: Unknown path remains a well-formed read result
+
+- GIVEN the server is running without an index
+- WHEN `read_doc` is called for any path
+- THEN it returns the normal path-not-found response with zero available matches, without throwing
+
 ### Requirement: `read_doc` Tolerates Exactly One Extra Leading Path Segment
 
 `read_doc({ path })` MUST attempt to resolve the literal `path` value against the index first. When the literal value does not match any indexed document, the system MUST retry exactly once with the path's leftmost segment stripped (e.g. `repo/docs/x.md` → `docs/x.md`), and MUST use that match if found. This tolerance MUST NOT be applied recursively — only one segment is ever stripped, and only as a fallback attempted after the literal path has already missed, so a genuine document whose own `path` is the stripped form always loses to an exact match at the deeper, literal path when both would otherwise apply. The tolerance MUST NOT add a segment: a `path` value with fewer segments than an indexed document's `path` (e.g. a bare basename supplied for a document indexed as `docs/x.md`) MUST NOT be resolved by this mechanism.

@@ -64,6 +64,9 @@ program
           `Indexed ${report.indexed.length} documents (${report.totalChunks} chunks) ` +
             `in ${report.durationMs} ms [mode ${report.mode}]`,
         );
+        if (report.indexed.length === 0 && report.skipped.length === 0) {
+          console.log("Nothing to index.");
+        }
         if (report.skipped.length > 0) {
           console.log(`Skipped ${report.skipped.length} documents with invalid frontmatter.`);
         }

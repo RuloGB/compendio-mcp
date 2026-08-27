@@ -77,11 +77,12 @@ describe("createContainer — the collision guard fires before anything is writt
     expect(existsSync(join(projectDir, ".compendio"))).toBe(false);
   });
 
-  it("accepts a valid, non-colliding root set and creates .compendio/", async () => {
+  it("accepts a valid, non-colliding root set without creating .compendio/ (lazy store)", async () => {
     await writeDocsDir(["docs", "openspec"]);
     const container = createContainer({ root: projectDir });
     try {
-      expect(existsSync(join(projectDir, ".compendio"))).toBe(true);
+      // The store is lazy: no filesystem work until the first write.
+      expect(existsSync(join(projectDir, ".compendio"))).toBe(false);
     } finally {
       container.close();
     }

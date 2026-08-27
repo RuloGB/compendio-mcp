@@ -234,4 +234,25 @@ describe("FileDocumentSource", () => {
 
     expect(result.files.map((f) => f.path).sort()).toEqual(["docs-old/x.md"]);
   });
+
+  it("returns zero files when the root directory does not exist (ENOENT), without throwing", async () => {
+    const missing = join(dir, "nonexistent");
+    const source = new FileDocumentSource(missing, []);
+    const result = await source.discover();
+
+    expect(result.files).toEqual([]);
+    expect(result.readErrors).toEqual([]);
+  });
+
+  it("still throws when the root fails with a non-ENOENT error", async () => {
+    readdirMock.mockImplementation(async (path: unknown) => {
+      if (path === dir) {
+        throw new Error("EACCES: permission denied");
+      }
+      return [];
+    });
+
+    const source = new FileDocumentSource(dir, []);
+    await expect(source.discover()).rejects.toThrow(/EACCES/);
+  });
 });
