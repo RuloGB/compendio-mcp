@@ -37,7 +37,7 @@ function getRegisteredTool(
 }
 
 describe("server instructions", () => {
-  it("ships routing guidance that frames competence, not file format", () => {
+  it("ships routing guidance that frames competence and resolves named Markdown files", () => {
     const server = createMcpServer(fakeContainer());
     const internals = server.server as unknown as { _instructions?: string };
     const instructions = internals._instructions ?? "";
@@ -51,6 +51,38 @@ describe("server instructions", () => {
     // And they must keep conceding what source code owns — an instruction that
     // over-claims gets discounted wholesale.
     expect(instructions).toMatch(/authority/i);
+    // A filename supplied by the user is not necessarily Compendio's indexed
+    // path, and search indexes document content rather than metadata paths.
+    // The server must resolve it through the corpus map before reading.
+    expect(instructions).toMatch(/Markdown file/i);
+    expect(instructions).toMatch(/exact indexed\s+path is uncertain/i);
+    expect(instructions).toMatch(/docs_overview to find it/i);
+    expect(instructions).toMatch(/read_doc with that exact path/i);
+    // The workflow must preserve progressive disclosure for a named section.
+    expect(instructions).toMatch(/pass that section to read_doc/i);
+  });
+});
+
+describe("named Markdown document routing", () => {
+  it("documents the overview-then-read workflow without claiming filename search works", () => {
+    const server = createMcpServer(fakeContainer());
+    const internals = server as unknown as {
+      _registeredTools: Record<string, { description?: string }>;
+    };
+
+    expect(internals._registeredTools.docs_overview?.description).toMatch(/names a \.md file/i);
+    expect(internals._registeredTools.docs_overview?.description).toMatch(/before calling read_doc/i);
+    expect(internals._registeredTools.search_docs?.description).toMatch(/filename alone/i);
+    expect(internals._registeredTools.search_docs?.description).toMatch(/docs_overview/i);
+    expect(internals._registeredTools.search_docs?.description).not.toMatch(/filename and requested section\/topic/i);
+    expect(internals._registeredTools.read_doc?.description).toBe(
+      "Returns one section of a document (or the whole document when no section is given), " +
+        "along with its frontmatter. Prefer passing section: a whole document costs several " +
+        "times more than the section you actually need. When a user names a section in a .md " +
+        "document, pass that named section here after locating the indexed path with docs_overview " +
+        "if necessary. If the path does not exist, it responds with the 3 closest matching paths " +
+        "instead of failing.",
+    );
   });
 });
 

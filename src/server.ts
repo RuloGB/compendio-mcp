@@ -62,6 +62,13 @@ const SERVER_INSTRUCTIONS = [
   "endpoints, deployment steps, or the reasoning behind a technical choice. It usually",
   "answers in one call, and it is the cheapest way to find out where to look next.",
   "",
+  "When the user names or refers to a Markdown file (for example, pending-development.md),",
+  "use Compendio rather than guessing its contents or its indexed path. If the exact indexed",
+  "path is uncertain, call docs_overview to find it; then call read_doc with that exact path. When",
+  "the user asks about a named section (for",
+  "example, P9), pass that section to read_doc so you read the requested part rather than the",
+  "whole document. If the exact indexed path is already known, call read_doc directly.",
+  "",
   "Source code stays the authority on what the system does today: documentation can go",
   "stale, code cannot. What code cannot hold is intent — why a choice was made, which",
   "alternatives were rejected, what a rule is meant to guarantee. For that the docs are",
@@ -82,7 +89,9 @@ export function createMcpServer(container: Container): McpServer {
       description:
         "Map of the documentation corpus: counts by type and module, plus one line per document " +
         "([type] path — summary (status)). Use it to enumerate what exists, or to pick filter " +
-        "values for search_docs. For a specific question, call search_docs first — it answers in " +
+        "values for search_docs. When a user names a .md file but its exact indexed path is " +
+        "uncertain, use this to find that path before calling read_doc. For a specific question, " +
+        "call search_docs first — it answers in " +
         "one call, while orienting here lists the whole corpus before you can read anything.",
       inputSchema: {},
     },
@@ -103,7 +112,9 @@ export function createMcpServer(container: Container): McpServer {
         "documentation, with metadata filters. Entry point for any question about what the " +
         "project does or why — behaviour, business rules, the exact text of a user-facing " +
         "message, limits, endpoints, deployment steps, or the reasoning behind a decision. " +
-        "Cheapest first probe for such a question; source code remains the authority on " +
+        "For a content or project question, this is the cheapest first probe; a filename alone " +
+        "does not reliably identify an indexed path, so resolve named .md files with docs_overview " +
+        "before calling read_doc. Source code remains the authority on " +
         "current behaviour, while these docs are the only record of intent. " +
         "The top result carries a full-length excerpt, centred on the part of the document that " +
         "matched, which usually answers outright; the rest carry short ones from the start of " +
@@ -168,7 +179,9 @@ export function createMcpServer(container: Container): McpServer {
       description:
         "Returns one section of a document (or the whole document when no section is given), " +
         "along with its frontmatter. Prefer passing section: a whole document costs several " +
-        "times more than the section you actually need. If the path does not exist, responds " +
+        "times more than the section you actually need. When a user names a section in a .md " +
+        "document, pass that named section here after locating the indexed path with docs_overview " +
+        "if necessary. If the path does not exist, it responds " +
         "with the 3 closest matching paths instead of failing.",
       inputSchema: {
         path: z.string().min(1).describe("Document path, relative to the docs directory"),
