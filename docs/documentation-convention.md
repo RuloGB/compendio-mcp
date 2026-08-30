@@ -56,7 +56,7 @@ Compendio's own metadata handling is driven by `convention.mode` in `compendio.c
 |---|---|---|
 | `title` | First H1 | Humanized filename (strip `.md`, `-`/`_` → space, collapse+trim whitespace, sentence-case the first letter — e.g. `getting-started_with-search.md` → `"Getting started with search"`) |
 | `summary` | First paragraph after the H1 | — |
-| `module` | Mapped frontmatter field (or `module:` by default) | First folder segment under `docsDir`; absent for a file directly under `docsDir` |
+| `module` | Mapped frontmatter field (or `module:` by default) | First folder segment under its explicit or discovered root; absent for a file directly under that root |
 | `type` | Mapped frontmatter field (or `type:` by default) | Absent — never invented |
 | `status` | Mapped frontmatter field (or `status:` by default) | Absent — never invented |
 

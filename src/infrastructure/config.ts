@@ -6,12 +6,10 @@ import type { ConfigWarning } from "../domain/ports.js";
 
 export interface CompendioConfig {
   /**
-   * Declared documentation roots. Non-empty, always an array — there is no
-   * single-string form and no "multi-root mode". Every discovered document
-   * `path` is prefixed with its root's alias (see `resolveRoots`), including
-   * with the single-element default.
+   * Present only in explicit root mode. Absent/omitted/empty docsDir selects
+   * discovery mode instead of a hidden default root.
    */
-  docsDir: string[];
+  docsDir?: string[];
   exclude: string[];
   db: string;
   embeddings: {
@@ -58,7 +56,6 @@ export const NO_CHUNKING = ["glosario.md"];
 export const DEFAULT_THROTTLE_MS = 30000;
 
 export const DEFAULT_CONFIG: CompendioConfig = {
-  docsDir: ["docs"],
   exclude: [INDEX_FILE],
   db: ".compendio/compendio.db",
   embeddings: { provider: "local", model: "Xenova/multilingual-e5-small" },
@@ -79,17 +76,22 @@ export const DEFAULT_CONFIG: CompendioConfig = {
  * `formatEncodingNotice` -- the adapters own the wording, never the loader
  * (design.md Decision 5).
  */
+export type DocumentationRootSelection =
+  | { mode: "explicit"; docsDir: string[] }
+  | { mode: "discovery" };
+
 export interface ConfigLoadReport {
   config: CompendioConfig;
+  rootSelection: DocumentationRootSelection;
   /** Empty on a clean load; never absent. */
   warnings: ConfigWarning[];
 }
 
 /**
  * Loads compendio.config.json from the project root, merged over defaults,
- * plus every `ConfigWarning` the load produced: an invalid declared numeric
- * value, an unrecognized key under a whitelisted branch, or an inverted
- * `chunk.minTokens`/`chunk.maxTokens` pair (design.md Decision 5).
+ * plus root-selection mode and every `ConfigWarning` the load produced: an
+ * invalid declared numeric value, an unrecognized key under a whitelisted
+ * branch, or an inverted `chunk.minTokens`/`chunk.maxTokens` pair.
  * `warnings` is always an array, never absent -- empty on a clean load,
  * including when no `compendio.config.json` exists at all.
  */
@@ -97,8 +99,13 @@ export function loadConfigReport(root: string): ConfigLoadReport {
   let raw: string;
   try {
     raw = readFileSync(join(root, CONFIG_FILE), "utf8");
-  } catch {
-    return { config: structuredClone(DEFAULT_CONFIG), warnings: [] };
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return { config: structuredClone(DEFAULT_CONFIG), rootSelection: { mode: "discovery" }, warnings: [] };
+    }
+    throw new Error(
+      `cannot read ${CONFIG_FILE}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   let parsed: unknown;
   try {
@@ -108,21 +115,45 @@ export function loadConfigReport(root: string): ConfigLoadReport {
       `${CONFIG_FILE} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${CONFIG_FILE} must be a JSON object`);
+  }
   const warnings: ConfigWarning[] = [];
-  const config = mergeConfig(structuredClone(DEFAULT_CONFIG), parsed as Partial<CompendioConfig>, warnings);
-  return { config, warnings };
+  const rootSelection = resolveRootSelection(parsed);
+  const config = mergeConfig(structuredClone(DEFAULT_CONFIG), parsed as Partial<CompendioConfig>, warnings, rootSelection);
+  return { config, rootSelection, warnings };
 }
 
 /**
- * Loads compendio.config.json from the project root, merged over defaults.
- * Every key has a default: in a repo following the convention the tool works
- * with no config file at all. Thin wrapper over `loadConfigReport` -- see it
- * for the warnings a caller that needs them should read instead
- * (`createContainer` is the one caller that does; the two `scripts/*.mjs`
- * probes and every other call site want `CompendioConfig` alone).
+ * Config-only compatibility wrapper. Non-root config keys still have
+ * defaults, so a repo can work with no config file at all, but root selection
+ * now lives in `loadConfigReport`: callers that need explicit-vs-discovery
+ * mode must read the report instead of inferring it from `config.docsDir`.
  */
 export function loadConfig(root: string): CompendioConfig {
   return loadConfigReport(root).config;
+}
+
+
+function isNotFoundError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+function resolveRootSelection(raw: unknown): DocumentationRootSelection {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw) || !("docsDir" in raw)) {
+    return { mode: "discovery" };
+  }
+  const docsDir = (raw as { docsDir: unknown }).docsDir;
+  if (!Array.isArray(docsDir)) {
+    throw new Error("docsDir must be an array of documentation root paths");
+  }
+  docsDir.forEach((entry, index) => {
+    if (typeof entry !== "string") {
+      throw new Error(`docsDir entries must be strings; entry ${index} is ${typeof entry}`);
+    }
+  });
+  if (docsDir.length === 0) return { mode: "discovery" };
+  return { mode: "explicit", docsDir: [...docsDir] };
 }
 
 /** One numeric key's resolution: the value in force, and whether a declared
@@ -172,11 +203,13 @@ function collectUnknownKeys(
 // key), and building explicitly ensures none of them leak into the returned
 // config -- true of every branch here, not just `search`'s (design.md
 // Decision 4). `warnings` accumulates every fact this function had to ignore
-// or override (design.md Decision 5); `loadConfig` never reads it.
+// or override; `rootSelection` is the only source of `docsDir` in the returned
+// config, and only in explicit mode.
 function mergeConfig(
   base: CompendioConfig,
   override: Partial<CompendioConfig>,
   warnings: ConfigWarning[],
+  rootSelection: DocumentationRootSelection,
 ): CompendioConfig {
   collectUnknownKeys("chunk", override.chunk, ["minTokens", "maxTokens"], warnings);
   collectUnknownKeys("embeddings", override.embeddings, ["provider", "model"], warnings);
@@ -216,7 +249,7 @@ function mergeConfig(
   }
 
   return {
-    docsDir: override.docsDir ?? base.docsDir,
+    ...(rootSelection.mode === "explicit" ? { docsDir: rootSelection.docsDir } : {}),
     exclude: override.exclude ?? base.exclude,
     db: override.db ?? base.db,
     embeddings: {
