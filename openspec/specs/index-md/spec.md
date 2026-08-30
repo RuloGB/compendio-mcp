@@ -89,9 +89,10 @@ The system MUST NOT preserve a legacy closed-taxonomy-indexOf ordering path as a
 - WHEN `compendio index-md` runs again under the new rules
 - THEN the file is regenerated and re-sorted per the applicable rule above, with no attempt to preserve the previous ordering
 
-### Requirement: One Combined `INDEX.md` Across All Declared Roots
+### Requirement: One Combined `INDEX.md` Across All Declared Roots (Explicit Mode)
 
-`compendio index-md` MUST generate exactly one combined `INDEX.md`, written into the first declared root (`docsDir[0]`), listing every document discovered across every declared root under its root-alias-prefixed `path`. No per-root `INDEX.md` file MUST be generated. This applies uniformly regardless of how many roots are declared, including the default single-element `["docs"]` root set — a one-root config still writes one `INDEX.md` into that root, listing prefixed paths.
+In explicit config mode, `compendio index-md` MUST generate exactly one combined `INDEX.md`, written into the first declared root (`docsDir[0]`), listing every document discovered across every declared root under its root-alias-prefixed `path`. No per-root `INDEX.md` file MUST be generated. This applies uniformly regardless of how many roots are declared — a one-root config still writes one `INDEX.md` into that root, listing prefixed paths. Discovery mode's write target is defined separately (see "Discovery Mode Writes Project-Root `INDEX.md`").
+(Previously: scoped implicitly to a default single-element `["docs"]` root set, before discovery mode existed as a distinct case.)
 
 #### Scenario: Two-root generation writes one combined file to the first root
 
@@ -99,21 +100,50 @@ The system MUST NOT preserve a legacy closed-taxonomy-indexOf ordering path as a
 - WHEN `compendio index-md` runs
 - THEN exactly one `INDEX.md` is written, at `docs/INDEX.md`, listing documents from both roots under their prefixed paths
 
-#### Scenario: The default single-root set still writes one file, with prefixed paths
+#### Scenario: A single declared root still writes one file, with prefixed paths
 
-- GIVEN no config file, so `docsDir` defaults to `["docs"]`
+- GIVEN `docsDir: ["docs"]`
 - WHEN `compendio index-md` runs
 - THEN `INDEX.md` is written to `docs/INDEX.md`, and every listed entry's `path` carries the `docs/` prefix (e.g. `docs/documentation-convention.md`) — not the unprefixed shape prior versions produced
 
+### Requirement: Discovery Mode Writes Project-Root `INDEX.md`
+
+When discovery mode finds at least one Markdown-bearing top-level root, `compendio index-md` MUST write `INDEX.md` at the project root. When `--dir` is used, it is effective explicit mode and MUST write inside the override root, never as project-root `INDEX.md`. In explicit config mode, it MUST keep writing to the first declared root (see "One Combined `INDEX.md` Across All Declared Roots (Explicit Mode)").
+
+#### Scenario: Discovery mode targets the project root
+
+- GIVEN no config file and at least one discovered root
+- WHEN `compendio index-md` runs
+- THEN `INDEX.md` is written as `INDEX.md` in the project root
+
+#### Scenario: `--dir` writes inside the override root
+
+- GIVEN `compendio index-md --dir notes`
+- WHEN generation runs
+- THEN `INDEX.md` is written inside `notes/`, not at the project root
+
+#### Scenario: Explicit mode keeps first-root placement
+
+- GIVEN `docsDir: ["docs", "openspec"]`
+- WHEN `compendio index-md` runs
+- THEN `INDEX.md` is written to the first declared root
+
 ### Requirement: `INDEX.md` Never Lists Itself, Under Any Root Count
 
-`compendio index-md` generation MUST NOT include the generated `INDEX.md` file itself among its listed entries, `skipped` entries, or `encodingNotices` — regardless of how many roots are declared, and regardless of whether a project's `exclude` configuration would otherwise leave `INDEX.md` un-excluded. Self-exclusion MUST be evaluated against the generated file's actual `path`, which is always root-alias-prefixed (e.g. `docs/INDEX.md`), never against a fixed, unprefixed literal. This requirement is stated here for the first time as a formal spec guarantee — it previously existed only as an implementation-level guard.
+`compendio index-md` generation MUST NOT include the generated `INDEX.md` file itself among its listed entries, `skipped` entries, or `encodingNotices` — regardless of how many roots are declared, whether discovery mode is active, and regardless of whether a project's `exclude` configuration would otherwise leave `INDEX.md` un-excluded. Self-exclusion MUST be evaluated against the generated file's actual `path`, which is always root-alias-prefixed in explicit mode and exactly `INDEX.md` in discovery mode, never against a fixed literal. This requirement was first stated here as a formal spec guarantee (previously only an implementation-level guard); this revision extends it to discovery mode.
+(Previously: self-exclusion only described declared roots.)
 
-#### Scenario: Self-exclusion holds under default config, default root set
+#### Scenario: Self-exclusion holds under a single declared root
 
-- GIVEN `docsDir` defaults to `["docs"]` and the default `exclude: ["INDEX.md"]`
+- GIVEN `docsDir: ["docs"]` and the default `exclude: ["INDEX.md"]`
 - WHEN `compendio index-md` runs
 - THEN the generated `docs/INDEX.md` does not appear among its own listed entries
+
+#### Scenario: Self-exclusion holds under discovery mode
+
+- GIVEN discovery mode is active and `INDEX.md` is generated at the project root
+- WHEN `compendio index-md` runs
+- THEN the generated file does not appear among its own listed entries
 
 #### Scenario: Self-exclusion holds under default config, two declared roots
 
@@ -129,11 +159,11 @@ The system MUST NOT preserve a legacy closed-taxonomy-indexOf ordering path as a
 
 ### Requirement: Empty Discovery Writes a Header-Only INDEX.md
 
-When `compendio index-md` discovers zero documents because the configured roots are missing or empty, it MUST succeed and write the generated `INDEX.md` to the first declared root, as today. The file MUST contain only the standard header and no document entries. This operation MUST NOT initialize or create the SQLite database.
+When `compendio index-md` discovers zero documents because the configured or discovered roots are missing or empty, it MUST succeed and write the generated `INDEX.md` to its mode's normal write target — the first declared root in explicit mode, the project root in discovery mode (see "Discovery Mode Writes Project-Root `INDEX.md`"). The file MUST contain only the standard header and no document entries. This operation MUST NOT initialize or create the SQLite database.
 
-#### Scenario: Empty default root writes the header
+#### Scenario: Empty single declared root writes the header
 
-- GIVEN the default `docs` root is missing or empty and no database exists
+- GIVEN `docsDir: ["docs"]`, the `docs` root is missing or empty, and no database exists
 - WHEN `compendio index-md` runs
 - THEN it succeeds, writes `docs/INDEX.md` with only the standard header, and creates no `.compendio/`
 

@@ -468,7 +468,20 @@ The `search_docs` tool MUST accept `{ query, type?, module?, tags?, k?, include_
 
 ### Requirement: Root-Alias-Prefixed `path` Flows Through `search_docs`, `read_doc`, and `docs_overview`, Always
 
-Every `path` value returned by `search_docs` result items and `docs_overview`'s per-document lines MUST carry its document's root-alias prefix, unchanged from the value persisted at index time — regardless of how many roots are declared, including the default single-element `["docs"]` root set. `read_doc({ path })` MUST accept that same root-prefixed value verbatim and resolve it to the corresponding document: a `path` returned by `search_docs` or `docs_overview` MUST round-trip through `read_doc` with no caller-side stripping or rewriting.
+Every `path` value returned by `search_docs` result items and `docs_overview`'s per-document lines MUST carry its document's root-alias prefix in explicit mode and its discovered top-level root prefix in discovery mode, unchanged from the value persisted at index time. `read_doc({ path })` MUST accept that same value verbatim and resolve it to the corresponding document. The zero-config path shape MUST remain round-trippable.
+(Previously: only the declared-root shape was specified, implicitly assuming a default single-element `["docs"]` root set; discovery-mode path shape was absent.)
+
+#### Scenario: Zero-config paths round-trip without stripping
+
+- GIVEN discovery mode is active and `search_docs` returns a path under `openspec/`
+- WHEN that exact path is passed to `read_doc`
+- THEN the document resolves successfully
+
+#### Scenario: Explicit-mode paths remain unchanged
+
+- GIVEN `docsDir: ["docs", "openspec"]`
+- WHEN `docs_overview` or `search_docs` returns a path
+- THEN the path still carries the declared root alias unchanged
 
 #### Scenario: `search_docs` returns a root-prefixed path
 
@@ -488,11 +501,27 @@ Every `path` value returned by `search_docs` result items and `docs_overview`'s 
 - WHEN `docs_overview` is called
 - THEN its per-document lines include documents from both roots, each shown under its own root-prefixed `path`
 
-#### Scenario: The default single-root set still prefixes every path
+#### Scenario: A single declared root still prefixes every path
 
-- GIVEN no config file, so `docsDir` defaults to `["docs"]`
+- GIVEN `docsDir: ["docs"]`
 - WHEN `search_docs`, `read_doc`, and `docs_overview` are called
 - THEN every `path` value returned or accepted carries the `docs/` prefix — not the unprefixed shape prior versions produced
+
+### Requirement: MCP Zero-Config Expectations Reflect Discovery Mode
+
+The system MUST preserve the same three-tool MCP surface (`docs_overview`, `search_docs`, `read_doc`) and MUST accept zero-config usage by returning discovery-mode paths instead of a hidden `docs/` default. Tool names, parameters, and response shapes MUST remain unchanged.
+
+#### Scenario: Tool surface stays unchanged
+
+- GIVEN a running MCP server
+- WHEN the tool list is inspected
+- THEN only `docs_overview`, `search_docs`, and `read_doc` are exposed
+
+#### Scenario: Zero-config paths are discovery-shaped
+
+- GIVEN no config file and a discovered root named `openspec`
+- WHEN `search_docs` returns a result
+- THEN its `path` is discovery-shaped and round-trips through `read_doc`
 
 ### Requirement: Unknown `path` Suggests the 3 Closest Matches
 
