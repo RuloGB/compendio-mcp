@@ -6,13 +6,17 @@ import { cp1252Bytes } from "../helpers/cp1252";
 
 const readFileMock = vi.hoisted(() => vi.fn());
 const readdirMock = vi.hoisted(() => vi.fn());
+const lstatMock = vi.hoisted(() => vi.fn());
+const realpathMock = vi.hoisted(() => vi.fn());
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return {
     ...actual,
+    lstat: (...args: Parameters<typeof actual.lstat>) => lstatMock(...args),
     readFile: (...args: Parameters<typeof actual.readFile>) => readFileMock(...args),
     readdir: (...args: Parameters<typeof actual.readdir>) => readdirMock(...args),
+    realpath: (...args: Parameters<typeof actual.realpath>) => realpathMock(...args),
   };
 });
 
@@ -34,6 +38,16 @@ async function realReaddir(
   return actual.readdir(path as string, options as Parameters<typeof actual.readdir>[1]);
 }
 
+async function realLstat(path: unknown): Promise<unknown> {
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  return actual.lstat(path as string);
+}
+
+async function realRealpath(path: unknown): Promise<string> {
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  return actual.realpath(path as string);
+}
+
 describe("FileDocumentSource", () => {
   let dir: string;
 
@@ -43,6 +57,10 @@ describe("FileDocumentSource", () => {
     readFileMock.mockImplementation(async (path: unknown) => realReadFile(path));
     readdirMock.mockReset();
     readdirMock.mockImplementation(async (path: unknown, options: unknown) => realReaddir(path, options));
+    lstatMock.mockReset();
+    lstatMock.mockImplementation(async (path: unknown) => realLstat(path));
+    realpathMock.mockReset();
+    realpathMock.mockImplementation(async (path: unknown) => realRealpath(path));
   });
 
   afterEach(() => {
@@ -235,6 +253,110 @@ describe("FileDocumentSource", () => {
     expect(result.files.map((f) => f.path).sort()).toEqual(["docs-old/x.md"]);
   });
 
+
+
+  it("discovery traversal skips technical directories and symlinked markdown files", async () => {
+    readdirMock.mockImplementation(async (path: unknown) => {
+      const text = String(path);
+      if (text === dir) {
+        return [dirent("dist", "dir"), dirent("content", "dir"), dirent("linked.md", "symlink")];
+      }
+      if (text.endsWith("content")) return [dirent("kept.md", "file")];
+      if (text.endsWith("dist")) return [dirent("generated.md", "file")];
+      return [];
+    });
+    readFileMock.mockImplementation(async (path: unknown) => Buffer.from(String(path).endsWith("kept.md") ? "kept" : "unexpected"));
+    lstatMock.mockImplementation(async (path: unknown) => {
+      const text = String(path);
+      if (text.endsWith("linked.md")) return stat("symlink");
+      if (text.endsWith("dist") || text.endsWith("content")) return stat("dir");
+      if (text.endsWith("kept.md") || text.endsWith("generated.md")) return stat("file");
+      return realLstat(path);
+    });
+    realpathMock.mockImplementation(async (path: unknown) => String(path));
+
+    const source = new FileDocumentSource(dir, [], "docs", { discoveryMode: true });
+    const result = await source.discover();
+
+    expect(result.files.map((f) => f.path)).toEqual(["docs/content/kept.md"]);
+    expect(readFileMock).toHaveBeenCalledTimes(1);
+    expect(result.readErrors).toEqual([]);
+  });
+
+  it("discovery traversal refuses a symlinked markdown file at the lstat/read boundary even when readdir reports a file", async () => {
+    readdirMock.mockImplementation(async (path: unknown) => {
+      const text = String(path);
+      if (text === dir) return [dirent("linked.md", "file"), dirent("kept.md", "file")];
+      return [];
+    });
+    lstatMock.mockImplementation(async (path: unknown) => {
+      const text = String(path);
+      if (text.endsWith("linked.md")) return stat("symlink");
+      if (text.endsWith("kept.md")) return stat("file");
+      return realLstat(path);
+    });
+    realpathMock.mockImplementation(async (path: unknown) => String(path));
+    readFileMock.mockImplementation(async (path: unknown) => Buffer.from(String(path).endsWith("kept.md") ? "kept" : "unexpected"));
+
+    const source = new FileDocumentSource(dir, [], "docs", { discoveryMode: true });
+    const result = await source.discover();
+
+    expect(result.files.map((f) => f.path)).toEqual(["docs/kept.md"]);
+    expect(readFileMock).toHaveBeenCalledTimes(1);
+    expect(readFileMock).toHaveBeenCalledWith(join(dir, "kept.md"));
+  });
+
+  it("discovery traversal rejects root replacement before exposing external markdown", async () => {
+    const externalRoot = join(dir, "..", "external-docs");
+    readdirMock.mockImplementation(async (path: unknown) => {
+      const text = String(path);
+      if (text === dir) return [dirent("external.md", "file")];
+      return [];
+    });
+    lstatMock.mockImplementation(async (path: unknown) => {
+      const text = String(path);
+      if (text === dir) return stat("dir");
+      if (text.endsWith("external.md")) return stat("file");
+      return realLstat(path);
+    });
+    realpathMock.mockImplementation(async (path: unknown) => {
+      const text = String(path);
+      if (text === dir) return externalRoot;
+      return text;
+    });
+    readFileMock.mockImplementation(async () => Buffer.from("# External\n"));
+
+    const source = new FileDocumentSource(dir, [], "docs", {
+      discoveryMode: true,
+      trustedRootRealPath: dir,
+    });
+
+    await expect(source.discover()).rejects.toThrow(/changed.*realpath|trusted/i);
+    expect(readFileMock).not.toHaveBeenCalled();
+  });
+
+  it("explicit traversal keeps existing behavior for technical directories and symlinked markdown files", async () => {
+    readdirMock.mockImplementation(async (path: unknown) => {
+      const text = String(path);
+      if (text === dir) {
+        return [dirent("dist", "dir"), dirent("content", "dir"), dirent("linked.md", "symlink")];
+      }
+      if (text.endsWith("content")) return [dirent("target.md", "file")];
+      if (text.endsWith("dist")) return [dirent("generated.md", "file")];
+      return [];
+    });
+    readFileMock.mockImplementation(async (path: unknown) => Buffer.from(String(path)));
+
+    const source = new FileDocumentSource(dir, [], "docs");
+    const result = await source.discover();
+
+    expect(result.files.map((f) => f.path).sort()).toEqual([
+      "docs/content/target.md",
+      "docs/dist/generated.md",
+      "docs/linked.md",
+    ]);
+  });
+
   it("returns zero files when the root directory does not exist (ENOENT), without throwing", async () => {
     const missing = join(dir, "nonexistent");
     const source = new FileDocumentSource(missing, []);
@@ -256,3 +378,21 @@ describe("FileDocumentSource", () => {
     await expect(source.discover()).rejects.toThrow(/EACCES/);
   });
 });
+
+
+function dirent(name: string, kind: "dir" | "file" | "symlink") {
+  return {
+    name,
+    isDirectory: () => kind === "dir",
+    isFile: () => kind === "file",
+    isSymbolicLink: () => kind === "symlink",
+  };
+}
+
+function stat(kind: "dir" | "file" | "symlink") {
+  return {
+    isDirectory: () => kind === "dir",
+    isFile: () => kind === "file",
+    isSymbolicLink: () => kind === "symlink",
+  };
+}

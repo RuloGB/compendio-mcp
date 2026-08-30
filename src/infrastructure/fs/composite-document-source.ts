@@ -21,6 +21,15 @@ interface RootFailure {
   reason: string;
 }
 
+export interface CompositeDocumentSourceOptions {
+  /** Explicit mode tolerates partial root failure so remaining declared roots
+   * can still index and the failed alias protects stale rows from deletion.
+   * Discovery mode sets this to true because every discovered root was selected
+   * by a fail-closed scan, so any later root failure aborts the whole sync
+   * before healthy roots can mutate the index. */
+  failOnRootError?: boolean;
+}
+
 /**
  * Fans out to N per-root `DocumentSource`s, merges their results, and
  * re-sorts by `path` — preserving `FileDocumentSource`'s sorted-output
@@ -28,7 +37,7 @@ interface RootFailure {
  * and no shortcut, so the single most common configuration takes the same
  * code path the multi-root tests exercise (design.md Decision 3).
  *
- * Per-root tolerance (design.md Decisions 2-4): a root whose `discover()`
+ * Per-root tolerance (design.md Decisions 2-4): by default, a root whose `discover()`
  * rejects is converted into one `ReadError` — `path` is the root's ALIAS,
  * `error` names the declared root string and its absolute dir for humans —
  * and the pass continues over the remaining roots. Only when EVERY root
@@ -37,16 +46,22 @@ interface RootFailure {
  * configuration error" semantics as today's single root, generalized to N —
  * for a one-element root set, "one root fails" and "every root fails" are
  * the same event, so the pre-existing always-throws behaviour holds
- * unmodified).
+ * unmodified). With `failOnRootError`, used by discovery mode, any root
+ * failure rejects the pass because discovery has no user-declared partial
+ * root set to tolerate.
  */
 export class CompositeDocumentSource implements DocumentSource {
-  constructor(private readonly roots: RootSource[]) {}
+  constructor(
+    private readonly roots: RootSource[],
+    private readonly options: CompositeDocumentSourceOptions = {},
+  ) {}
 
   async discover(): Promise<DiscoverResult> {
     const files: DocumentFile[] = [];
     const readErrors: ReadError[] = [];
     const encodingNotices: EncodingNotice[] = [];
     const failures: RootFailure[] = [];
+    if (this.roots.length === 0) return { files, readErrors, encodingNotices };
 
     for (const root of this.roots) {
       // Sequential, not Promise.allSettled: discovery is not this project's
@@ -67,9 +82,12 @@ export class CompositeDocumentSource implements DocumentSource {
       }
     }
 
-    if (failures.length === this.roots.length) {
+    if (failures.length === this.roots.length || (this.options.failOnRootError === true && failures.length > 0)) {
       const detail = failures.map(({ root, reason }) => `"${root.declared}" (${root.dir}): ${reason}`).join("; ");
-      throw new Error(`no documentation root could be read: ${detail}`);
+      const prefix = failures.length === this.roots.length
+        ? "no documentation root could be read"
+        : "one or more documentation roots could not be read";
+      throw new Error(`${prefix}: ${detail}`);
     }
 
     files.sort((a, b) => a.path.localeCompare(b.path));
