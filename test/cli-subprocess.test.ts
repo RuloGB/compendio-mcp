@@ -291,6 +291,95 @@ describe("CLI subprocess: invoked through a link (npx / global install)", () => 
 });
 
 /**
+ * Windows 8.3 short-name canonicalization against the entry-point guard.
+ *
+ * Sibling defect class: `discover-markdown-roots.ts` mixed `fs.realpathSync`
+ * (JS — PRESERVES an 8.3 short name) with `fs/promises`' `realpath` (native —
+ * EXPANDS it) and compared the two, producing a phantom "the root changed".
+ * The guard in `src/cli.ts` also calls `realpathSync`, so it looks like the
+ * same bug. It is not: `import.meta.url` is resolved by the loader through the
+ * SAME JS `realpathSync`, so both sides preserve the short name and agree.
+ *
+ * This test exists to keep it that way — specifically, to fail loudly if
+ * someone "hardens" the guard into `realpathSync.native`, which was measured
+ * to make the comparison false for a merely short-named (or lowercase-drive)
+ * invocation path.
+ *
+ * The corpus is a COPY of `dist/`, not a junction to it: resolving a link
+ * erases the 8.3 prefix along with the link, which would leave the short name
+ * untested. It is copied one level under the repo root so the copied
+ * `cli.js`'s own `new URL("../package.json", import.meta.url)` still lands on
+ * the real manifest, and so `node_modules` resolution still walks up to it.
+ */
+describe("CLI subprocess: invoked through a Windows 8.3 short path", () => {
+  let shortPathDir: string | undefined;
+
+  beforeAll(() => {
+    if (process.platform !== "win32") return;
+    ensureBuilt();
+    // A name comfortably over 8 characters, so the volume must mint an alias.
+    shortPathDir = mkdtempSync(join(REPO_ROOT, "eight-dot-three-probe-"));
+    cpSync(DIST_DIR, shortPathDir, { recursive: true });
+  }, 120_000);
+
+  afterAll(() => {
+    if (shortPathDir !== undefined) rmSync(shortPathDir, { recursive: true, force: true });
+  });
+
+  /**
+   * The Scripting.FileSystemObject `ShortPath` property is Windows' own 8.3
+   * expansion, and — unlike `cmd /c for %I in ("p") do @echo %~sfI` — it does
+   * not mangle a quoted argument into a relative path. Returns undefined,
+   * never the long path, when the volume has short names disabled, so the
+   * caller reports an explicit skip instead of silently asserting nothing.
+   */
+  function shortPathOf(longPath: string): string | undefined {
+    let out: string;
+    try {
+      out = execFileSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-Command",
+          `(New-Object -ComObject Scripting.FileSystemObject).GetFile('${longPath.replace(/'/g, "''")}').ShortPath`,
+        ],
+        { encoding: "utf8", stdio: "pipe" },
+      ).trim();
+    } catch {
+      return undefined;
+    }
+    return out.length > 0 && out.toLowerCase() !== longPath.toLowerCase() ? out : undefined;
+  }
+
+  it("runs the command instead of silently exiting 0", (ctx) => {
+    if (process.platform !== "win32" || shortPathDir === undefined) {
+      ctx.skip("8.3 short names are a Windows-only concern");
+      return;
+    }
+    const longCli = join(shortPathDir, "cli.js");
+    const shortCli = shortPathOf(longCli);
+    if (shortCli === undefined) {
+      // Never let a volume with 8.3 disabled read as a pass.
+      ctx.skip(`this volume mints no 8.3 alias for ${longCli}`);
+      return;
+    }
+    // Self-check: a path that never contained a `~n` alias would make every
+    // assertion below vacuous — it would just be the long path again.
+    expect(shortCli).toMatch(/~\d/);
+
+    const run = runCli(["--version"], shortCli);
+
+    // The exit code proves NOTHING here: a guard that evaluates false exits 0
+    // too, having parsed nothing. Empty stdout is the only tell.
+    expect(run.stdout.trim().length).toBeGreaterThan(0);
+    const manifest = new URL("../package.json", import.meta.url);
+    const { version } = JSON.parse(readFileSync(manifest, "utf8")) as { version: string };
+    expect(run.stdout.trim()).toBe(version);
+    expect(run.status).toBe(0);
+  });
+});
+
+/**
  * `compendio sync` gates (Gates 1, 2, 5). A DEDICATED workdir, never the
  * shared one above: the sync gates edit, add AND delete documents, which
  * would couple every assertion above (`Indexed 5 documents`, the

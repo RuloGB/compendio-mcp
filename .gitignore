@@ -6,3 +6,6 @@ dist/
 .codegraph/
 opencode.json
 harness/
+
+# Left behind only if the 8.3 short-path CLI test crashes before its cleanup.
+eight-dot-three-probe-*/

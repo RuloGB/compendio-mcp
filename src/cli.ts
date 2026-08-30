@@ -377,6 +377,27 @@ function formatEvalRow(mode: string, summary: EvalSummary): string {
 // but NOT for `process.argv[1]`. Comparing the un-resolved paths makes this
 // guard false under `npx compendio` / a global install, so the CLI would exit 0
 // having silently done nothing. `resolve` only normalizes; it never follows a link.
+//
+// `realpathSync`, NOT `realpathSync.native`, and that asymmetry is deliberate.
+// On Windows the two canonicalize differently: the native one expands 8.3 short
+// names and rewrites drive-letter/segment casing, the JS one preserves both
+// exactly as given on the command line. Node's ESM loader resolves the entry
+// with the JS `realpathSync`, so `import.meta.url` carries the SAME
+// preservation — which is why this comparison holds. Measured on Node 22.22.0
+// by launching through a real 8.3 alias (`...\C-560F~1\SCRATC~1\probe.mjs`):
+//
+//   realpathSync(argv[1])        === fileURLToPath(import.meta.url)  -> true
+//   realpathSync.native(argv[1]) === fileURLToPath(import.meta.url)  -> false
+//
+// The same `false` holds for nothing worse than a lowercased drive letter
+// (`c:\...`) on an otherwise fully long path. So "canonicalize both sides with
+// .native" — the fix `discover-markdown-roots.ts` needed, where BOTH sides come
+// from the filesystem — would BREAK this guard rather than harden it: only one
+// side here is a path we canonicalize; the other arrives already resolved by the
+// loader. When a link IS involved, `realpathSync` follows it and the 8.3 prefix
+// disappears along with it, so link + short path together are fine too.
+// `test/cli-subprocess.test.ts` pins this by asserting STDOUT — never the exit
+// code, which a broken guard also leaves at 0.
 const isMainModule = (() => {
   const entry = process.argv[1];
   if (entry === undefined) return false;
