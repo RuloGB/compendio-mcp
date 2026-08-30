@@ -1,4 +1,13 @@
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
+
+/**
+ * Always the OS canonical form, never `realpathSync`'s JS implementation.
+ * On Windows the JS one preserves an 8.3 short name (`AREALL~1`) while the
+ * native one expands it, and `FileDocumentSource` revalidates this pin with
+ * `fs/promises`' `realpath`, which is native. Mixing the two makes a root that
+ * never moved look like it changed real path, aborting discovery outright.
+ */
+const canonicalRealPath = realpathSync.native;
 import { join } from "node:path";
 import { isSameOrInsideRealPath } from "./path-containment.js";
 
@@ -21,7 +30,7 @@ export interface DiscoveredMarkdownRoot {
 }
 
 export function discoverMarkdownRootDetails(projectRoot: string): DiscoveredMarkdownRoot[] {
-  const projectRealPath = realpathSync(projectRoot);
+  const projectRealPath = canonicalRealPath(projectRoot);
   const entries = readdirSync(projectRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink() && !isDiscoveryIgnoredDirectory(entry.name))
     .sort((a, b) => compareRaw(a.name, b.name));
@@ -31,7 +40,7 @@ export function discoverMarkdownRootDetails(projectRoot: string): DiscoveredMark
     const candidate = join(projectRoot, entry.name);
     const stat = lstatSync(candidate);
     if (stat.isSymbolicLink() || !stat.isDirectory()) continue;
-    const candidateRealPath = realpathSync(candidate);
+    const candidateRealPath = canonicalRealPath(candidate);
     if (!isSameOrInsideRealPath(projectRealPath, candidateRealPath)) continue;
     if (containsMarkdown(candidate, candidateRealPath)) {
       roots.push({ declared: entry.name, trustedRealPath: candidateRealPath });
@@ -45,7 +54,7 @@ export function discoverMarkdownRoots(projectRoot: string): string[] {
 }
 
 export function validateDiscoveredRootAlias(projectRoot: string, alias: string): DiscoveredMarkdownRoot {
-  const projectRealPath = realpathSync(projectRoot);
+  const projectRealPath = canonicalRealPath(projectRoot);
   const candidate = join(projectRoot, alias);
   let stat;
   try {
@@ -61,7 +70,7 @@ export function validateDiscoveredRootAlias(projectRoot: string, alias: string):
   }
   let candidateRealPath: string;
   try {
-    candidateRealPath = realpathSync(candidate);
+    candidateRealPath = canonicalRealPath(candidate);
   } catch (error) {
     throw new Error(`previously discovered documentation root "${alias}" could not be resolved: ${describeError(error)}`);
   }
@@ -78,7 +87,7 @@ function containsMarkdown(dir: string, rootRealPath: string): boolean {
     const absolute = join(dir, entry.name);
     const stat = lstatSync(absolute);
     if (stat.isSymbolicLink()) continue;
-    const entryRealPath = realpathSync(absolute);
+    const entryRealPath = canonicalRealPath(absolute);
     if (!isSameOrInsideRealPath(rootRealPath, entryRealPath)) continue;
     if (stat.isDirectory()) {
       if (isDiscoveryIgnoredDirectory(entry.name)) continue;

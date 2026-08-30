@@ -1,8 +1,10 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { discoverMarkdownRoots } from "../../src/infrastructure/fs/discover-markdown-roots";
+import { discoverMarkdownRootDetails, discoverMarkdownRoots } from "../../src/infrastructure/fs/discover-markdown-roots";
+import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
 
 describe("discoverMarkdownRoots", () => {
   let projectDir: string;
@@ -88,7 +90,9 @@ describe("discoverMarkdownRoots", () => {
           if (text.endsWith("later") || text.endsWith("docs")) return stats("dir");
           return actual.lstatSync(path as string);
         },
-        realpathSync: (path: unknown) => String(path),
+        realpathSync: Object.assign((path: unknown) => String(path), {
+          native: (path: unknown) => String(path),
+        }),
       };
     });
     const { discoverMarkdownRoots: discoverWithMock } = await import("../../src/infrastructure/fs/discover-markdown-roots");
@@ -97,6 +101,46 @@ describe("discoverMarkdownRoots", () => {
 
     vi.doUnmock("node:fs");
     vi.resetModules();
+  });
+  // `trustedRealPath` is pinned here but revalidated by `FileDocumentSource` through
+  // `fs/promises`' `realpath`. The two must agree on one canonical form, or a root that
+  // never moved reads as "changed realpath after root selection" and discovery aborts.
+  it("pins a trusted real path in the same canonical form the async validator produces", async () => {
+    await mkdir(join(projectDir, "docs"), { recursive: true });
+    await writeFile(join(projectDir, "docs", "a.md"), "# A\n\nbody\n");
+
+    const [root] = discoverMarkdownRootDetails(projectDir);
+    expect(root).toBeDefined();
+    expect(root!.trustedRealPath).toBe(await realpath(join(projectDir, "docs")));
+  });
+
+  // Windows 8.3 short names are the one real-world case where the two canonical forms
+  // diverge: the JS `realpathSync` preserves `AREALL~1`, the native/async one expands it.
+  // This is the shape that failed CI on windows-latest while passing on macOS and Linux.
+  it("indexes a project reached through a Windows 8.3 short path", async (ctx) => {
+    if (process.platform !== "win32") return ctx.skip();
+
+    const longName = "a really long project folder name";
+    const longProject = join(projectDir, longName);
+    await mkdir(join(longProject, "docs"), { recursive: true });
+    await writeFile(join(longProject, "docs", "a.md"), "# A\n\nbody\n");
+
+    const listing = execFileSync("cmd", ["/c", "dir", "/x", "/ad", projectDir], { encoding: "latin1" });
+    const alias = new RegExp(String.raw`([A-Z0-9~]{1,8}(?:\.[A-Z0-9]{1,3})?)\s+` + longName, "i").exec(listing);
+    // A volume with 8.3 generation disabled cannot exercise this at all. Skip visibly
+    // rather than returning green: a silent pass here would assert nothing.
+    if (alias === null) return ctx.skip();
+
+    const shortProject = join(projectDir, alias[1]!);
+    const [root] = discoverMarkdownRootDetails(shortProject);
+    expect(root).toBeDefined();
+
+    const source = new FileDocumentSource(join(shortProject, root!.declared), [], root!.declared, {
+      discoveryMode: true,
+      trustedRootRealPath: root!.trustedRealPath,
+    });
+    const result = await source.discover();
+    expect(result.files.map((file) => file.path)).toEqual(["docs/a.md"]);
   });
 });
 
