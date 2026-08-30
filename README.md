@@ -136,7 +136,7 @@ To update Compendio later, run that same command again — it always pulls the l
 compendio index
 ```
 
-That's it. By default Compendio reads `docs/` at the project root — no config file needed. Add `.compendio/` to your `.gitignore`.
+That's it. With no config file, Compendio auto-discovers top-level folders that contain Markdown files — no hidden `docs/` default needed. Add `.compendio/` to your `.gitignore`.
 
 > **Why this step exists.** The server also indexes on startup, so strictly speaking you could skip it — but the first run downloads and caches the embeddings model (tens of MB), and whoever triggers it waits. Running it here pays that cost in your terminal, with a progress bar, instead of inside your agent's first tool call. From then on everything is offline, and the index keeps itself up to date ([below](#incremental-sync)).
 
@@ -144,7 +144,7 @@ That's it. By default Compendio reads `docs/` at the project root — no config 
 
 ## Configuration
 
-Entirely optional — every field has a default, and Compendio works with no config file at all. Create `compendio.config.json` at your project root only to override what you need:
+Entirely optional — Compendio works with no config file at all. Create `compendio.config.json` at your project root only to override what you need:
 
 ```json
 {
@@ -165,7 +165,7 @@ Entirely optional — every field has a default, and Compendio works with no con
 
 | Key | What it's for |
 |---|---|
-| `docsDir` | One or more documentation roots, relative to the project root. Always an array — there is no single-string form. Defaults to `["docs"]` |
+| `docsDir` | One or more explicit documentation roots, relative to the project root. Always an array — there is no single-string form. Omit it or set `[]` to use discovery mode |
 | `exclude` | Entries to skip when indexing: an exact path, a bare filename (matched anywhere), or a directory prefix (e.g. `"adr/superseded"` skips everything under it) |
 | `db` | Where the SQLite index file is written |
 | `search.k` | Default number of fragments returned per search |
@@ -185,11 +185,11 @@ Declare more than one root to index several folders — `adr/`, `rfcs/`, a spec 
 { "docsDir": ["docs", "openspec"], "exclude": ["INDEX.md", "openspec/changes/archive"] }
 ```
 
-Every document `path` is prefixed with its root's alias — the directory's own name, so `docs/x.md` and `openspec/specs/y.md` both read as the real project-relative path. This holds with a single root too, including the zero-config default: `docs/x.md`, not `x.md`. `search_docs`, `docs_overview`, `read_doc` and the generated `INDEX.md` all use this prefixed shape; passing a `path` back to `read_doc` exactly as returned always resolves.
+Every document `path` is prefixed with its root's alias — the directory's own name, so `docs/x.md` and `openspec/specs/y.md` both read as the real project-relative path. This holds with a single explicit root and with discovered roots too: `openspec/specs/y.md`, not `specs/y.md`. `search_docs`, `docs_overview`, `read_doc` and the generated `INDEX.md` all use this prefixed shape; passing a `path` back to `read_doc` exactly as returned always resolves.
 
 Declared roots may not collide: two roots resolving to the same directory, one nested inside another (in either declaration order), or two roots sharing the same directory name (and therefore the same alias) are all rejected before anything is indexed. A root that is declared but cannot be read (a typo, or a folder only some checkouts have) is reported and skipped — the run continues on the remaining roots, and only throws if every declared root fails. Removing a root from `docsDir` deletes its documents on the next sync pass, same as deleting the files themselves would.
 
-`--dir <path>` (below) replaces the whole declared root set with that one directory — it does not add to it.
+In discovery mode, Compendio rescans top-level folders on every `index`, `sync`, and `serve` sync pass, selects those with `.md` files anywhere below them, skips symlinked content and generated/internal folders such as `.git`, `.compendio`, `node_modules`, `dist`, `build`, and `coverage`, and writes `INDEX.md` at the project root. Discovery fails closed: malformed top-level config JSON, unreadable candidate trees, traversal/read failures, or a previously indexed discovered root that disappears or becomes a symlink/junction before sync abort before mutating the index. A previously indexed root that is still a readable directory is still traversed even after its last Markdown file is deleted, so legitimate deletions are reconciled normally. The symlink checks use `lstat`/`realpath` at scan/traversal time, but they are not a kernel-level sandbox; a filesystem race between check and read remains out of scope. `--dir <path>` (below) is explicit mode: it replaces the whole declared/discovered root set with that one directory and writes `INDEX.md` inside it.
 
 ### Documentation convention (optional)
 
@@ -230,7 +230,7 @@ Designed as *progressive disclosure*: orient cheaply → search cheaply → read
 | `compendio sync` | Runs one incremental sync pass from the terminal — syncs only the documents whose content changed, with live progress. See [Incremental sync](#incremental-sync) |
 | `compendio search "..."` | Hybrid search with filters: `--type`, `--module`, `--tags`, `-k`, `--all` |
 | `compendio overview` | Map of the indexed corpus |
-| `compendio index-md` | Generates or updates one combined `INDEX.md` in the first declared root (`docs/INDEX.md` by default) — one line per document, across every declared root |
+| `compendio index-md` | Generates or updates one combined `INDEX.md`: project-root `INDEX.md` in discovery mode, or `INDEX.md` inside the first explicit/`--dir` root — one line per document |
 | `compendio eval` | Measures retrieval quality against a goldenset |
 
 Global option `-C, --root <dir>`: project root. Add `--lexical` to `index`, `sync` or `search` to skip embeddings entirely. `--dir <path>` on `index`/`index-md` **replaces** the configured `docsDir` with that one directory — it does not add to it, and the index it produces still has the prefixed path shape (`<dirname>/x.md`). `sync` has no `--dir`: under an incremental pass, dropping a root this way would delete its documents rather than merely skip them (see `compendio sync --help`).
