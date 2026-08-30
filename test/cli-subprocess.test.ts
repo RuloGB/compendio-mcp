@@ -2,6 +2,7 @@ import { execFileSync, spawnSync, type SpawnSyncReturns } from "node:child_proce
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -499,13 +500,31 @@ describe("CLI subprocess: no-database scenarios", () => {
     expect(run.stdout).toContain("Indexed documents: 0");
   });
 
-  it("index-md with missing root writes header-only INDEX.md and creates no .compendio/", () => {
+  it("index-md with no discovered root writes project-root header-only INDEX.md and creates no .compendio/", () => {
     const run = runCli(["--root", emptyDir, "index-md"]);
     expect(run.status).toBe(0);
     expect(run.stdout).toContain("0 documents");
-    // The first root (docs/) is created by FileIndexWriter
-    expect(existsSync(join(emptyDir, "docs", "INDEX.md"))).toBe(true);
+    // Discovery mode has no declared first root, so FileIndexWriter targets the project root.
+    expect(existsSync(join(emptyDir, "INDEX.md"))).toBe(true);
+    expect(existsSync(join(emptyDir, "docs", "INDEX.md"))).toBe(false);
     expect(existsSync(join(emptyDir, ".compendio"))).toBe(false);
+  });
+
+  it("index-md --dir notes writes notes/INDEX.md and not project-root INDEX.md", () => {
+    const dirOverride = mkdtempSync(join(tmpdir(), "compendio-cli-index-md-dir-"));
+    try {
+      mkdirSync(join(dirOverride, "notes"), { recursive: true });
+      writeFileSync(join(dirOverride, "notes", "a.md"), "# A\n\nDir override content.\n", "utf8");
+
+      const run = runCli(["--root", dirOverride, "index-md", "--dir", "notes"]);
+
+      expect(run.status).toBe(0);
+      expect(run.stdout).toContain("1 documents");
+      expect(existsSync(join(dirOverride, "notes", "INDEX.md"))).toBe(true);
+      expect(existsSync(join(dirOverride, "INDEX.md"))).toBe(false);
+    } finally {
+      rmSync(dirOverride, { recursive: true, force: true });
+    }
   });
 });
 

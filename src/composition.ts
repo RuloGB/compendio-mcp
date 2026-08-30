@@ -16,6 +16,7 @@ import {
   resolveRoots,
   NO_CHUNKING,
   type CompendioConfig,
+  type DocumentationRootSelection,
 } from "./infrastructure/config.js";
 import {
   LazyEmbeddings,
@@ -23,7 +24,8 @@ import {
   type TransformersEmbeddingsOptions,
 } from "./infrastructure/embeddings/transformers-embeddings.js";
 import { CompositeDocumentSource } from "./infrastructure/fs/composite-document-source.js";
-import { FileDocumentSource } from "./infrastructure/fs/file-document-source.js";
+import { DynamicDiscoveryDocumentSource } from "./infrastructure/fs/dynamic-discovery-document-source.js";
+import { FileDocumentSource, type FileDocumentSourceOptions } from "./infrastructure/fs/file-document-source.js";
 import { FileIndexWriter } from "./infrastructure/fs/file-index-writer.js";
 import { RemarkMarkdownParser } from "./infrastructure/markdown/remark-markdown-parser.js";
 import { SqliteIndexStore } from "./infrastructure/sqlite/sqlite-index-store.js";
@@ -66,17 +68,19 @@ export interface Container {
 }
 
 export function createContainer(options: ContainerOptions): Container {
-  const { config, warnings: configWarnings } = loadConfigReport(options.root);
-  // Runs, and can throw, before `new SqliteIndexStore` below: an invalid root
-  // set must be rejected first (design.md Decision 6) — the store is lazy and
-  // performs no filesystem work until the first write, so a colliding config
-  // leaves no `.compendio/` behind regardless.
-  const roots = resolveRoots(
-    options.root,
-    options.docsDir !== undefined ? [options.docsDir] : config.docsDir,
-  );
+  const { config, warnings: configWarnings, rootSelection: configuredRootSelection } = loadConfigReport(options.root);
+  const rootSelection: DocumentationRootSelection =
+    options.docsDir !== undefined ? { mode: "explicit", docsDir: [options.docsDir] } : configuredRootSelection;
+  const docsDir = rootSelection.mode === "explicit" ? rootSelection.docsDir : [];
+  // Explicit root validation still runs, and can throw, before `new
+  // SqliteIndexStore` below: a colliding user-declared root set must be
+  // rejected before the lazy store can create `.compendio/`. Discovery-mode
+  // filesystem probing happens later inside `DynamicDiscoveryDocumentSource`,
+  // before each index/sync pass mutates the store.
+  const roots = docsDir.length === 0 ? [] : resolveRoots(options.root, docsDir);
   const store = new SqliteIndexStore(resolve(options.root, config.db));
   const onProgress = options.onProgress;
+  const rootPrefixes = roots.map((root) => root.prefix);
 
   const embeddings: EmbeddingsProvider | null =
     options.forceLexical === true
@@ -91,35 +95,41 @@ export function createContainer(options: ContainerOptions): Container {
   // One unconditional wiring path: a one-element root set runs through the
   // same composite as ten (design.md Decision 3) — no `multi` flag, no
   // shortcut for the single-root case.
-  const source = new CompositeDocumentSource(
-    roots.map((root) => ({
-      ...root,
-      source: new FileDocumentSource(root.dir, config.exclude, root.prefix),
-    })),
-  );
+  const source = rootSelection.mode === "discovery"
+    ? new DynamicDiscoveryDocumentSource(options.root, config.exclude, store, rootPrefixes)
+    : new CompositeDocumentSource(
+        roots.map((root) => ({
+          ...root,
+          source: new FileDocumentSource(
+            root.dir,
+            config.exclude,
+            root.prefix,
+            buildFileDocumentSourceOptions(false, undefined),
+          ),
+        })),
+      );
   const parser = new RemarkMarkdownParser();
   // rootPrefixes threaded in unconditionally: every discovered path already
   // carries a root alias, so `module` inference must always strip it first
   // (design.md Decision 7) -- there is no "undefined" case in production.
   const policy = createConventionPolicy(
     config.convention,
-    roots.map((root) => root.prefix),
+    rootPrefixes,
   );
   const comparator = createIndexComparator(config.convention);
   const indexDocumentsOptions: IndexDocumentsOptions = { chunking: config.chunk, noChunking: NO_CHUNKING };
   if (onProgress !== undefined) indexDocumentsOptions.onProgress = onProgress;
   const indexDocuments = new IndexDocuments(source, parser, store, embeddings, policy, indexDocumentsOptions);
+  const indexTarget = rootSelection.mode === "discovery" || roots[0] === undefined
+    ? { dir: options.root, selfPath: INDEX_FILE }
+    : { dir: roots[0].dir, selfPath: `${roots[0].prefix}/${INDEX_FILE}` };
   const generateIndexMd = new GenerateIndexMd(
     source,
     parser,
-    // Writer target stays the first declared root (design.md Decision 9).
-    new FileIndexWriter(roots[0]!.dir, INDEX_FILE),
+    new FileIndexWriter(indexTarget.dir, INDEX_FILE),
     policy,
     comparator,
-    // `selfPath` is the prefixed value of the file this same call writes —
-    // never the bare literal, which no discovered `path` equals once every
-    // root is aliased (design.md Decision 9).
-    `${roots[0]!.prefix}/${INDEX_FILE}`,
+    indexTarget.selfPath,
   );
   const searchDocuments = new SearchDocuments(store, embeddings, {
     k: config.search.k,
@@ -158,4 +168,11 @@ function buildEmbeddingsOptions(onProgress: ProgressReporter | undefined): Trans
     onDownloadProgress: ({ loaded, total }) =>
       onProgress({ phase: "embedding", kind: "download", loaded, total }),
   };
+}
+
+function buildFileDocumentSourceOptions(
+  discoveryMode: boolean,
+  trustedRootRealPath: string | undefined,
+): FileDocumentSourceOptions {
+  return trustedRootRealPath === undefined ? { discoveryMode } : { discoveryMode, trustedRootRealPath };
 }

@@ -1,6 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it, vi } from "vitest";
 import { createContainer, type Container } from "../src/composition.js";
 import { createMcpServer, SERVER_VERSION } from "../src/server.js";
@@ -244,5 +246,65 @@ describe("MCP tools — no documents, no database", () => {
       // Filters targeting undeclared fields are dropped with a warning, not an error.
       expect(payload.filterWarning).toBeDefined();
     });
+  });
+});
+
+
+describe("MCP tool surface", () => {
+  it("exposes exactly the three documented tools", () => {
+    const server = createMcpServer(fakeContainer());
+    const internals = server as unknown as { _registeredTools: Record<string, unknown> };
+    expect(Object.keys(internals._registeredTools).sort()).toEqual([
+      "docs_overview",
+      "read_doc",
+      "search_docs",
+    ]);
+  });
+});
+
+describe("MCP public client transport — discovery path round trip", () => {
+  it("lists exactly three tools, searches, then reads the exact returned discovery-shaped path", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "compendio-mcp-client-discovery-"));
+    mkdirSync(join(dir, "notes"), { recursive: true });
+    writeFileSync(join(dir, "notes", "guide.md"), "# Guide\n\nTransport round trip marker.\n", "utf8");
+
+    const container = createContainer({ root: dir, forceLexical: true });
+    const server = createMcpServer(container);
+    const client = new Client({ name: "compendio-test-client", version: "1.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    try {
+      await container.indexDocuments.execute();
+      await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+      const tools = await client.listTools();
+      expect(tools.tools.map((tool) => tool.name).sort()).toEqual([
+        "docs_overview",
+        "read_doc",
+        "search_docs",
+      ]);
+
+      const search = await client.callTool({
+        name: "search_docs",
+        arguments: { query: "Transport round trip marker", k: 1 },
+      });
+      const searchContent = search.content as { type: string; text?: string }[];
+      const searchText = searchContent[0]?.type === "text" ? searchContent[0].text ?? "" : "";
+      const payload = JSON.parse(searchText) as { results: { path: string }[] };
+      const discoveredPath = payload.results[0]?.path;
+      expect(discoveredPath).toBe("notes/guide.md");
+
+      const read = await client.callTool({
+        name: "read_doc",
+        arguments: { path: discoveredPath },
+      });
+      const readContent = read.content as { type: string; text?: string }[];
+      const readText = readContent[0]?.type === "text" ? readContent[0].text ?? "" : "";
+      expect(readText).toContain("Transport round trip marker.");
+    } finally {
+      await client.close();
+      await server.close();
+      container.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
