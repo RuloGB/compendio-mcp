@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
+import type * as fs from "node:fs";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { SearchDocuments } from "../../src/application/search-documents";
 import { formatConfigWarning } from "../../src/application/get-overview";
@@ -10,6 +11,7 @@ import {
   loadConfig,
   loadConfigReport,
   resolveRoots,
+  type DocumentationRootSelection,
 } from "../../src/infrastructure/config";
 import { SqliteIndexStore } from "../../src/infrastructure/sqlite/sqlite-index-store";
 
@@ -28,8 +30,10 @@ describe("loadConfig", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns documented defaults when no config file exists at all", () => {
-    const config = loadConfig(join(dir, "no-such-project"));
+  it("returns documented defaults and discovery root selection when no config file exists at all", () => {
+    const report = loadConfigReport(join(dir, "no-such-project"));
+    const config = report.config;
+    expect(report.rootSelection).toEqual({ mode: "discovery" } satisfies DocumentationRootSelection);
     expect(config.convention).toEqual({
       mode: "loose",
       excludedStatuses: [],
@@ -158,8 +162,8 @@ describe("loadConfig", () => {
     });
   });
 
-  it("DEFAULT_CONFIG.docsDir is a single-element array, not a string", () => {
-    expect(DEFAULT_CONFIG.docsDir).toEqual(["docs"]);
+  it("DEFAULT_CONFIG does not carry a hidden docsDir default", () => {
+    expect(DEFAULT_CONFIG.docsDir).toBeUndefined();
   });
 
   it("defaults sync.throttleMs to 30000 when no sync block is declared", () => {
@@ -658,5 +662,82 @@ describe("resolveRoots", () => {
 
   it("accepts a valid, non-colliding two-root array", () => {
     expect(() => resolveRoots(PROJECT, ["docs", "openspec"])).not.toThrow();
+  });
+});
+
+
+describe("rootSelection for docsDir discovery mode", () => {
+  it("selects discovery when docsDir is omitted or declared empty", async () => {
+    for (const configJson of [JSON.stringify({ search: { k: 3 } }), JSON.stringify({ docsDir: [] })]) {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-root-selection-"));
+      await writeFile(join(projectDir, "compendio.config.json"), configJson, "utf8");
+      try {
+        const report = loadConfigReport(projectDir);
+        expect(report.rootSelection).toEqual({ mode: "discovery" });
+        expect(report.config.docsDir).toBeUndefined();
+      } finally {
+        await rm(projectDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it.each(["literal", 42, [], null] as const)(
+    "rejects malformed top-level config JSON shape %j instead of falling back to discovery",
+    async (configJson) => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-root-selection-bad-shape-"));
+      await writeFile(join(projectDir, "compendio.config.json"), JSON.stringify(configJson), "utf8");
+      try {
+        expect(() => loadConfigReport(projectDir)).toThrow(/config.*object/i);
+      } finally {
+        await rm(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("keeps a populated docsDir authoritative as explicit root selection", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "compendio-root-selection-explicit-"));
+    await writeFile(join(projectDir, "compendio.config.json"), JSON.stringify({ docsDir: ["docs", "openspec"] }), "utf8");
+    try {
+      const report = loadConfigReport(projectDir);
+      expect(report.rootSelection).toEqual({ mode: "explicit", docsDir: ["docs", "openspec"] });
+      expect(report.config.docsDir).toEqual(["docs", "openspec"]);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["docs", 1, { path: "docs" }, ["docs", 2]] as const)(
+    "fails malformed docsDir %j instead of falling back to discovery",
+    async (docsDir) => {
+      const projectDir = await mkdtemp(join(tmpdir(), "compendio-root-selection-bad-"));
+      await writeFile(join(projectDir, "compendio.config.json"), JSON.stringify({ docsDir }), "utf8");
+      try {
+        expect(() => loadConfigReport(projectDir)).toThrow(/docsDir/);
+      } finally {
+        await rm(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("does not treat non-ENOENT config read failures as discovery mode", async () => {
+    vi.resetModules();
+    vi.doMock("node:fs", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:fs")>();
+      return {
+        ...actual,
+        readFileSync: (path: fs.PathOrFileDescriptor, options?: BufferEncoding | { encoding?: BufferEncoding | null; flag?: string } | null) => {
+          if (String(path).endsWith("compendio.config.json")) {
+            const error = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+            error.code = "EACCES";
+            throw error;
+          }
+          return actual.readFileSync(path, options as BufferEncoding);
+        },
+      };
+    });
+    const { loadConfigReport: loadWithMock } = await import("../../src/infrastructure/config");
+    expect(() => loadWithMock("/mocked/project")).toThrow(/EACCES/);
+    vi.doUnmock("node:fs");
+    vi.resetModules();
   });
 });
