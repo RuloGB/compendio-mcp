@@ -262,7 +262,7 @@ Documentation changes while you work, and Compendio keeps up on its own — or o
 |---|---|
 | **Server startup** (`compendio serve`) | One incremental sync pass, started before the transport connects. The first tool call waits for it, so nothing is ever answered against a cold index |
 | **Any MCP tool call** (`search_docs`, `docs_overview`, `read_doc`) | One incremental sync pass — but only if **30 s** have elapsed since the last one (`sync.throttleMs`, `30000` by default). Otherwise the call proceeds against the current index |
-| **`compendio sync`** | One incremental sync pass, run manually from the terminal, with live progress. `sync.throttleMs` does **not** gate it — every invocation runs a fresh pass regardless of how recently one ran. A failure exits non-zero instead of being logged and swallowed, since there is no "proceed against the current index" fallback for a command whose whole point is a definitive answer |
+| **`compendio sync`** | One incremental sync pass, run manually from the terminal, with live progress. `sync.throttleMs` does **not** gate it — every invocation runs a fresh pass regardless of how recently one ran. **Recommended** to run this if you have added a large number of documents at once. |
 | **`compendio index`** | Full rebuild from scratch: the index is dropped and recreated |
 
 **It is not a timer.** There is no background interval and no file watcher. Syncing is driven by your agent's tool calls, or by you running `compendio sync`, and the throttle is a *floor* between the two automatic triggers, not a schedule: a server nobody is querying does not sync, and a burst of ten calls in one second still triggers at most one pass. Concurrent calls join the pass already running instead of starting a second one.
