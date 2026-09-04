@@ -80,6 +80,19 @@ To update Compendio later, run that same command again — it always pulls the l
 }
 ```
 
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows — or Settings → Developer → Edit Config):
+
+```json
+{
+  "mcpServers": {
+    "compendio": {
+      "command": "compendio",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
 **OpenCode** (`opencode.json`):
 
 ```json
@@ -123,12 +136,66 @@ To update Compendio later, run that same command again — it always pulls the l
 
 **Codex** (`.codex/config.toml`):
 
-> [mcp_servers.compendio]
- command = "npx"
- args = ["compendio-mcp", "serve"]
- enabled = true
- startup_timeout_sec = 60
+```toml
+[mcp_servers.compendio]
+command = "npx"
+args = ["compendio-mcp", "serve"]
+enabled = true
+startup_timeout_sec = 60
+```
 
+**Windsurf** (`~/.codeium/windsurf/mcp_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "compendio": {
+      "command": "compendio",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+**Zed** (`settings.json`, or Settings → AI → MCP Servers → Add Custom Server):
+
+```json
+{
+  "context_servers": {
+    "compendio": {
+      "command": "compendio",
+      "args": ["serve"],
+      "env": {}
+    }
+  }
+}
+```
+
+**Cline** (MCP Servers icon → Configure → *Configure MCP Servers*; the CLI reads `~/.cline/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "compendio": {
+      "command": "compendio",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+**Gemini CLI** (`.gemini/settings.json` in the project, or `~/.gemini/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "compendio": {
+      "command": "compendio",
+      "args": ["serve"]
+    }
+  }
+}
+```
 
 **3. Build the index once**, from the project root:
 
