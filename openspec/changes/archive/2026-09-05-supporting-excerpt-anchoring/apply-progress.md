@@ -58,3 +58,49 @@ gate numbers live in `verify-report.md`; this file is the short status record fo
   requirement) it must surface.
 - No commit, push, or PR beyond what's listed above — user did not request a commit push or PR, and
   none was made.
+
+---
+
+## Orchestrator gate (independent, 2026-09-05)
+
+Apply's report was re-verified against the tree rather than accepted. Everything checked holds.
+
+- `npm run build`, `npm run typecheck` clean. `npm test`: **52 files / 914 passed / 1 skipped** —
+  matches apply's claim exactly (baseline was 911 passed).
+- Branch `feat/supporting-excerpt-anchoring`, 6 commits, `main` untouched at `7e210c4`, nothing
+  pushed, working tree clean. **Zero AI attribution** in any commit body.
+- Diffstat: 594 changed lines on the implementation surface (`src`/`test`/`scripts`/`AGENTS.md`),
+  2 495 in `openspec/`. Apply's 594 figure is correct and the split is legitimate.
+- **The 12 must-not-touch `Decision 7` citations are byte-identical to `main`** — `composition.ts`,
+  `convention.ts`, `read-document.test.ts`, `convention.test.ts`, `build.ts` untouched, and
+  `index-and-search.test.ts:331` (`multiple-doc-roots`'s Decision 7) intact. The find-and-replace
+  trap was avoided.
+- **Canaries inverted, not silenced.** Canary 1: expect-count 8 → 23. Canary 2: 148 → 148, with
+  `expect(result.excerpt.startsWith("…")).toBe(false)` replaced by
+  `expect(supporting.some((r) => r.excerpt.startsWith("…"))).toBe(true)` — the trip-wire fires in
+  the opposite direction. The one G4-permitted weakening (+1 → +2) is declared in a comment with its
+  reason, not slipped in.
+- Gates reproduced independently: C1=0, C2=88, C3=69 (78.4%), C4=4.00, C5=8 (9.1%), C6=0, C7=0.
+  `compendio eval` unmoved (hybrid 1.00/0.943, lexical 0.95/0.856).
+
+### One correction to this note's own method, recorded because it nearly passed
+
+The first attempt to prove the gate red against the pre-change build ran the probe after
+`git checkout main`. It exited 1 — and that was a **FALSE PASS**: `scripts/supporting-anchor-probe.mjs`
+does not exist on `main`, so `node` exited 1 for a missing file, not because the gate fired. The
+check was redone correctly: **keep the probe, revert only the production guard line**. Result:
+
+```
+Gate A, probe present + production REVERTED: exit = 1
+C1 (zero query terms visible, of C2): 8 (9.1%)
+THE FIX DID NOT LAND
+```
+
+and restored to exit 0 after re-applying. Only now is the red run attributable to the change rather
+than to a missing file. Gate B (known-vacuous corpus) exits 1 with `GATE IS VACUOUS`. The gate is
+therefore verified in all three states: green where it should be, and red in two distinct,
+independently caused known-bad states.
+
+This is the same class of error the exploration's own gate specification made (§11.4) and the same
+one this project has recorded repeatedly: **the verification mechanism failing for the wrong reason
+and being read as success.** Recorded rather than quietly fixed.
