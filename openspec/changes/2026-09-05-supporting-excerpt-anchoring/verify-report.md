@@ -146,3 +146,70 @@ assertions evaluated first, they **pass** against unmodified `src/` (`not.toCont
 confirming "the control assertion MUST fail while the subject assertion passes" (task 3.5) rather
 than both failing together for an unrelated reason. The reordering was reverted immediately after
 this check; the committed test asserts control before subject, as specified.
+
+## Phase 4 — Production fix, green (task 4.3)
+
+`npx vitest run test/application/search-documents-spans.test.ts test/application/index-and-search.test.ts`
+after the guard removal: **2 files passed, 53 tests passed, 0 failed.** Both canaries and all 3 new
+spec-scenario tests are green; nothing else in those files moved.
+
+## Phase 5 — Post-fix verification (Gate A after / Gate B again / Gate C)
+
+`npm run build` — clean. **No reindex** — the `ejemplos/.compendio` database from Phase 1.8 is reused.
+
+### Gate A — after, with the population-identity digest compare (task 5.2, 5.3)
+
+```
+node scripts/supporting-anchor-probe.mjs ejemplos --compare-digest ejemplos/.compendio/gate-a-before.digest
+
+Queries: 22
+C7 (ambiguous chunk resolution): 0
+C2 (flattened-text anti-vacuity denominator): 88
+C1 (zero query terms visible, of C2): 0 (0.0%)
+C3 (both-ellipsis, of C2): 69 (78.4%)
+C4 (mean distinct terms visible, of C2): 4.00
+C5 (hard mid-word edge, of C2): 8 (9.1%)
+C5 impossible (idx === -1, of C2): 0
+C6 (excluded from C2 — term in raw content only): 0
+Digest (88 tuples) written to ...\ejemplos\.compendio\gate-a.digest
+EXIT: 0
+```
+
+Required: C1 = 0, C2 = 88 (identical population), C7 = 0, exit 0. **Matches exactly.** No
+`POPULATION DRIFTED BETWEEN RUNS` message — the digest compared identical, tuple for tuple, against
+`gate-a-before.digest`. Recorded (not gated): C3 = 69 (78.4%), C4 = 4.00, C5 = 8 (9.1%), C6 = 0 — an
+exact match to design's predicted post-fix table.
+
+### Gate B — again, after the fix (task 5.4)
+
+```
+node scripts/supporting-anchor-probe.mjs ejemplos --query "qwertzuiop plughxyzzy frobnicate" --query "blorptastic wibblefrotz"
+
+C2 = 0, GATE IS VACUOUS, EXIT: 1
+```
+
+The anti-vacuity guard fires identically in both tree states, as required.
+
+### Gate C — retrieval scope unmoved (task 5.5)
+
+```
+node dist/cli.js --root ejemplos eval
+
+mode      recall@5   MRR      failures
+--------------------------------------
+hybrid    1.00       0.943    0
+lexical   0.95       0.856    1
+```
+
+Required identity: hybrid 1.00 / 0.943, lexical 0.95 / 0.856. **Exact match** — `evaluate-search.ts`
+never reads `.excerpt`, and none of it moved.
+
+### C7's underlying shape, measured directly against the database (task 5.6)
+
+```
+chunks: 29 | duplicate (document_id, heading) pairs: 0 | largest chunk: 1332 chars
+```
+
+Confirms design's CLOSED open question (the "Review response" section): 0 duplicate pairs, largest
+chunk (1332 chars) well under the ~1920-char (480-token) split threshold, so the C7 shape cannot occur
+on this corpus. Matches the design's own independently-measured figures exactly.
