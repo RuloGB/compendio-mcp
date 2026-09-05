@@ -147,8 +147,9 @@ describe("supporting-excerpt-anchoring — new spec scenarios", () => {
       // already applies at rank 0 (see excerpt-window.test.ts's Gate 3),
       // now reaching a supporting rank too.
       const supportingContent =
-        "block ".repeat(20) + // ~120 chars of the high-frequency term
-        "word ".repeat(20) + // neutral gap, no query terms
+        "block ".repeat(20) + // 120 chars of the high-frequency term
+        "word ".repeat(40) + // 200-char neutral gap: wide enough that no window
+        // fitting SUPPORTING_EXCERPT_CHARS can straddle both clusters at once
         "quetzal appears exactly once, deep in this chunk. " +
         "word ".repeat(20); // neutral tail
       seedDoc(store, "supporting.md", supportingContent);

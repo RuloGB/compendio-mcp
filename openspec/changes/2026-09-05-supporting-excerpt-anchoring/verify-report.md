@@ -116,6 +116,29 @@ Test Files  1 failed (1)
      Tests  4 failed | 1 passed (5)   [1 of the 4 is canary #1, already recorded above]
 ```
 
+**Correction found and fixed during Phase 4's post-fix green run**: the "non-positional selection"
+fixture's neutral gap (originally `"word ".repeat(20)`, 100 chars) was too narrow — the sweep found a
+window straddling both the tail of the "block" cluster AND "quetzal" scored higher (sum of both
+distinct weights) than "quetzal" alone, so the post-fix excerpt legitimately contained "block" too
+(the algorithm behaving correctly, the fixture failing to isolate what it meant to test). Widened the
+gap to `"word ".repeat(40)` (200 chars) so no single 120-char window can straddle both clusters. Both
+red-pre-change and green-post-change were re-verified against the corrected fixture (below); the
+verbatim failure output above is from the original (narrower) fixture and stays representative of the
+same assertion failing for the same reason, only with less repeated filler.
+
+Re-verified against the corrected fixture, by stashing only the production edit and restoring it:
+
+```
+# unmodified src/application/search-documents.ts, corrected fixture
+FAIL > the same preference ... holds for a supporting fragment
+AssertionError: expected 'block block block block block block b…' to contain 'quetzal'
+  at search-documents-spans.test.ts:164
+
+# with the production edit restored
+Test Files  2 passed (2)
+     Tests  53 passed (53)
+```
+
 For the heading-only test (3.4), the control and subject assertions were additionally verified in
 isolation by temporarily reordering the assertions and re-running with `-t`: with the subject
 assertions evaluated first, they **pass** against unmodified `src/` (`not.toContain(term)` and
