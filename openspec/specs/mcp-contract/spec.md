@@ -624,21 +624,45 @@ query to match the chunk, not a window anchored at the chunk's start. The budget
 - WHEN `search_docs` returns
 - THEN the rank-1 result's `excerpt` contains that answer verbatim
 
-### Requirement: Supporting Excerpts Remain Start-Anchored Prefixes
+### Requirement: Supporting Excerpts Are Centred On the Matched Span, With a Start-Anchored Fallback
 
-Every non-rank-1 result's `excerpt` MUST remain a prefix anchored at the start of the chunk's
-flattened content and MUST NOT centre on a matched span, even when the match occurs past the
-supporting budget. Deliberate, not an oversight: a supporting fragment routes between results
-rather than answers, and a prefix stays legible against `path`/`section` in a way a
-stripped-context window would not.
+A non-rank-1 result's `excerpt` MUST be a window of at most `SUPPORTING_EXCERPT_CHARS` (120,
+unchanged) characters centred on the location that caused the query to match the chunk. When the
+chunk's flattened content contains no locatable query term, the `excerpt` MUST fall back to a
+start-anchored prefix of the same budget, exactly as before this change.
 
-#### Scenario: Supporting fragment shows the opening text, not the match
+A supporting fragment still routes between results rather than answers — that half of the replaced
+requirement's rationale survives unchanged, which is why the 120-character budget itself stays
+untouched here. Only where inside that budget the window sits changes.
+
+**The fallback keys on the flattened content, not the raw chunk.** A query term occurring only
+inside a heading line is removed by flattening (`stripHeadingLines`) before this window is
+computed; such a term does not count as "locatable" for this requirement even though it is present
+in `chunk.content`, and the fragment falls back to the start-anchored prefix.
+
+#### Scenario: Supporting fragment centres on the match, not the opening text
 
 - GIVEN a non-rank-1 result whose chunk's query match occurs past character 120 of its flattened
   content
 - WHEN `search_docs` returns
+- THEN that result's `excerpt` is a window centred on the matched span, not the chunk's opening
+  text
+
+#### Scenario: No locatable term falls back to the start-anchored prefix
+
+- GIVEN a non-rank-1 result whose chunk's flattened content contains no query term at all (for
+  example, a vector-only match sharing no vocabulary with the query)
+- WHEN `search_docs` returns
 - THEN that result's `excerpt` is the chunk's word-snapped first ~120 characters with a trailing
-  `…`, not a window around the match
+  `…`, exactly as before this change
+
+#### Scenario: A term present only in a stripped heading is treated as unreachable
+
+- GIVEN a non-rank-1 result whose chunk contains a query term only inside its own heading line, so
+  the term is removed by flattening before any excerpt is built
+- WHEN `search_docs` returns
+- THEN that result's `excerpt` falls back to the start-anchored prefix, as if the term were absent
+  from the chunk entirely
 
 ### Requirement: Truncation Is Marked at Either Edge, Within Budget
 
@@ -647,6 +671,12 @@ the chunk, and a trailing `…` whenever its window does not reach the end of th
 content — and MUST NOT carry either ellipsis when its window meets that edge. A spurious ellipsis
 is a contract violation: it is the signal that sends a caller to `read_doc`. An excerpt's length
 MUST NOT exceed its rank's budget plus at most one ellipsis per truncated edge (2 max).
+
+(Previously: all three scenarios below exercised only the rank-1 window, where both-edges
+truncation is rare. Centring supporting excerpts on the matched span (see the ADDED requirement
+above) makes both-edges truncation the common case at that tier — measured 78.4% (`ejemplos/`) /
+84.4% (external corpus), against 0% before. The requirement text itself is unchanged; a fourth
+scenario is added to exercise the now-common case.)
 
 #### Scenario: Window at the start omits the leading ellipsis
 
@@ -668,6 +698,14 @@ MUST NOT exceed its rank's budget plus at most one ellipsis per truncated edge (
 - THEN that `excerpt` carries a leading `…` and a trailing `…`, and its total length does not
   exceed `LEAD_EXCERPT_CHARS` plus the length of two ellipses
 
+#### Scenario: A supporting fragment centred away from both edges carries both ellipses within its own budget
+
+- GIVEN a non-rank-1 excerpt window that starts after offset 0 of the chunk's flattened content and
+  ends before that content's end
+- WHEN `search_docs` returns
+- THEN that `excerpt` carries a leading `…` and a trailing `…`, and its total length does not
+  exceed `SUPPORTING_EXCERPT_CHARS` plus the length of two ellipses
+
 ### Requirement: Vector-Only Results Produce Well-Formed Excerpts
 
 A result whose chunk was surfaced only by the vector search leg, with no lexical match for the
@@ -682,18 +720,33 @@ ellipsis contract as a lexically-matched result, without the call erroring.
 - THEN its `excerpt` is within the lead budget (plus at most two ellipsis characters), obeys the
   ellipsis contract, and the call does not error
 
-### Requirement: Lead Match Selection Is Not Positional
+### Requirement: Match Selection Is Not Positional
 
-When a rank-1 chunk contains multiple candidate match locations, selection of which location
-centres the lead excerpt MUST NOT default to the earliest occurrence when a high-frequency query
-term occurs early in the chunk and a distinctive query term occurs later. Selection MUST prefer
-the region containing the query's distinctive terms.
+When a chunk chosen for any result rank contains multiple candidate match locations, selection of
+which location centres that result's excerpt MUST NOT default to the earliest occurrence when a
+high-frequency query term occurs early in the chunk and a distinctive query term occurs later.
+Selection MUST prefer the region containing the query's distinctive terms, at every rank.
 
-#### Scenario: A high-frequency term near the start does not win over a later distinctive term
+(Previously titled "Lead Match Selection Is Not Positional" and scoped to the rank-1 chunk only,
+because `selectMatchCentre` was invoked exclusively at rank 0 — see the RENAMED entry below. The
+centring mechanism itself is unchanged; only the population of results it runs against has
+widened, since a non-rank-1 result now reaches this same selection whenever it has a locatable
+term.)
+
+#### Scenario: A high-frequency term near the start does not win over a later distinctive term (lead)
 
 - GIVEN a query whose high-frequency term occurs before flattened offset 100 of the rank-1 chunk,
   while its distinctive terms cluster past flattened offset 1400
 - WHEN `search_docs` returns
 - THEN the rank-1 result's `excerpt` contains the distinctive-term region, not the early
+  high-frequency term's neighbourhood
+
+#### Scenario: The same preference holds for a supporting fragment
+
+- GIVEN a query whose high-frequency term occurs near the start of a non-rank-1 chunk, while its
+  distinctive terms cluster elsewhere in that same chunk, with both candidate windows fitting
+  within `SUPPORTING_EXCERPT_CHARS`
+- WHEN `search_docs` returns
+- THEN that result's `excerpt` is centred on the distinctive-term region, not the early
   high-frequency term's neighbourhood
 

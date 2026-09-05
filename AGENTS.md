@@ -156,6 +156,54 @@ fix — a probe never observed failing on a corpus known to contain no fences ha
 | After (fixture corpus) | 0 | 2 | 0 | true | **0** |
 | Either (excerpt-window, fence-free) | 0 | 0 | 0 | false | **1** (`GATE IS VACUOUS`) |
 
+Manual gate (`supporting-excerpt-anchoring`): proves a supporting (non-rank-1) `search_docs` fragment
+now centres its excerpt on the query's matched span instead of always being a start-anchored prefix.
+Follows the `excerpt-fence-drop-probe.mjs` / `vector-reach.mjs` precedent — a script that drives the
+real search pipeline through `createContainer` (no replicated fusion logic), no new fixture:
+
+```bash
+node dist/cli.js --root ejemplos index
+node scripts/supporting-anchor-probe.mjs ejemplos --digest ejemplos/.compendio/gate-a-before.digest
+# ... TDD the canaries red, make the production edit ...
+npm run build   # do NOT reindex — excerpts are query-time
+node scripts/supporting-anchor-probe.mjs ejemplos --compare-digest ejemplos/.compendio/gate-a-before.digest
+```
+
+`scripts/supporting-anchor-probe.mjs` counts, over every supporting (rank ≥ 1) `search_docs` result
+across the goldenset's 22 queries: **C7** — a `(path, section)` that does not resolve to exactly one
+stored chunk (must be 0, checked first); **C2** — the anti-vacuity denominator, fragments whose
+**flattened** chunk text holds at least one folded query term (never `chunk.content`, which double-
+counts a term surviving only in a heading line); **C1** — of C2, fragments showing zero query terms
+in their excerpt (must be 0 after the fix); **C3** — of C2, both-ellipsis fragments; **C4** — mean
+distinct query terms visible, of C2; **C5** — of C2, hard mid-word edges; **C6** — fragments excluded
+from C2 because their term exists in raw content but not the flattened text. It also emits an ordered
+digest of `(query, rank, path, section)` tuples so a before/after run-pair can be compared for
+population **identity**, not merely size (`--compare-digest`) — a run-to-run swap of which chunk
+occupies a rank slot could hold C2's count steady while corrupting every rate computed over it. Three
+distinct, never-conflated failure messages: `CANNOT IDENTIFY THE MEASURED CHUNK` (C7 > 0),
+`POPULATION DRIFTED BETWEEN RUNS` (digest mismatch), `GATE IS VACUOUS` (C2 === 0), `THE FIX DID NOT
+LAND` (C1 > 0 post-fix).
+
+The anti-vacuity guard is itself verified against a query set whose terms appear nowhere in the
+corpus, in both tree states:
+
+```bash
+node scripts/supporting-anchor-probe.mjs ejemplos --query "qwertzuiop plughxyzzy frobnicate" --query "blorptastic wibblefrotz"
+```
+
+This MUST exit non-zero on `C2 === 0` (`GATE IS VACUOUS`) whether run before or after the production
+fix.
+
+| | C1 | C2 | C3 | C4 | C5 | C6 | C7 | Exit code |
+|---|---|---|---|---|---|---|---|---|
+| Before | 8 (9.1%) | 88 | 0 (0.0%) | 2.40 | 0 (0.0%) | 0 | 0 | **1** (`THE FIX DID NOT LAND`) |
+| After | 0 (0.0%) | 88 | 69 (78.4%) | 4.00 | 8 (9.1%) | 0 | 0 | **0** |
+| Either (nonsense query set) | n/a | 0 | n/a | NaN | n/a | 0 | 0 | **1** (`GATE IS VACUOUS`) |
+
+The population is identical before/after (C2 = 88, digest tuple-for-tuple match) — the ranking that
+feeds excerpt selection did not move, only where inside each supporting fragment's 120-character
+budget the window sits.
+
 Manual gate 2 (`bounded-chunk-size`): proves the fix at full-corpus scale — the shape Gate 1b's
 6-document fixture only approximates — using the same generator's default profile (38 documents, one
 167 KB heading-less document, pre-change baseline **242 chunks / 367 s** at `maxTokens: 800`):
@@ -216,7 +264,7 @@ src/
 Registered in `server.ts`. Progressive disclosure is a set of rungs, **not a mandatory sequence**: `search_docs` is the entry point for a specific question (it usually answers outright, in one call), `docs_overview` is for enumerating the corpus or picking filter values, and `read_doc` is the last resort — with a `section`, since a whole document costs several times more. The tool descriptions carry this routing, so it holds without any per-project agent configuration.
 
 1. `docs_overview()` — corpus map (counts by type/module, ~10 tokens/doc). `byType`/`byModule` buckets and per-document `[type]`/`(status)` segments are omitted entirely when a document/corpus has no value for that field — never a synthetic "no type" bucket or `[undefined]`.
-2. `search_docs({ query, type?, module?, tags?, k?, include_excluded? })` — hybrid search, top-k fragments with a **graduated excerpt budget**: the rank-1 fragment gets `LEAD_EXCERPT_CHARS` (1400), spent as a window centred on the matched span rather than as a prefix, so it can answer outright; the rest get `SUPPORTING_EXCERPT_CHARS` (120) as a start-anchored prefix, enough to judge whether rank 1 is the right one. A `…` at either edge is the documented truncation signal that tells an agent to call `read_doc`. `type` is an open, project-defined string (no enum). Docs whose `status` is listed in the project's `convention.excludedStatuses` are excluded unless `include_excluded` is set; with nothing declared (the default), nothing is excluded and the flag is a no-op.
+2. `search_docs({ query, type?, module?, tags?, k?, include_excluded? })` — hybrid search, top-k fragments with a **graduated excerpt budget**: the rank-1 fragment gets `LEAD_EXCERPT_CHARS` (1400), spent as a window centred on the matched span rather than as a prefix, so it can answer outright; the rest get `SUPPORTING_EXCERPT_CHARS` (120), spent the same way — a window centred on their own matched span — enough to judge whether rank 1 is the right one. A supporting fragment falls back to a start-anchored prefix only when its chunk's **flattened** content holds no locatable query term (the vector-only / fold-miss path, and a term that survives only in a heading line). A `…` at either edge is the documented truncation signal that tells an agent to call `read_doc`. `type` is an open, project-defined string (no enum). Docs whose `status` is listed in the project's `convention.excludedStatuses` are excluded unless `include_excluded` is set; with nothing declared (the default), nothing is excluded and the flag is a no-op.
 3. `read_doc({ path, section? })` — one section or the full document; `type:`/`module:`/`status:` header lines render only when present. Unknown `path` returns the 3 closest matches instead of erroring.
 
 The MCP surface stays exactly these 3 tools — **`compendio sync` is a human-only CLI escape hatch, not a fourth MCP tool.** Every tool call already triggers `serve`'s throttled pre-tool-call sync, so an agent has no gap `sync` would close for it; an agent that suspects its answers are stale can only tell the user to run `compendio sync`, never call it itself (user decision, `manual-sync-command` proposal Q1).
@@ -373,6 +421,17 @@ The MCP surface stays exactly these 3 tools — **`compendio sync` is a human-on
   single heading line on a CRLF document, not merely fenced ones. `HEADING_LINE` is
   `/^#{2,6}\s+(.+)\r?$/`, not `/^#{2,6}\s+(.+)$/`, precisely to keep this working.
 - **The excerpt budget is graduated by rank, not uniform** (`src/domain/excerpt.ts`'s `excerptBudget`). A flat cap loses either way: small enough to keep `k` results affordable is too small to answer with. Measured over `ejemplos/` + a 17-doc external corpus, the previous flat 240 truncated ~93% of fragments and withheld ~70% of their content, so `search_docs` paid answer prices for router value while `read_doc` stayed mandatory anyway. The policy is only sound because rank 1 usually *is* the answer (hybrid MRR 0.943, top-1 20/22 on `ejemplos/`) — if that regresses, revisit this first.
+- **What `supporting-excerpt-anchoring` did NOT change**: the 1400/120 split itself is untouched, and the graduated-by-rank policy above is not re-litigated. What changed is only *where inside* a supporting fragment's 120-character budget the window sits — centred on the fragment's own matched span (`locateSpans` now runs for every rank, not rank 0 only), falling back to a start-anchored prefix only when the chunk's flattened content holds no locatable query term. Two accepted costs, both 0% before this change, both measured on `ejemplos/`: both-ellipsis fragments (window truncated on both sides) 0% → 78.4%, and hard mid-word edges (the window's own snap-revert guard refusing to hide the match) 0% → 9.1% — an external 81-document corpus corroborates at 84.4% / 3.4% but is not reproducible in this repository. The `…` truncation signal's *meaning* shifts with the first number: today it usually means "more after"; after this change, for most supporting fragments it means "more on both sides" — a weaker discriminator for an agent deciding whether `read_doc` is worth it, and **this behavioural effect is unmeasured and unproven**, accepted on the reasoning that a fragment showing the matched terms routes better than one showing unrelated opening prose. See `scripts/supporting-anchor-probe.mjs` and the Manual gate below for how these numbers are reproduced.
+- **`matchedTerms` is a NAMED, DEFERRED follow-up, not an unrecorded idea** (`supporting-excerpt-anchoring`,
+  explicit user decision 2026-09-05). Surfacing which query terms a result's chunk contains — a
+  `matchedTerms: string[]` per `search_docs` result, built from the `terms` already hoisted once per
+  search (`search-documents.ts:108`) and, **since this change, from spans that now exist at every
+  rank** — is estimated at ~25-30 tokens per response, against the +274 tokens per response a
+  400-character supporting budget was measured to cost. It is deferred because it is **unmeasured**
+  and because it widens the MCP response contract, and this change deliberately rests on complete
+  measured evidence. **What should fire it**: agent traces showing supporting hits driving excess
+  `read_doc` chaining — the same observation that would reopen the both-ellipsis trade — or the next
+  change that widens `SearchResultItem` for any other reason. Deferral count: 1.
 - A file that is unreadable, genuinely undecodable (neither valid UTF-8 nor plausibly CP1252 — see `decode-text.ts` above), fails frontmatter parsing, or (under `strict`) fails validation is skipped and reported in `skipped` — both by `index` and by `index-md` — never a hard failure of the whole run; these resilience reasons are mode-independent (identical under `loose` and `strict`). A file that decodes successfully under a non-UTF-8 encoding is not skipped — it is indexed normally and reported separately as transcoded.
 - Test doubles: `test/helpers/fake-embeddings.ts` provides a deterministic embeddings stub (stem-grouped, no model download) used by integration tests against the real `ejemplos/` corpus. `test/fixtures/strict/` is a small synthetic corpus + `compendio.config.json` that exercises `convention.mode: "strict"` end to end.
 

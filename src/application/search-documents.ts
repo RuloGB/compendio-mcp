@@ -116,11 +116,16 @@ export class SearchDocuments {
       // which is what the caller sees — not its index in `top`, where a
       // dropped chunk would leave a hole.
       const rank = results.length;
-      // Spans are located for the rank-0 (lead) result only (design.md
-      // Decision 7): supporting fragments stay start-anchored prefixes, and
-      // a chunk the vector leg found alone has no lexical match to locate —
-      // that IS the empty-spans path, not a separate branch.
-      const spans = rank === 0 ? locateSpans(chunk.content, terms) : [];
+      // Spans are located for EVERY rank. This reverses
+      // `2026-08-06-match-centred-excerpt` design.md Decision 7, which
+      // computed them for rank 0 only and declined this on cost ("one
+      // locator run per search rather than k"). That cost is now measured:
+      // +0.382 ms/search on `ejemplos/` (29 chunks), +0.199 ms on an
+      // 888-chunk corpus — directionally real, absolutely negligible.
+      // Still ONE branch, not two: a chunk with no locatable term —
+      // vector-only, fold-miss, or a term that does not survive flattening
+      // — falls back to the same empty-spans prefix path it always did.
+      const spans = locateSpans(chunk.content, terms);
       const item: SearchResultItem = {
         path: doc.path,
         title: doc.title,

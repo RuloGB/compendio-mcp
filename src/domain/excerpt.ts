@@ -46,7 +46,9 @@ export function excerptBudget(rank: number): number {
  * same string `markdown` is). `[]` (the default) is today's prefix path,
  * byte-identical to before this parameter existed (design.md Decision 6) —
  * this is deliberately also the vector-only path, since a chunk the vector
- * leg found alone has no lexical match to locate (design.md Decision 7).
+ * leg found alone has no lexical match to locate (the ancestor
+ * `2026-08-06-match-centred-excerpt`'s Decision 6; its Decision 7, rank-0-only
+ * span computation, is reversed by `supporting-excerpt-anchoring`).
  *
  * Ordering is fixed by design (a correctness constraint, not a preference):
  * locate in raw -> flatten the WHOLE chunk -> map the offsets -> slice the

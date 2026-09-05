@@ -119,9 +119,12 @@ describe("buildExcerpt — window centred on a matched span (Decision 5/6)", () 
     expect(buildExcerpt(text, 200, [])).toBe(buildExcerpt(text, 200));
   });
 
-  // Gate 5: the empty-spans path IS the vector-only path (design.md
-  // Decision 7) — a chunk the vector leg found alone has no lexical match
-  // to locate, so it must still produce a well-formed prefix excerpt.
+  // Gate 5: the empty-spans path IS the vector-only path (the ancestor
+  // `2026-08-06-match-centred-excerpt`'s Decision 6; its Decision 7,
+  // rank-0-only span computation, is reversed by
+  // `supporting-excerpt-anchoring`) — a chunk the vector leg found alone has
+  // no lexical match to locate, so it must still produce a well-formed
+  // prefix excerpt.
   it("Gate 5 unit form: empty spans over long content is a trailing-ellipsis-only prefix", () => {
     const text = `${words(2000)} tail`;
     const excerpt = buildExcerpt(text, LEAD_EXCERPT_CHARS, []);
