@@ -213,3 +213,49 @@ chunks: 29 | duplicate (document_id, heading) pairs: 0 | largest chunk: 1332 cha
 Confirms design's CLOSED open question (the "Review response" section): 0 duplicate pairs, largest
 chunk (1332 chars) well under the ~1920-char (480-token) split threshold, so the C7 shape cannot occur
 on this corpus. Matches the design's own independently-measured figures exactly.
+
+## Phase 6 — Prose, citations, full suite (Gate D / Gate E)
+
+`src/server.ts:119-121`'s middle literal rewritten (task 6.1); `:123-125`'s ellipsis-contract sentence
+confirmed untouched by reading the diff. `AGENTS.md`'s MCP tools §2 clause, graduated-budget bullet,
+new Manual gate section, and `matchedTerms` deferral bullet all added (tasks 6.2-6.5). Exactly 3 stale
+`Decision 7` citations fixed, comment-only, zero executable change (task 6.6):
+`src/domain/excerpt.ts:49`, `test/domain/excerpt.test.ts:123`,
+`test/application/vector-only-excerpt.test.ts:60`. Verified by `git diff` on all three files that no
+assertion line changed. Confirmed by `grep -rn "Decision 7" src test` that the other 12 citations
+(`multiple-doc-roots`'s own) are untouched.
+
+### Gate D — full suite (task 6.7)
+
+```
+npm test
+Test Files  52 passed (52)
+     Tests  914 passed | 1 skipped (915)
+
+npm run typecheck   — clean
+npm run build       — clean
+```
+
+Required: `911 + 3` passing (914), 1 skipped, 52 files. **Exact match.**
+
+### Non-touch confirmation (task 6.8)
+
+```
+git diff --stat main..HEAD -- src/domain/flatten-map.ts src/domain/match-location.ts \
+  src/domain/ports.ts src/domain/fusion.ts src/infrastructure
+```
+
+Empty output — confirms design's asserted non-touches.
+
+### Decision 7's two-number blast-radius count (task 6.9)
+
+- **Files with changed EXISTING assertions: exactly 2** —
+  `test/application/search-documents-spans.test.ts`, `test/application/index-and-search.test.ts`.
+- **Files with additions/comment-only changes**: `src/application/search-documents.ts` (production,
+  not a test), `test/application/search-documents-spans.test.ts` (also carries the new
+  additions-only `describe` block, on top of its 2 changed assertions above),
+  `src/domain/excerpt.ts`, `test/domain/excerpt.test.ts`, `test/application/vector-only-excerpt.test.ts`
+  (comment-only, zero executable change), `src/server.ts`, `AGENTS.md` (prose only), plus the new
+  `scripts/supporting-anchor-probe.mjs`.
+
+No third file has a CHANGED existing assertion — the blast-radius claim holds.

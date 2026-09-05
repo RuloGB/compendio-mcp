@@ -117,8 +117,8 @@ export function createMcpServer(container: Container): McpServer {
         "before calling read_doc. Source code remains the authority on " +
         "current behaviour, while these docs are the only record of intent. " +
         "The top result carries a full-length excerpt, centred on the part of the document that " +
-        "matched, which usually answers outright; the rest carry short ones from the start of " +
-        "their section, enough to tell whether the top result is the right one. Each result has " +
+        "matched, which usually answers outright; the rest carry short ones, centred on their own " +
+        "match, enough to tell whether the top result is the right one. Each result has " +
         "path, title, section, excerpt and score; section names the document region the fragment " +
         "came from — a document with no headings reports one region for the whole file. A '…' at " +
         "either end of an excerpt marks content omitted there — that is the signal to call " +

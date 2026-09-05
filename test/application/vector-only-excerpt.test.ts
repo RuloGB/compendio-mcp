@@ -57,8 +57,11 @@ describe("Gate 5 — vector-only result produces a well-formed excerpt", () => {
       expect(lead.path).toBe("vector-only.md");
       expect(lead.excerpt.length).toBeGreaterThan(0);
       expect(lead.excerpt.length).toBeLessThanOrEqual(LEAD_EXCERPT_CHARS + 2);
-      // No lexical match -> empty spans -> today's prefix path (Decision 7):
-      // no leading ellipsis, and a trailing one since content exceeds budget.
+      // No lexical match -> empty spans -> today's prefix path (the ancestor
+      // `2026-08-06-match-centred-excerpt`'s Decision 6; its Decision 7,
+      // rank-0-only span computation, is reversed by
+      // `supporting-excerpt-anchoring`): no leading ellipsis, and a trailing
+      // one since content exceeds budget.
       expect(lead.excerpt.startsWith("…")).toBe(false);
       expect(lead.excerpt.endsWith("…")).toBe(true);
     } finally {
