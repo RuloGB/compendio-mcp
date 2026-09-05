@@ -188,15 +188,22 @@ describe("index + hybrid search over the ejemplos corpus", () => {
     const [lead, ...supporting] = respuesta.results;
     // +2: the lead result's excerpt is a window, truncatable on both edges.
     expect(lead!.excerpt.length).toBeLessThanOrEqual(LEAD_EXCERPT_CHARS + 2);
+    // supporting-excerpt-anchoring design.md Decision 1: spans are now
+    // located for every rank, so a supporting fragment is also a window,
+    // truncatable on both edges — hence +2, not +1 (the one G4-permitted
+    // weakening this change makes; the 1400/120 budgets themselves are
+    // unchanged). A later regression back to start-anchored prefixes would
+    // fail on the `some(startsWith("…"))` assertion below, never silently.
     for (const result of supporting) {
-      // Deliberately still +1, not +2: supporting fragments stay
-      // start-anchored prefixes (design.md Decision 7) — never a window, so
-      // never a leading ellipsis. Asserted explicitly (not left to drift)
-      // so a later edit that starts centring supporting fragments too fails
-      // loudly here instead of silently.
-      expect(result.excerpt.length).toBeLessThanOrEqual(SUPPORTING_EXCERPT_CHARS + 1);
-      expect(result.excerpt.startsWith("…")).toBe(false);
+      expect(result.excerpt.length).toBeLessThanOrEqual(SUPPORTING_EXCERPT_CHARS + 2);
     }
+    // False before this change by construction (a prefix never starts with
+    // "…"), true after — this IS the inverted trip-wire. C3 measured 78.4%
+    // corpus-wide, so at least one of four supporting fragments starting
+    // with "…" is near-certain but not certain; if this is ever observed
+    // 0-of-4 on this query, move the test to another goldenset query and
+    // record both in verify-report.md — never drop the assertion.
+    expect(supporting.some((r) => r.excerpt.startsWith("…"))).toBe(true);
     // The lead must actually be allowed to carry more, otherwise the gradient
     // exists in the constants but never reaches the wire.
     const longest = Math.max(...supporting.map((r) => r.excerpt.length));
