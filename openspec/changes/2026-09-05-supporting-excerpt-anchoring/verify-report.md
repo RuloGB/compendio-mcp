@@ -259,3 +259,53 @@ Empty output — confirms design's asserted non-touches.
   `scripts/supporting-anchor-probe.mjs`.
 
 No third file has a CHANGED existing assertion — the blast-radius claim holds.
+
+## Real diffstat vs. forecast
+
+`git diff --stat main..HEAD`:
+
+```
+ AGENTS.md                                          |  61 +-
+ openspec/changes/.../design.md                     | 713 +++
+ openspec/changes/.../exploration.md                | 610 +++
+ openspec/changes/.../proposal.md                   | 387 +++
+ openspec/changes/.../specs/mcp-contract/spec.md     | 147 +++
+ openspec/changes/.../tasks.md                      | 267 +++
+ openspec/changes/.../verify-report.md              | 261 +++
+ scripts/supporting-anchor-probe.mjs                | 313 +++
+ src/application/search-documents.ts                |  15 +-
+ src/domain/excerpt.ts                              |   4 +-
+ src/server.ts                                      |   4 +-
+ test/application/index-and-search.test.ts          |  21 +-
+ test/application/search-documents-spans.test.ts    | 160 ++-
+ test/application/vector-only-excerpt.test.ts       |   7 +-
+ test/domain/excerpt.test.ts                        |   9 +-
+ 15 files changed, 2944 insertions(+), 35 deletions(-)
+```
+
+**The `src`/`test`/`scripts`/`AGENTS.md`/`server.ts` surface a reviewer actually opens a PR
+against** — excluding the pre-authored SDD artifacts (`design.md`, `exploration.md`, `proposal.md`,
+`spec.md`, `tasks.md`) and this report itself — sums to:
+
+| Driver | Forecast (tasks.md) | Actual |
+|---|---|---|
+| Production edit (guard + comment) | ~15 | 15 |
+| Canary #1 inversion | ~25 | ~31 (in the 160-line spans-file total) |
+| Canary #2 inversion | ~20 | 21 |
+| New spec-scenario `describe` block | ~110 | ~129 (remainder of the 160-line spans-file total) |
+| `scripts/supporting-anchor-probe.mjs` | ~210 | 313 |
+| `server.ts` middle literal | ~4 | 4 |
+| `AGENTS.md` | ~55 | 61 |
+| 3 stale `Decision 7` comments | ~4 | 4+7+9 = 20 (comment blocks turned out longer, to name the ancestor cycle explicitly) |
+| **Implementation total** | **~443** (440-480 range) | **594** |
+
+**Actual (594) exceeds the 440-480 forecast by ~24-35%, continuing this project's recorded pattern of
+the estimate growing at every phase** (`bounded-chunk-size`: 240-420 → 555-695 → 773 actual, a
+comparable ~11-30% overshoot past its own tasks-phase figure). Two concrete drivers account for most
+of the gap: the probe (313 vs ~210, +103) grew from the digest/`--compare-digest` binding amendment
+(Review response), the C5-impossible bookkeeping, and a fuller header comment than the ~190-line
+design estimate anticipated; and the citation fixes (20 vs ~4) grew because disambiguating "Decision
+7" from its overloaded sibling meant naming the ancestor change slug in full at each site, not a
+one-line re-point. Counting the pre-authored `openspec/` artifacts as well (the full-cycle figure the
+proposal flagged as ~590-630 if counted) puts the true total at 2979 changed lines — the
+`size:exception` this delivery shipped under.
