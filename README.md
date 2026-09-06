@@ -39,6 +39,16 @@ Your agent doesn't know your documentation. So it does what it can: `grep`, then
 
 Attaching the whole `docs/` folder doesn't fix it — it just moves the waste earlier. Neither does keyword search: nobody writes questions using the exact words the document uses.
 
+<p align="center">
+  <img width="900" alt="The same question asked twice in OpenCode. Without Compendio the agent lists the whole repository, greps twice and opens three files. With Compendio it runs one search and reads one section." src="assets/demo/compendio-demo.gif" />
+</p>
+
+<p align="center">
+  <sub>Same question, same model, and <strong>both answers are correct</strong> — the difference is what it cost to get there.<br>
+  <strong>6 tool calls &bull; 29s &bull; 32,301 tokens</strong> &nbsp;→&nbsp; <strong>2 tool calls &bull; 12s &bull; 17,684 tokens</strong>.<br>
+  Figures read from OpenCode's own elapsed label and cost tooltip, on an 81-document corpus.</sub>
+</p>
+
 ## What Compendio does
 
 Compendio indexes your markdown documentation and gives any AI agent three tools to find and read exactly what it needs.
