@@ -1,0 +1,27 @@
+{
+  "status": "success",
+  "executive_summary": "Especificación corregida para incluir rangos por leg, ejecuciones reales independientes para k=5/k=10 y resultados de medición locales ignorados por Git.",
+  "artifacts": [
+    "openspec/changes/retrieval-ranking-robustness/specs/retrieval-evaluation/spec.md",
+    "openspec/changes/retrieval-ranking-robustness/spec-result.json"
+  ],
+  "next_recommended": "sdd-design",
+  "risks": [
+    "The canonical DocuTests2 path and edit authority remain unresolved for future external-corpus writes.",
+    "The proposal intentionally sets no ranking-quality or performance threshold; gate success proves instrumentation validity only."
+  ],
+  "skill_resolution": "paths-injected",
+  "detailed_report": {
+    "change": "retrieval-ranking-robustness",
+    "domain": "retrieval-evaluation",
+    "spec_type": "new full specification",
+    "requirements": 5,
+    "scenarios": 11,
+    "key_learnings": [
+      "Answer hits accept any independently sufficient overlapping chunk.",
+      "Per-leg ranks preserve unavailable or truncated states instead of fabricating values.",
+      "Independent k=5 and k=10 production runs can share a population but cannot be derived from one another.",
+      "The Spanish 22-case ejemplos baseline remains distinct from the new 60-query corpus."
+    ]
+  }
+}

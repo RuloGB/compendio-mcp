@@ -1,0 +1,24 @@
+{
+  "status": "success",
+  "executive_summary": "Completed all four research questions with 11 primary/official sources and 10 mapped claims. Research outcome is done; product decisions remain pending and proposal_ready is false. No algorithm, dependency, goldenset threshold, implementation or experiment was selected.",
+  "artifacts": [
+    "C:/Users/Raul/Workspace/compendio-mcp/openspec/changes/retrieval-ranking-robustness/research.md",
+    "C:/Users/Raul/Workspace/compendio-mcp/openspec/changes/retrieval-ranking-robustness/preproposal.md"
+  ],
+  "next_recommended": "none",
+  "risks": [
+    "Orchestrator-owned product discovery remains required: goldenset ownership, coverage, success criteria, regression tolerance and CPU budget.",
+    "Fusion paper full text was unavailable; only its author abstract supports the bounded claim. No local benefit or current vector rank was measured."
+  ],
+  "skill_resolution": "paths-injected",
+  "research_outcome": "done",
+  "proposal_ready": false,
+  "readback": {
+    "passed": true,
+    "research_revision": 1,
+    "preproposal_revision": 1,
+    "source_ids_mapped": true,
+    "references_exist": true
+  },
+  "next_action": "Stop for interactive user review; orchestrator may resume product discovery only after user direction."
+}

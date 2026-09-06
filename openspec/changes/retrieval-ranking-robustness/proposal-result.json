@@ -1,0 +1,19 @@
+{
+  "status": "success",
+  "executive_summary": "Proposed a measurement-only retrieval evaluation capability with reviewed reformulation labels, production-faithful stage diagnostics, frozen baselines, and falsifiable gates before any ranking change.",
+  "artifacts": [
+    "C:/Users/Raul/Workspace/compendio-mcp/openspec/changes/retrieval-ranking-robustness/proposal.md",
+    "C:/Users/Raul/Workspace/compendio-mcp/openspec/changes/retrieval-ranking-robustness/proposal-result.json"
+  ],
+  "next_recommended": [
+    "sdd-spec",
+    "sdd-design"
+  ],
+  "risks": [
+    "Answer-label ambiguity or drift requires reviewed evidence and frozen identities.",
+    "Production fidelity must be proven by exact fragment and order equality at identical inputs.",
+    "Future external-corpus work depends on resolving its canonical path, sandbox permission, and native edit authority."
+  ],
+  "skill_resolution": "paths-injected",
+  "detailed_report": "## Key Learnings\n\n1. The measurement proposal keeps production ranking and public search behavior unchanged.\n2. Real k=5 output and k=10 candidate-depth diagnostics are distinct evaluation populations.\n3. Answer-level labels must support multiple independently sufficient overlapping chunks."
+}

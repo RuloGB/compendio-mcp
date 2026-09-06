@@ -1,0 +1,16 @@
+{
+  "status": "success",
+  "executive_summary": "Diseñado un observador de la búsqueda real y un ejecutor local aislado para medir relevancia sin modificar el ranking ni los contratos públicos.",
+  "artifacts": [
+    "C:/Users/Raul/Workspace/compendio-mcp/openspec/changes/retrieval-ranking-robustness/design.md",
+    "C:/Users/Raul/Workspace/compendio-mcp/openspec/changes/retrieval-ranking-robustness/design-result.json"
+  ],
+  "next_recommended": "sdd-tasks",
+  "risks": [
+    "La ejecución externa queda condicionada a canonicalizar DocuTests2 y resolver permisos y autoridad nativa; no se han solicitado ni utilizado aquí.",
+    "Las mediciones requieren un índice preparado sin escritores activos, un snapshot estable y el modelo preparado; la falta de requisitos debe detener esa medición.",
+    "La paridad exacta del observador y la ausencia de contaminación se demostrarán mediante TDD y gates reales posteriores; este diseño no constituye evidencia experimental."
+  ],
+  "skill_resolution": "paths-injected",
+  "detailed_report": "Design covers production-owned per-attempt tracing including filter retries, isolated database copies, reviewed stable alternative chunk labels, independent k=5/k=10 calls, provenance and semantic result identities, distinct fallback diagnostics, and separate synthetic versus real gates. The existing 22-case Spanish evaluator is unchanged. Only design.md and this raw result were created; no tasks, implementation, tests, builds, model initialization, external mutation or delivery actions occurred. OpenSpec remains authoritative; Engram contains only a decision summary. Next phase is advisory and awaits interactive approval.\n\n## Key Learnings\n\n1. SearchDocuments may retry after removing impossible filters, so traces must retain every attempt.\n2. EvaluateSearch uses three-times-k chunk retrieval and cannot substitute for exact production top-five measurements.\n3. Opening the SQLite store performs schema initialization, so measurement runs should open an isolated database copy."
+}
