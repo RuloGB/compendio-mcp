@@ -236,3 +236,76 @@ but `.gitignore:3` ignores `.compendio/` wholesale — so the operator runbook e
 machine and does not survive a fresh clone. `design.md` line 67's Git-ignore rationale covers
 measurement *outputs* (goldenset, snapshots, reports), which may carry corpus text; documentation
 carries none. Flagged for the user rather than moved unilaterally.
+
+---
+
+## Goldenset Preparation for DocuTests2 (task 3.3, 2026-09-06)
+
+### Corpus finding: 17 real documents, 64 filler
+
+`demo-docs` holds 81 documents / 888 chunks. Counting seven signature boilerplate phrases
+("Ordering is guaranteed by cursor, not by timestamp", "Set at write time.", …) splits the corpus
+cleanly with **no middle ground**: 17 documents contain zero filler markers, 64 contain five or
+more, and none sit between. The 64 are near-interchangeable decoys.
+
+This is a property worth keeping, not a defect to fix — a hard-negative set is what makes a
+retrieval benchmark discriminating — but it bounds what the goldenset can be. Twenty intents each
+resolving to a *distinct document* is impossible here; the 20 intents draw on 8 documents, with
+`reference/billing-rules.md` (12.6 KB, the richest real document) carrying 8 of them.
+
+### What was built
+
+`scripts/build-goldenset.mjs` — an authored intent table plus a resolver that turns each intent's
+evidence quote into the stored chunk's `ChunkFingerprint`. It **never runs a search**: labels are
+derived from the documents alone, so a miss cannot be relabelled into a hit by construction. It
+refuses to emit (exit 1) when a quote resolves to zero chunks, to more than one chunk, or also
+appears outside its own document.
+
+Output: 20 intents × 3 reformulations = 60 queries / 60 labels, 12 intent groups.
+All 60 pass the real `validateLabel` from `dist/`; 0 invalid.
+
+`validateLabel` rejects accepted chunks spanning more than one document (`ambiguous-evidence`), so
+a fact stated in two documents names one owner rather than listing both as alternatives — e.g. the
+rounding rule is labelled on `billing-rules.md` §3, not also on ADR-0004.
+
+### Measured baselines (task 3.4, partial)
+
+Both modes run, k=5, 60 queries, against a checkpointed private copy;
+`logicalDigestBefore === logicalDigestAfter` in both.
+
+| Metric | lexical | hybrid |
+|---|---|---|
+| Answer Hit@5 | 48/60 (80.0%) | 52/60 (86.7%) |
+| Document Hit@5 | 50/60 (83.3%) | 54/60 (90.0%) |
+| Mean first-answer rank (hits only) | 1.71 | 1.48 |
+| Rank-1 answers | 27 | 37 |
+| Groups with all three variants hit | 6/12 | 6/12 |
+| `relevance-miss` gate failures | 12 | 8 |
+
+Non-vacuous in both directions: no label failed to resolve, and real misses exist and *differ by
+mode* (`rate-limit-scope` misses all three variants under lexical and hits two under hybrid).
+
+### Blocking defect found: emitted results cannot be resolved to a ChunkFingerprint
+
+`SearchResultItem` carries `path`, `title`, `section`, `excerpt`, `score`, `status` — **no
+`position`, no `contentHash`**. `ChunkFingerprint` needs all four. The only available key is
+`(path, section)`, and it is **not unique**: 188 of 888 chunks (**21.2%**) share a `(path, heading)`
+pair with at least one sibling (`billing-rules.md` alone has two chunks headed
+"6. Settlement reconciliation > Capture collision").
+
+So the evaluation domain's identity comparison is not computable from the current response shape
+for roughly a fifth of the corpus. The table above was produced by a throwaway harness that expands
+an emitted `(path, section)` to every chunk sharing that heading — exact **only** because 0 of this
+goldenset's 60 accepted chunks sit on a colliding heading, which was measured, not assumed. That
+accident will not hold for the next goldenset.
+
+Closing this needs a decision the runner cannot make on its own: widen `SearchResultItem`
+(a public MCP contract change), or have the runner resolve position/hash out of the store it
+already holds open. Recorded here rather than improvised.
+
+### Still open on 3.3
+
+Every label carries `reviewer: "UNREVIEWED"`. Nothing in `retrieval-evaluation.ts` gates on that
+field, so the only thing separating a machine-proposed draft from a number someone quotes is that
+string. The measurements above are instrumentation evidence — they show the goldenset resolves and
+discriminates — not reviewed retrieval-quality evidence.
