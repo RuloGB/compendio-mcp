@@ -93,17 +93,17 @@ describe("locateSpans", () => {
     }
   });
 
-  it("finds overlapping terms from different query terms", () => {
-    // "theta" contains "the" as a substring — both should be found and
-    // returned in ascending raw-offset order.
+  it("only the whole-token term matches when one term is a substring of another", () => {
+    // "theta" contains "the" as a substring, but "the" never occurs as its
+    // own whole token in "theta value" — only "theta" is a whole-token
+    // match, so only "theta" is located.
     const raw = "theta value";
-    const spans = locateSpans(raw, ["the", "theta"]);
-    expect(spans.sort((a, b) => a.start - b.start || a.end - b.end)).toEqual(
-      [
-        { start: 0, end: 3, term: "the" },
-        { start: 0, end: 5, term: "theta" },
-      ].sort((a, b) => a.start - b.start || a.end - b.end),
-    );
+    expect(locateSpans(raw, ["the", "theta"])).toEqual([{ start: 0, end: 5, term: "theta" }]);
+  });
+
+  it("a term with no whole-token occurrence yields no spans", () => {
+    const raw = "theta value";
+    expect(locateSpans(raw, ["the"])).toEqual([]);
   });
 
   it("locates a term under a case- and diacritic-fold", () => {
@@ -128,6 +128,64 @@ describe("locateSpans", () => {
       "gamma@11",
       "alpha@17",
     ]);
+  });
+
+  it("keeps an exact whole-token match", () => {
+    const raw = "the timestamp is logged";
+    expect(locateSpans(raw, ["timestamp"])).toEqual([{ start: 4, end: 13, term: "timestamp" }]);
+  });
+
+  it("rejects a term that is only a prefix of a longer word", () => {
+    // "for" occurs only as the start of "before", never as its own token.
+    const raw = "check before submitting";
+    expect(locateSpans(raw, ["for"])).toEqual([]);
+  });
+
+  it("rejects a term that is only an interior fragment of a longer word", () => {
+    // "time" occurs only inside "timestamp", never as its own token.
+    const raw = "the timestamp is logged";
+    expect(locateSpans(raw, ["time"])).toEqual([]);
+  });
+
+  it("rejects a term that is only a suffix of a longer word", () => {
+    // "for" occurs only as the tail of "platform", never as its own token.
+    const raw = "deploy to the platform";
+    expect(locateSpans(raw, ["for"])).toEqual([]);
+  });
+
+  it("keeps a term bounded by an underscore, which is not a word character", () => {
+    const raw = "the time_stamp column";
+    expect(locateSpans(raw, ["time"])).toEqual([{ start: 4, end: 8, term: "time" }]);
+  });
+
+  it("rejects a term adjacent to a digit, since a digit is a word character", () => {
+    // "v" is immediately followed by "2" (a word character), so "v2" is one
+    // token and "v" alone is not a whole-token match.
+    const raw = "release v2 today";
+    expect(locateSpans(raw, ["v"])).toEqual([]);
+  });
+
+  // The boundary test must run in FOLDED, not raw, coordinates (design.md
+  // Decision 2): a bare combining mark left over from NFD normalization
+  // folds away entirely and is not itself a word character, so a raw-
+  // coordinate boundary test would wrongly accept the span it sits next to.
+  // Both the NFD and NFC spellings of the same text must agree.
+  it("rejects a non-whole-token occurrence identically under NFD and NFC normalization", () => {
+    // "á" (U+00E1) decomposed to "a" + U+0301 (combining acute accent),
+    // immediately followed by "the value" — so the term "the" is glued to
+    // the accented letter, not preceded by a word boundary, in EITHER
+    // normalization form.
+    const nfd = "a" + "́" + "the value";
+    // Precondition: this literal is genuinely NFD — normalizing it to NFC
+    // changes it. If this ever stops holding (e.g. an editor silently
+    // re-composed the literal), the test below would be vacuous.
+    expect(nfd.normalize("NFC")).not.toBe(nfd);
+
+    const nfc = nfd.normalize("NFC");
+    expect(nfc).toBe("áthe value");
+
+    expect(locateSpans(nfd, ["the"])).toEqual([]);
+    expect(locateSpans(nfc, ["the"])).toEqual([]);
   });
 });
 

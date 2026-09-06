@@ -236,6 +236,51 @@ alone took 4.23 s versus 0.03 s for 16 small chunks combined), so removing it en
 the conservative midpoint estimate predicted. Full run transcripts live in the change's
 `verify-report.md`.
 
+Manual gate (`word-boundary-term-matching`): proves `locateSpans` now agrees with the lexical
+retriever about what "a query term matched" means — a substring occurrence (`for` inside *before*,
+`time` inside *timestamp*) no longer produces a located span, only a whole-token occurrence does.
+Follows the `supporting-anchor-probe.mjs` / `excerpt-fence-drop-probe.mjs` precedent: a script that
+recomputes spans by calling `dist/`'s own `locateSpans` on the resolved chunk (never the production
+`WORD_CHAR` predicate, which is not exported, and never a proxy over `result.excerpt` text — see
+design.md Decision 1), drives the real pipeline through `createContainer`, hybrid, no `--lexical`,
+no explicit `k`:
+
+```bash
+node dist/cli.js --root ejemplos index
+node scripts/word-boundary-probe.mjs ejemplos --mode before --digest ejemplos/.compendio/gate-a-before.digest
+# ... npm run build with the fix landed (no reindex — spans are computed at query time) ...
+node scripts/word-boundary-probe.mjs ejemplos --mode after --compare-digest ejemplos/.compendio/gate-a-before.digest
+```
+
+`--mode before|after` selects which of the two opposite-direction gates applies to the emitted spans
+of the `dist/` build currently loaded (W1's vacuity floor in `before`, W2's landing floor in
+`after`) — a single invocation cannot tell on its own which side of the fix it was compiled against.
+`--compare-digest` additionally requires the two runs' `(query, rank, path, section)` population to
+match tuple-for-tuple (W4) and computes W3 (fragments that lose every span between the two runs) from
+the two digests' per-fragment span counts.
+
+| # | Counter | Before (unmodified) | After (fixed) |
+|---|---|---|---|
+| W1/W2 | Non-exact spans (prefix/interior/suffix) among all emitted spans, 22-query goldenset | **1 343** of 3 035 (44.3%) | **0** of 1 692 (0.0%) |
+| W3 | Fragments losing ALL spans between the two runs (functional cost) | n/a | **0** |
+| W4 | Population identity (same `(query, rank, path, section)` tuples, same order) | — | **matched**, no drift |
+| W5 | Span retention | — | 1 692/3 035 kept (**55.7%**) |
+| W5 | Fragments whose excerpt text changed | — | 48/110 (**43.6%**) |
+
+Three RED verifications, each with its own never-conflated failure message — none merely a non-zero
+exit code, per this project's own standing rule that a gate never observed failing has not been
+verified:
+
+| Verification | How | Message | Exit code |
+|---|---|---|---|
+| W2 RED | Revert **only** `src/domain/match-location.ts` (`git stash push -- <path>`), `npm run build`, re-run the probe (default `--mode after`) against `ejemplos/` | `THE FIX DID NOT LAND` | **1** |
+| W1 RED (vacuity guard) | `--query "qwertzuiop plughxyzzy frobnicate" --query "blorptastic wibblefrotz"` (terms absent from the corpus), in **both** tree states (fixed and reverted) | `GATE IS VACUOUS` | **1**, both states |
+| W3 RED | Temporarily patch `locateSpans` to also reject any term shorter than 4 characters (`ejemplos/`'s goldenset relies on several short terms), rebuild, re-run against `ejemplos/` | `MATCH CENTRING WAS LOST` (measured: **15** fragments lost all spans) | **1** |
+
+After each RED verification the reverted or patched file is restored and `npm run build` re-run;
+3.1/3.2's numbers reproduced identically both times (55.7% retention, W3 = 0), confirming nothing
+was lost in the revert/restore round-trip.
+
 `prepublishOnly` runs `build` then `test` — publishing fails if either fails.
 
 Tests use `pool: "forks"` (vitest.config.ts) because `better-sqlite3` is a native addon loaded once per worker; don't switch this to threads. `CI=true` turns on `forbidOnly` so a stray `it.only` can't silently slim down the suite outside CI.
@@ -432,6 +477,50 @@ The MCP surface stays exactly these 3 tools — **`compendio sync` is a human-on
   measured evidence. **What should fire it**: agent traces showing supporting hits driving excess
   `read_doc` chaining — the same observation that would reopen the both-ellipsis trade — or the next
   change that widens `SearchResultItem` for any other reason. Deferral count: 1.
+- **`locateSpans` now requires a word boundary at both ends of a located span — a substring
+  occurrence no longer counts as "a term matched"** (`word-boundary-term-matching`,
+  `src/domain/match-location.ts`). It was a plain `indexOf` scan with no condition on either end,
+  disagreeing with the lexical retriever it is supposed to be explaining: `toFtsQuery` emits a
+  quoted, non-wildcard `MATCH` string against an FTS5 table with no stemmer, so `"charge"` never
+  matches a chunk holding only `charged`, but the old `locateSpans` happily centred an excerpt on
+  it. Classified over `DocuTests2` (888 chunks, exploration measurement): **71.9% of spans were not
+  word matches** — 36.6% a prefix of a longer word, 35.3% an interior fragment, 0.0% a suffix.
+  Re-measured on this repository's own `ejemplos/` corpus by the shipped gate
+  (`scripts/word-boundary-probe.mjs`): of 3 035 spans the old code would have emitted across the
+  22-query goldenset, 1 343 (44.3%) were non-exact, and after the fix 0 of the remaining 1 692 are —
+  every one is a whole-token match, retention 55.7%. **The functional cost is zero, measured, not
+  assumed**: W3 (fragments that lose every span and fall back to the start-anchored prefix) is 0 on
+  `ejemplos/`'s 22 queries; 48 of 110 supporting/lead fragments (43.6%) show a different excerpt
+  because `selectMatchCentre` now sees fewer, more honest candidates — reported, not gated (design.md
+  Decision 5: a moved centre is the change working, and there is no excerpt-quality metric in this
+  repository to threshold against). **The boundary test runs in FOLDED coordinates, not raw**
+  (design.md Decision 2) — this is not tidiness, it is normalization-form correctness: `"áthe"`
+  written NFD (`a` + U+0301 combining acute + `the`) puts a bare combining mark at
+  `raw[start - 1]`, and a combining mark is not `\p{L}`/`\p{N}`, so a **raw**-coordinate test wrongly
+  accepts the span; the NFC spelling of the identical text puts a plain `á` there and raw correctly
+  rejects it. Folded coordinates give the same (correct) answer for both spellings, because that is
+  where the match itself was made. Measured directly against compiled `dist/`: `"áthe value"` NFC
+  rejects in raw coordinates, `"áthe value"` NFD wrongly accepts in raw coordinates — pinned by a
+  decomposed-accent test in `test/domain/match-location.test.ts` that asserts its own input is
+  genuinely NFD before asserting behaviour (`input.normalize("NFC") !== input`), following
+  `test/fixtures/excerpt-window/`'s self-asserted-precondition pattern; a normalizing editor can
+  silently revert an inline literal or a fixture file, and only that assertion would catch it.
+  **The new `WORD_CHAR` predicate is deliberately NOT exported** — an exported predicate is one the
+  falsifying gate probe could import, which would make its own "did the fix land" counter a
+  tautological echo of the code it exists to falsify; the probe's classifier is written
+  independently, in raw coordinates. Five named non-guarantees remain, deliberately not closed by
+  this change: (1) the locator's fold (`foldForMatch`) is narrower than FTS5's
+  `unicode61 remove_diacritics 2`; (2) the boundary class `[^\p{L}\p{N}]` is this project's own
+  tokenizer class, not byte-for-byte `unicode61`'s token boundary; (3) no stemming in either
+  direction — an inflected form never counts toward locatability of its root, matching the
+  retriever, which does not stem either; (4) a lone surrogate half beside an astral-plane letter may
+  read as a boundary here where FTS5's tokenizer would not; (5) this narrowing carries no
+  corpus-frequency signal and does not change `selectMatchCentre`'s scoring, ranking, or the
+  1400/120 excerpt budgets — those stay exactly as `supporting-excerpt-anchoring` left them. This
+  change does **not** fix `docs/retrieval-open-work.md`'s Open problem 3 (rarity-weighted centre
+  selection): the motivating `billing-rules.md` example was measured, during exploration, to still
+  select the same early cluster after removing `charge` — the justification for this cycle is
+  independent correctness (one definition of "a term matched", not two), not that symptom.
 - A file that is unreadable, genuinely undecodable (neither valid UTF-8 nor plausibly CP1252 — see `decode-text.ts` above), fails frontmatter parsing, or (under `strict`) fails validation is skipped and reported in `skipped` — both by `index` and by `index-md` — never a hard failure of the whole run; these resilience reasons are mode-independent (identical under `loose` and `strict`). A file that decodes successfully under a non-UTF-8 encoding is not skipped — it is indexed normally and reported separately as transcoded.
 - Test doubles: `test/helpers/fake-embeddings.ts` provides a deterministic embeddings stub (stem-grouped, no model download) used by integration tests against the real `ejemplos/` corpus. `test/fixtures/strict/` is a small synthetic corpus + `compendio.config.json` that exercises `convention.mode: "strict"` end to end.
 
