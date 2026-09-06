@@ -283,19 +283,50 @@ describe("createContainer — auto-discovered markdown roots", () => {
     }
   });
 
-  it("indexes the exact dynamic openspec markdown path set in lexical discovery mode", async () => {
-    cpSync(join(process.cwd(), "openspec"), join(projectDir, "openspec"), { recursive: true });
-    const expected = collectMarkdownPaths(join(projectDir, "openspec")).map((path) => `openspec/${path}`);
+  // This is the only test in the suite whose runtime is a function of the
+  // REPOSITORY'S OWN HISTORY rather than of the code under test: it copies and
+  // indexes the real `openspec/` tree, which every archived SDD cycle grows by
+  // roughly 45-206 KB of Markdown (measured across the last six cycles, mean
+  // ~140 KB on a 3.9 MB corpus — about +3.5% per cycle, compounding). Indexing
+  // that corpus is ~2.9 s locally and 93% of this file's total runtime; every
+  // other test here is under 30 ms. The `cpSync` is not the cost (103 ms
+  // measured) — parsing, chunking and writing FTS rows for ~196 documents is.
+  //
+  // It therefore gets its own timeout instead of the suite-wide 20 s
+  // (`vitest.config.ts`), which was chosen for tests whose cost is bounded by
+  // their fixtures. Under `pool: "forks"` on a CI runner competing for I/O —
+  // Windows and macOS GitHub runners are markedly slower at many-small-file
+  // work — 20 s was reached in CI while the same test took 2.9 s locally, and
+  // it would have been reached by the next cycle's growth regardless of which
+  // change happened to cross the line first.
+  //
+  // The value is deliberately far above the measured cost: a timeout here is a
+  // HANG detector, not a performance budget, and pinning it close to today's
+  // runtime just re-arms the same failure a few cycles from now. If this ever
+  // trips again, the growth is the thing to address — indexing the real tree is
+  // what gives this test its value (it proves the indexer's discovered set
+  // matches the filesystem's on a real, messy, deeply-nested corpus, including
+  // that no archived document silently lands in `skipped` instead of
+  // `indexed`), so do not "fix" it by stubbing the file contents.
+  it(
+    "indexes the exact dynamic openspec markdown path set in lexical discovery mode",
+    async () => {
+      cpSync(join(process.cwd(), "openspec"), join(projectDir, "openspec"), { recursive: true });
+      const expected = collectMarkdownPaths(join(projectDir, "openspec")).map(
+        (path) => `openspec/${path}`,
+      );
 
-    const container = createContainer({ root: projectDir, forceLexical: true });
-    try {
-      const report = await container.indexDocuments.execute();
-      expect(report.mode).toBe("lexical");
-      expect(report.indexed.map((d) => d.path)).toEqual(expected);
-    } finally {
-      container.close();
-    }
-  });
+      const container = createContainer({ root: projectDir, forceLexical: true });
+      try {
+        const report = await container.indexDocuments.execute();
+        expect(report.mode).toBe("lexical");
+        expect(report.indexed.map((d) => d.path)).toEqual(expected);
+      } finally {
+        container.close();
+      }
+    },
+    120_000,
+  );
 
   it("preserves indexed documents by aborting sync when a discovered root becomes unreadable", async () => {
     await mkdir(join(projectDir, "openspec"), { recursive: true });
