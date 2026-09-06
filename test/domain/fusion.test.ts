@@ -2,15 +2,18 @@ import { describe, expect, it } from "vitest";
 import { capPerDocument, reciprocalRankFusion } from "../../src/domain/fusion";
 
 describe("reciprocalRankFusion", () => {
-  it("scores an id present in both lists as the sum of 1/(60+rank)", () => {
+  it("scores an id present in both lists as the sum of 1/(RRF_K+rank)", () => {
     const fused = reciprocalRankFusion([[7], [7]]);
     expect(fused).toHaveLength(1);
-    expect(fused[0]!.score).toBeCloseTo(2 / 61, 10);
+    expect(fused[0]!.score).toBeCloseTo(2 / 6, 10);
   });
 
   it("ranks an id found by both legs above one found by a single leg", () => {
-    // id 1: rank 1 in one list -> 1/61 ~= 0.0164
-    // id 2: rank 2 in both lists -> 2/62 ~= 0.0323
+    // id 1: rank 1 in one list  -> 1/6 ~= 0.167
+    // id 2: rank 2 in both lists -> 2/7 ~= 0.286
+    // The both-legs preference survives the smaller RRF_K; it is narrowed,
+    // not inverted. What changes is how much a strong single-leg rank can
+    // claw back: at RRF_K=60 rank 1 and rank 2 differ by 1.6%, at 5 by 17%.
     const fused = reciprocalRankFusion([
       [1, 2],
       [3, 2],

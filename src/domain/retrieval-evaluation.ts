@@ -1,0 +1,322 @@
+/**
+ * Pure retrieval-evaluation domain: label validation, answer/document
+ * metrics, identity comparison, and falsifiability gates. Zero dependencies
+ * on SQLite, transformers.js, or the filesystem — everything here operates
+ * on plain data a runner assembled elsewhere (`scripts/retrieval-baseline.mjs`).
+ *
+ * Never reproduces ranking. This module only judges, against reviewed
+ * evidence, what production search already emitted.
+ */
+
+/** Identifies one chunk stably across a run: the same identity a runner
+ * resolves for both a reviewed label's accepted answers and an emitted
+ * result, so "did the answer chunk get emitted" is a plain equality check. */
+export interface ChunkFingerprint {
+  path: string;
+  heading: string;
+  position: number;
+  contentHash: string;
+}
+
+/** One quote of the reviewed document text the label's evidence rests on. */
+export interface EvidenceQuote {
+  text: string;
+  /** 0-based: which occurrence of `text` in the reviewed document this
+   * evidence points to, when the text repeats. */
+  occurrence: number;
+}
+
+/** One reviewed answer label: one query (intent + reformulation variant),
+ * resolved by a human reviewer to the chunk(s) that sufficiently answer it. */
+export interface ReviewedLabel {
+  intentId: string;
+  /** 1..3: which of the intent's three meaning-preserving reformulations. */
+  variantId: number;
+  /** Intent-group identity — ties all of an intent's variants together for
+   * "all three reformulations succeeded" metrics. */
+  group: string;
+  reviewedDocumentPath: string;
+  reviewedDocumentHash: string;
+  evidenceQuotes: EvidenceQuote[];
+  /** Independently sufficient chunks. Multiple entries are ALTERNATIVES —
+   * any one being emitted is a hit — never a joint requirement. */
+  acceptedChunkFingerprints: ChunkFingerprint[];
+  reviewer: string;
+  rationale: string;
+}
+
+export type LabelInvalidReason = "no-evidence-quotes" | "no-accepted-chunks" | "ambiguous-evidence";
+
+export type LabelValidation =
+  | { valid: true; label: ReviewedLabel }
+  | { valid: false; label: ReviewedLabel; reason: LabelInvalidReason };
+
+/**
+ * Resolves a label to whether it names an actually-usable answer. A label
+ * with no evidence, no accepted chunks, or accepted chunks split across more
+ * than one document (which one is the intended answer becomes undecidable)
+ * is invalid — the requirement's "unresolvable evidence" scenario.
+ */
+export function validateLabel(label: ReviewedLabel): LabelValidation {
+  if (label.evidenceQuotes.length === 0) {
+    return { valid: false, label, reason: "no-evidence-quotes" };
+  }
+  if (label.acceptedChunkFingerprints.length === 0) {
+    return { valid: false, label, reason: "no-accepted-chunks" };
+  }
+  const distinctPaths = new Set(label.acceptedChunkFingerprints.map((f) => f.path));
+  if (distinctPaths.size > 1) {
+    return { valid: false, label, reason: "ambiguous-evidence" };
+  }
+  return { valid: true, label };
+}
+
+/** One query's production result: the label it was evaluated against, plus
+ * the chunks production actually emitted, in rank order (best first). */
+export interface QueryOutcome {
+  intentId: string;
+  variantId: number;
+  group: string;
+  label: ReviewedLabel;
+  emitted: ChunkFingerprint[];
+}
+
+export interface QueryEvaluationResult {
+  intentId: string;
+  variantId: number;
+  group: string;
+  labelValid: boolean;
+  invalidReason?: LabelInvalidReason;
+  /** True when any accepted chunk was emitted, for a validly-resolved label.
+   * Always false for an invalid label — there is nothing to have hit. */
+  answerHit: boolean;
+  /** 1-based rank of the FIRST emitted chunk matching any accepted
+   * fingerprint; null when none matched or the label is invalid. Never
+   * fabricated for an unavailable/absent match. */
+  firstAnswerRank: number | null;
+  /** True when the expected document appears anywhere among emitted
+   * results, independent of whether a sufficient chunk was emitted —
+   * separate from `answerHit` (document-only retrieval). */
+  documentHit: boolean;
+}
+
+function fingerprintKey(f: ChunkFingerprint): string {
+  return `${f.path}\0${f.heading}\0${f.position}\0${f.contentHash}`;
+}
+
+/** Judges one query's production result against its reviewed label. Pure:
+ * no ranking, no I/O — just identity comparison over already-resolved data. */
+export function evaluateQuery(outcome: QueryOutcome): QueryEvaluationResult {
+  const base = {
+    intentId: outcome.intentId,
+    variantId: outcome.variantId,
+    group: outcome.group,
+  };
+  const validation = validateLabel(outcome.label);
+  const documentHit = outcome.emitted.some((e) => e.path === outcome.label.reviewedDocumentPath);
+
+  if (!validation.valid) {
+    return {
+      ...base,
+      labelValid: false,
+      invalidReason: validation.reason,
+      answerHit: false,
+      firstAnswerRank: null,
+      documentHit,
+    };
+  }
+
+  const accepted = new Set(outcome.label.acceptedChunkFingerprints.map(fingerprintKey));
+  let firstAnswerRank: number | null = null;
+  for (let i = 0; i < outcome.emitted.length; i++) {
+    if (accepted.has(fingerprintKey(outcome.emitted[i]!))) {
+      firstAnswerRank = i + 1;
+      break;
+    }
+  }
+
+  return {
+    ...base,
+    labelValid: true,
+    answerHit: firstAnswerRank !== null,
+    firstAnswerRank,
+    documentHit,
+  };
+}
+
+export interface IntentGroupMetrics {
+  group: string;
+  allVariantsHit: boolean;
+  variants: QueryEvaluationResult[];
+}
+
+export interface AnswerMetricsSummary {
+  /** Queries with a VALID label — an invalid label cannot be measured, so it
+   * is excluded from this denominator rather than silently counted as a
+   * miss (which would misreport instrumentation health as ranking quality). */
+  totalQueries: number;
+  hits: number;
+  /** Mean of the per-query 0/1 answer hit, over `totalQueries`. */
+  hitRateAt5: number;
+  groups: IntentGroupMetrics[];
+  allVariantSuccessGroups: number;
+  allVariantSuccessRate: number;
+  perQuery: QueryEvaluationResult[];
+}
+
+/**
+ * Any-answer Hit@5, its mean, intent-group all-variant success, and
+ * first-answer rank — the requirement's "Answer and Document Metrics".
+ * Queries whose label failed to resolve are still returned in `perQuery`
+ * (for visibility) but excluded from every rate's denominator.
+ */
+export function summarizeAnswerMetrics(outcomes: QueryOutcome[]): AnswerMetricsSummary {
+  const perQuery = outcomes.map(evaluateQuery);
+  const measurable = perQuery.filter((q) => q.labelValid);
+  const hits = measurable.filter((q) => q.answerHit).length;
+
+  const byGroup = new Map<string, QueryEvaluationResult[]>();
+  for (const q of measurable) {
+    const list = byGroup.get(q.group) ?? [];
+    list.push(q);
+    byGroup.set(q.group, list);
+  }
+  const groups: IntentGroupMetrics[] = [...byGroup.entries()].map(([group, variants]) => ({
+    group,
+    allVariantsHit: variants.length > 0 && variants.every((v) => v.answerHit),
+    variants,
+  }));
+  const allVariantSuccessGroups = groups.filter((g) => g.allVariantsHit).length;
+
+  return {
+    totalQueries: measurable.length,
+    hits,
+    hitRateAt5: measurable.length === 0 ? 0 : hits / measurable.length,
+    groups,
+    allVariantSuccessGroups,
+    allVariantSuccessRate: groups.length === 0 ? 0 : allVariantSuccessGroups / groups.length,
+    perQuery,
+  };
+}
+
+export interface DocumentMetricsSummary {
+  totalQueries: number;
+  hits: number;
+  hitRateAt5: number;
+}
+
+/**
+ * Document-level retrieval, reported SEPARATELY from answer-bearing chunk
+ * metrics — the requirement's "document-only retrieval" scenario: a
+ * document can be retrieved with no sufficient chunk emitted, and that must
+ * be visible as a difference between this and `summarizeAnswerMetrics`.
+ * Unlike answer metrics, an invalid label does not exclude a query here —
+ * "was the expected document retrieved" needs only `reviewedDocumentPath`,
+ * not a resolved accepted chunk.
+ */
+export function summarizeDocumentMetrics(outcomes: QueryOutcome[]): DocumentMetricsSummary {
+  if (outcomes.length === 0) return { totalQueries: 0, hits: 0, hitRateAt5: 0 };
+  const hits = outcomes.filter((o) => o.emitted.some((e) => e.path === o.label.reviewedDocumentPath)).length;
+  return { totalQueries: outcomes.length, hits, hitRateAt5: hits / outcomes.length };
+}
+
+export type GateFailure =
+  | { kind: "vacuous" }
+  | { kind: "invalid-label"; intentId: string; variantId: number; reason: LabelInvalidReason }
+  | { kind: "relevance-miss"; intentId: string; variantId: number };
+
+export interface GateResult {
+  passed: boolean;
+  failures: GateFailure[];
+}
+
+/**
+ * Falsifiable measurement gates (requirement: "Falsifiable Measurement
+ * Gates"). Gate success establishes instrumentation VALIDITY — that labels
+ * resolve and relevance misses are visible — never ranking quality or an
+ * improvement claim.
+ *
+ * - `vacuous`: EVERY label failed to resolve, so nothing evaluated could
+ *   possibly measure anything.
+ * - `invalid-label`: one specific label failed to resolve, reported even
+ *   when other labels in the same run are fine (not vacuity).
+ * - `relevance-miss`: a validly-resolved label whose accepted chunk was
+ *   never emitted — the shape a "known-bad relevance" fixture is built to
+ *   trigger, and the shape a passing control must NOT trigger.
+ */
+export function runFalsifiabilityGates(outcomes: QueryOutcome[]): GateResult {
+  const perQuery = outcomes.map(evaluateQuery);
+  const failures: GateFailure[] = [];
+
+  const anyValid = perQuery.some((q) => q.labelValid);
+  if (!anyValid && perQuery.length > 0) {
+    failures.push({ kind: "vacuous" });
+  }
+
+  for (const q of perQuery) {
+    if (!q.labelValid) {
+      failures.push({
+        kind: "invalid-label",
+        intentId: q.intentId,
+        variantId: q.variantId,
+        reason: q.invalidReason!,
+      });
+    } else if (!q.answerHit) {
+      failures.push({ kind: "relevance-miss", intentId: q.intentId, variantId: q.variantId });
+    }
+  }
+
+  return { passed: failures.length === 0, failures };
+}
+
+/** Reproducibility identities recorded for a single production run. */
+export interface RunIdentity {
+  corpusHash: string;
+  configHash: string;
+  modelHash: string;
+  codeHash: string;
+}
+
+export interface ComparableResult {
+  query: string;
+  identity: RunIdentity;
+  emitted: ChunkFingerprint[];
+}
+
+export type ComparisonResult =
+  | { equivalent: true }
+  | { equivalent: false; reason: "identity-drift" | "fragment-drift" | "order-drift" };
+
+/**
+ * Compares two runs of (nominally) the same query. Identity drift — ANY of
+ * corpus/config/model/code hash differing — is non-equivalent regardless of
+ * whether the emitted output happens to be equal (requirement: "Identity
+ * drift"). Only once identities match does fragment/order equality decide
+ * the comparison (requirement: "Identical-input replay").
+ */
+export function compareResults(a: ComparableResult, b: ComparableResult): ComparisonResult {
+  if (
+    a.identity.corpusHash !== b.identity.corpusHash ||
+    a.identity.configHash !== b.identity.configHash ||
+    a.identity.modelHash !== b.identity.modelHash ||
+    a.identity.codeHash !== b.identity.codeHash
+  ) {
+    return { equivalent: false, reason: "identity-drift" };
+  }
+  if (a.emitted.length !== b.emitted.length) {
+    return { equivalent: false, reason: "fragment-drift" };
+  }
+  const aKeys = a.emitted.map(fingerprintKey);
+  const bKeys = b.emitted.map(fingerprintKey);
+  const aSorted = [...aKeys].sort();
+  const bSorted = [...bKeys].sort();
+  const sameSet = aSorted.every((k, i) => k === bSorted[i]);
+  if (!sameSet) {
+    return { equivalent: false, reason: "fragment-drift" };
+  }
+  const sameOrder = aKeys.every((k, i) => k === bKeys[i]);
+  if (!sameOrder) {
+    return { equivalent: false, reason: "order-drift" };
+  }
+  return { equivalent: true };
+}

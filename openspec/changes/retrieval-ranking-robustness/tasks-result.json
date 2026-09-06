@@ -1,0 +1,28 @@
+{
+  "status": "success",
+  "executive_summary": "Created 11 ordered implementation tasks in 4 phases: U1→U2→U3 are sequential, with explicit RED runner-contract gates before GREEN/REFACTOR; no implementation was performed.",
+  "artifacts": [
+    "C:\\Users\\Raul\\Workspace\\compendio-mcp\\openspec\\changes\\retrieval-ranking-robustness\\tasks.md",
+    "C:\\Users\\Raul\\Workspace\\compendio-mcp\\openspec\\changes\\retrieval-ranking-robustness\\tasks-result.json"
+  ],
+  "next_recommended": "sdd-apply",
+  "risks": [
+    "Estimated 700–1,050 authored lines exceeds the 400-line review budget; chain strategy is pending and apply requires a user decision.",
+    "External DocuTests2 canonicalization, filesystem access, native edit authority, and prepared model/index remain prerequisites.",
+    "Strict TDD requires RED before each corresponding GREEN/REFACTOR task; no runtime-bearing apply attempt was launched."
+  ],
+  "skill_resolution": "paths-injected",
+  "task_count": 11,
+  "parallel_tasks": [],
+  "sequential_tasks": ["1.1→1.2", "2.1→2.2", "U1→U2→U3", "3.1→3.1a→3.2", "4.1→4.2"],
+  "forecast": {
+    "estimated_changed_lines": "700–1,050 authored lines",
+    "generated_goldenset_excluded_from_authored_risk": true,
+    "budget_risk": "High",
+    "chained_prs_recommended": true,
+    "delivery_strategy": "ask-on-risk",
+    "chain_strategy": "pending",
+    "decision_needed_before_apply": true
+  },
+  "delivery": "LOCAL ONLY; no commit, push, PR, branch creation, or external writes."
+}
