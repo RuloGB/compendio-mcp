@@ -320,7 +320,7 @@ describe("search-trace — fusion, ties, cap and missing rows", () => {
 
     const fused = captured!.attempts[0]!.fused;
     expect(fused.map((f) => f.id).sort()).toEqual([1, 2]);
-    const RRF_K = 60;
+    const RRF_K = 5;
     for (const entry of fused) {
       expect(entry.score).toBeCloseTo(1 / (RRF_K + 1), 10);
     }
