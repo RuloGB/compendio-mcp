@@ -183,3 +183,56 @@ modified or weakened to make this pass.
 9/11 tasks complete. 2 tasks (3.3, 3.4) blocked on human review and model/corpus prerequisites
 this sandbox does not have — see Blocked Tasks above. Ready for `sdd-verify` on the completed
 scope; 3.3/3.4 need a follow-up apply batch once their prerequisites are available.
+
+---
+
+## Orchestrator Post-Apply Verification (2026-09-06)
+
+Independent checks run by the orchestrator after the apply batch returned, against this
+repository at `C:\Users\Raul\Workspace\compendio-mcp`.
+
+### Defect found and fixed
+
+`src/domain/retrieval-evaluation.ts` embedded **three literal NUL bytes** in `fingerprintKey`'s
+template literal (byte offsets 4103/4116/4130). Using NUL as a composite-key separator is a sound
+choice — no path or heading can contain one — but writing it as a raw byte made Git classify the
+whole file as binary (`Bin 0 -> 11763 bytes`), suppressing its diff entirely: 322 lines of new
+domain logic would have reached review as an opaque blob. Replaced with the `\0` escape sequence,
+which emits the identical byte at runtime. The file is now `UTF-8 text` and `git diff --numstat`
+reports `322 0`. Typecheck clean, all 20 evaluation tests still green.
+
+### Risk 2 CLOSED by measurement, not by claim
+
+`scripts/retrieval-baseline.mjs`'s `main()` was reported as never executed end-to-end. It has now
+been run, twice, against `ejemplos/` (lexical mode, a 1-query smoke goldenset, output to a
+scratch directory outside the repository):
+
+1. **Refusal path** — with a non-empty WAL sidecar left by `index`, `main()` refused:
+   `refusing to read "...\ejemplos\.compendio\compendio.db": its WAL sidecar is non-empty — stop
+   every writer and checkpoint first`. Argument parsing, canonical-root resolution, containment
+   and the WAL gate all executed.
+2. **Happy path** — after checkpointing the source database *externally* (the runner correctly
+   refuses to checkpoint it itself), exit code 0, two reports written for independent k=5 and
+   k=10. The manifest carries `sourceDbHash`, `goldensetHash`, `configHash`, `codeHash`, `runId`,
+   and `logicalDigestBefore === logicalDigestAfter` (`236d411d…4285bd25`), i.e. the run provably
+   did not mutate the index. The result carries a real trace (`attempts`) and 5 response items.
+
+This is a smoke proof that the CLI flow executes and its provenance/immutability machinery
+reports real values. It is **not** task 3.4: no reviewed goldenset, no hybrid mode, no real
+corpus. 3.4 remains blocked.
+
+### Suite state
+
+`npm test` → 985 passed, 1 skipped, **1 failed**: `discover-markdown-roots.test.ts > indexes a
+project reached through a Windows 8.3 short path`, failing with `EBUSY: resource busy or locked,
+rmdir` during temp-directory cleanup. Verified **not** a regression from this change: the file is
+untouched (`git diff main..HEAD` reports 0 lines), and it passes on isolated re-run. Pre-existing
+Windows file-lock flake in teardown.
+
+### Open decision for the user
+
+Task 4.1's deliverable, `.compendio/evaluation/README.md`, matches the path `tasks.md` specified,
+but `.gitignore:3` ignores `.compendio/` wholesale — so the operator runbook exists only on this
+machine and does not survive a fresh clone. `design.md` line 67's Git-ignore rationale covers
+measurement *outputs* (goldenset, snapshots, reports), which may carry corpus text; documentation
+carries none. Flagged for the user rather than moved unilaterally.
