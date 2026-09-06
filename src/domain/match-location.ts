@@ -54,6 +54,16 @@ export function foldForMatch(text: string): string {
   return result;
 }
 
+// A term is only located when both of its ends sit at a string edge or
+// against a non-word character — the same class `tokenizeQuery` already
+// splits the query on. Deliberately NOT exported: an exported predicate is
+// one the falsifying gate probe (`scripts/word-boundary-probe.mjs`) could
+// import, which would make its W2 counter tautological (design.md
+// Decision 3). Deferral count: 0 — a third in-`src` occurrence of this
+// class literal, or the first non-test importer, moves it to its own
+// domain module.
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
 /**
  * Every occurrence of every term in `raw`, in raw coordinates, ascending by
  * start (then end). Comparison is case- and diacritic-folded per character
@@ -62,6 +72,18 @@ export function foldForMatch(text: string): string {
  * folds away entirely (a bare combining mark) or expands to more than one
  * folded character (rare Unicode special-casing) — both handled by mapping
  * every emitted folded character back to the raw character that produced it.
+ *
+ * An occurrence is emitted only when it is a whole-token match: the
+ * character immediately before its start and the character at its end must
+ * each be either absent (a string edge) or outside `[\p{L}\p{N}]`. This
+ * keeps the excerpt locator honest with the lexical retriever, which never
+ * matches a substring occurrence either (`unicode61`, no stemmer, no
+ * wildcard in the emitted MATCH string). The boundary test runs in FOLDED
+ * coordinates, before mapping back to raw (design.md Decision 2): raw
+ * coordinates are not normalization-form invariant — a bare combining mark
+ * left over from NFD decomposition is not itself a word character, so a
+ * raw-coordinate test would wrongly accept a span an NFC spelling of the
+ * same text would reject.
  */
 export function locateSpans(raw: string, terms: readonly string[]): MatchSpan[] {
   if (terms.length === 0) return [];
@@ -76,10 +98,18 @@ export function locateSpans(raw: string, terms: readonly string[]): MatchSpan[] 
     while (searchFrom <= foldedRaw.length) {
       const idx = foldedRaw.indexOf(foldedTerm, searchFrom);
       if (idx === -1) break;
-      const start = map[idx]!;
-      const endFoldedIndex = idx + foldedTerm.length;
-      const end = endFoldedIndex < map.length ? map[endFoldedIndex]! : raw.length;
-      spans.push({ start, end, term });
+      // Reject a non-whole-token occurrence, but keep scanning past it —
+      // "charged charge" must still find "charge" at offset 8 after
+      // rejecting the "charge" prefix of "charged" at offset 0.
+      const beforeIdx = idx - 1;
+      const afterIdx = idx + foldedTerm.length;
+      const boundaryBefore = beforeIdx < 0 || !WORD_CHAR.test(foldedRaw[beforeIdx]!);
+      const boundaryAfter = afterIdx >= foldedRaw.length || !WORD_CHAR.test(foldedRaw[afterIdx]!);
+      if (boundaryBefore && boundaryAfter) {
+        const start = map[idx]!;
+        const end = afterIdx < map.length ? map[afterIdx]! : raw.length;
+        spans.push({ start, end, term });
+      }
       searchFrom = idx + 1;
     }
   }
