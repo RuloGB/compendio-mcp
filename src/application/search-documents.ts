@@ -1,7 +1,7 @@
 import { buildExcerpt, excerptBudget } from "../domain/excerpt.js";
 import { capPerDocument, reciprocalRankFusion } from "../domain/fusion.js";
 import { locateSpans, tokenizeQuery } from "../domain/match-location.js";
-import type { SearchFilters, SearchResponse, SearchResultItem } from "../domain/model.js";
+import type { SearchFilters, SearchMode, SearchResponse, SearchResultItem } from "../domain/model.js";
 import { normalizeTags } from "../domain/tags.js";
 import {
   collectFacets,
@@ -10,6 +10,12 @@ import {
   explainEmptyResult,
 } from "../domain/search-diagnostics.js";
 import type { EmbeddingsProvider, IndexStore } from "../domain/ports.js";
+import type {
+  SearchTrace,
+  SearchTraceAttempt,
+  SearchTraceObserver,
+  VectorLegTrace,
+} from "./search-trace.js";
 
 export interface SearchQuery {
   query: string;
@@ -54,11 +60,18 @@ export class SearchDocuments {
     private readonly defaults: SearchDefaults,
   ) {}
 
-  async execute(query: SearchQuery): Promise<SearchResponse> {
+  async execute(query: SearchQuery, observer?: SearchTraceObserver): Promise<SearchResponse> {
     const k = query.k ?? this.defaults.k;
     const requested = this.buildFilters(query);
-    const first = await this.runSearch(query, requested, k);
-    if (first.results.length > 0) return first;
+    // Building trace attempts costs nothing beyond copying arrays `runSearch`
+    // already computed — but that copy IS work, so it happens only when an
+    // observer was actually given (design.md: "no extra inference").
+    const attempts: SearchTraceAttempt[] | undefined = observer ? [] : undefined;
+    const first = await this.runSearch(query, requested, k, attempts);
+    if (first.results.length > 0) {
+      this.notify(observer, attempts);
+      return first;
+    }
 
     // Nothing came back. Before reporting a zero — which observed agents read
     // as "search harder" — check whether a filter targeted a field this corpus
@@ -66,40 +79,64 @@ export class SearchDocuments {
     const facets = collectFacets(this.store.listDocuments());
     const { filters: viable, droppedFields } = dropImpossibleFilters(requested, facets);
     if (droppedFields.length > 0) {
-      const retry = await this.runSearch(query, viable, k);
+      const retry = await this.runSearch(query, viable, k, attempts);
       retry.filterWarning = describeDroppedFilters(droppedFields);
       if (retry.results.length === 0) {
         const reason = explainEmptyResult(viable, facets);
         if (reason !== undefined) retry.noMatchReason = reason;
       }
+      this.notify(observer, attempts, retry.filterWarning, retry.noMatchReason);
       return retry;
     }
 
     const reason = explainEmptyResult(requested, facets);
     if (reason !== undefined) first.noMatchReason = reason;
+    this.notify(observer, attempts, undefined, first.noMatchReason);
     return first;
+  }
+
+  /** Isolated so a throwing observer can never affect the response already
+   * built and about to be returned. */
+  private notify(
+    observer: SearchTraceObserver | undefined,
+    attempts: SearchTraceAttempt[] | undefined,
+    filterWarning?: string,
+    noMatchReason?: string,
+  ): void {
+    if (observer === undefined || attempts === undefined) return;
+    const trace: SearchTrace = { attempts };
+    if (filterWarning !== undefined) trace.filterWarning = filterWarning;
+    if (noMatchReason !== undefined) trace.noMatchReason = noMatchReason;
+    try {
+      observer.onComplete(trace);
+    } catch {
+      // Deliberately swallowed: a measurement callback's own failure must
+      // never surface through production search.
+    }
   }
 
   private async runSearch(
     query: SearchQuery,
     filters: SearchFilters,
     k: number,
+    attempts?: SearchTraceAttempt[],
   ): Promise<SearchResponse> {
     const limit = Math.max(MIN_CANDIDATES, k * CANDIDATE_FACTOR);
 
     const lexicalIds = this.store.searchLexical(query.query, filters, limit);
-    const vectorIds = await this.vectorLeg(query, filters, limit);
+    const vector = await this.vectorLeg(query, filters, limit);
 
-    const lists = vectorIds === null ? [lexicalIds] : [lexicalIds, vectorIds];
+    const lists = vector.ids === null ? [lexicalIds] : [lexicalIds, vector.ids];
     const fused = reciprocalRankFusion(lists);
 
     const chunks = this.store.getChunksByIds(fused.map((f) => f.id));
     const chunkById = new Map(chunks.map((c) => [c.id, c]));
-    const top = capPerDocument(
+    const capped = capPerDocument(
       fused,
       (id) => chunkById.get(id)?.documentId ?? -1,
       MAX_CHUNKS_PER_DOCUMENT,
-    ).slice(0, k);
+    );
+    const top = capped.slice(0, k);
 
     const documents = this.store.getDocumentsByIds(chunks.map((c) => c.documentId));
     // Hoisted once per search, not once per result — the same terms
@@ -107,6 +144,7 @@ export class SearchDocuments {
     // `tokenizeQuery` (design.md Decision 2).
     const terms = tokenizeQuery(query.query);
     const results: SearchResultItem[] = [];
+    const finalIds: number[] = [];
     for (const entry of top) {
       const chunk = chunkById.get(entry.id);
       if (chunk === undefined) continue;
@@ -135,9 +173,32 @@ export class SearchDocuments {
       };
       if (doc.status !== undefined) item.status = doc.status;
       results.push(item);
+      finalIds.push(entry.id);
     }
 
-    return { mode: vectorIds === null ? "lexical" : "hybrid", results };
+    const mode: SearchMode = vector.ids === null ? "lexical" : "hybrid";
+
+    if (attempts !== undefined) {
+      const cappedIdSet = new Set(capped.map((c) => c.id));
+      const capRemovals = fused
+        .filter((f) => !cappedIdSet.has(f.id))
+        .map((f) => ({ id: f.id, documentId: chunkById.get(f.id)?.documentId ?? -1 }));
+      attempts.push({
+        attemptNumber: attempts.length + 1,
+        filters: { ...filters },
+        limit,
+        lexicalIds: [...lexicalIds],
+        vector: vector.trace,
+        union: [...new Set(lists.flat())],
+        fused: fused.map((f) => ({ id: f.id, score: f.score })),
+        cappedIds: capped.map((c) => c.id),
+        capRemovals,
+        finalIds,
+        mode,
+      });
+    }
+
+    return { mode, results };
   }
 
   private buildFilters(query: SearchQuery): SearchFilters {
@@ -154,23 +215,39 @@ export class SearchDocuments {
     return filters;
   }
 
-  /** Returns ranked chunk ids, or null when running in lexical-only mode. */
+  /**
+   * Runs the vector leg (or doesn't). `ids: null` means lexical-only mode,
+   * exactly as before; `trace` names WHY, for `search-trace.ts` — never
+   * inferred after the fact, since "no provider" and "provider threw" are
+   * different facts that collapse to the same `null` for production
+   * behavior on purpose.
+   */
   private async vectorLeg(
     query: SearchQuery,
     filters: SearchFilters,
     limit: number,
-  ): Promise<number[] | null> {
-    if (query.forceLexical === true) return null;
-    if (this.embeddings === null || !this.store.hasVectors()) return null;
+  ): Promise<{ ids: number[] | null; trace: VectorLegTrace }> {
+    if (query.forceLexical === true) {
+      return { ids: null, trace: { available: false, reason: "forced-lexical" } };
+    }
+    if (this.embeddings === null) {
+      return { ids: null, trace: { available: false, reason: "no-provider" } };
+    }
+    if (!this.store.hasVectors()) {
+      return { ids: null, trace: { available: false, reason: "no-vectors" } };
+    }
     try {
       // "query: " prefix is required by the E5 embedding family.
       const [vector] = await this.embeddings.embed([`query: ${query.query}`]);
-      if (vector === undefined) return null;
-      return this.store.searchVector(vector, filters, limit);
+      if (vector === undefined) {
+        return { ids: null, trace: { available: false, reason: "empty-embedding" } };
+      }
+      const ids = this.store.searchVector(vector, filters, limit);
+      return { ids, trace: { available: true, ids: [...ids] } };
     } catch {
       // Graceful degradation: a broken embeddings runtime must never take
       // search down with it.
-      return null;
+      return { ids: null, trace: { available: false, reason: "embed-failed" } };
     }
   }
 }
