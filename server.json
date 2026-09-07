@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.rulogb/compendio-mcp",
+  "name": "io.github.RuloGB/compendio-mcp",
   "description": "Indexes your project's markdown docs and serves them to any agent via local hybrid search.",
   "repository": {
     "url": "https://github.com/RuloGB/compendio-mcp",
     "source": "github"
   },
-  "version": "1.4.3",
+  "version": "1.4.4",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "compendio-mcp",
-      "version": "1.4.3",
+      "version": "1.4.4",
       "transport": {
         "type": "stdio"
       },

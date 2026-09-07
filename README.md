@@ -1,4 +1,4 @@
-<!-- mcp-name: io.github.rulogb/compendio-mcp -->
+<!-- mcp-name: io.github.RuloGB/compendio-mcp -->
 
 <p align="center">
   <img width="1280" height="640" alt="compendio-mcp — your project's documentation, served to any agent in the fewest possible tokens" src="assets/branding/compendio-banner.png" />

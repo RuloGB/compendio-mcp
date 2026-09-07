@@ -28,7 +28,11 @@ const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
 
 describe("MCP registry metadata stays in sync", () => {
   it("declares the server name in both package.json and server.json", () => {
-    expect(server.name).toBe("io.github.rulogb/compendio-mcp");
+    // The letter case is load-bearing, and it is NOT lowercase. GitHub auth
+    // grants `io.github.<login>/*` with the login's own case (`RuloGB`), and the
+    // registry compares both the grant and the published `mcpName` with `!=`,
+    // byte for byte. A lowercase spelling is refused with a 403 at publish time.
+    expect(server.name).toBe("io.github.RuloGB/compendio-mcp");
     expect(pkg.mcpName).toBe(server.name);
   });
 
