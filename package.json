@@ -1,6 +1,7 @@
 {
   "name": "compendio-mcp",
-  "version": "1.4.2",
+  "version": "1.4.3",
+  "mcpName": "io.github.rulogb/compendio-mcp",
   "description": "MCP server that indexes a project's markdown documentation and exposes it to AI agents through local hybrid search (BM25 + embeddings), in the fewest possible tokens.",
   "type": "module",
   "license": "MIT",

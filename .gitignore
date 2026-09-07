@@ -9,3 +9,7 @@ harness/
 
 # Left behind only if the 8.3 short-path CLI test crashes before its cleanup.
 eight-dot-three-probe-*/
+
+# Fetched on demand to validate server.json against the published MCP registry
+# schema; the upstream copy is authoritative and the registry is still in preview.
+server.schema.json

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.rulogb/compendio-mcp",
+  "description": "MCP server that indexes a project's markdown documentation and exposes it to AI agents through local hybrid search (BM25 + embeddings), in the fewest possible tokens.",
+  "repository": {
+    "url": "https://github.com/RuloGB/compendio-mcp",
+    "source": "github"
+  },
+  "version": "1.4.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "compendio-mcp",
+      "version": "1.4.3",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "serve",
+          "valueHint": "serve"
+        }
+      ]
+    }
+  ]
+}

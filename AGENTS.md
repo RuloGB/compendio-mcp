@@ -283,6 +283,19 @@ was lost in the revert/restore round-trip.
 
 `prepublishOnly` runs `build` then `test` — publishing fails if either fails.
 
+**The MCP registry entry is metadata only, and it is verified against the PUBLISHED npm tarball.**
+`registry.modelcontextprotocol.io` hosts no artifact; it proves ownership of the name
+`io.github.rulogb/compendio-mcp` by reading `mcpName` from the published `package.json` and the
+`<!-- mcp-name: … -->` marker from the published `README.md`. A marker present only on `main`
+verifies nothing — which is why the version that first carries them has to be cut and published to
+npm before `mcp-publisher publish` can succeed, and why every mismatch is otherwise discovered
+after the version number has already been spent. `test/registry-metadata.test.ts` pins the four
+places that can drift (`package.json` version + `mcpName`, `server.json`'s root and
+`packages[0]` versions, the README marker, and `packageArguments` carrying `serve`) so a PR fails
+instead of a release. `release.yml` is deliberately left checking only tag-vs-`package.json`: it
+runs `npm test`, so the rest is already covered there. `mcp-publisher` is the registry's Go CLI,
+downloaded from `modelcontextprotocol/registry` releases
+
 Tests use `pool: "forks"` (vitest.config.ts) because `better-sqlite3` is a native addon loaded once per worker; don't switch this to threads. `CI=true` turns on `forbidOnly` so a stray `it.only` can't silently slim down the suite outside CI.
 
 ## Architecture
