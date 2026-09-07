@@ -32,6 +32,14 @@ describe("MCP registry metadata stays in sync", () => {
     expect(pkg.mcpName).toBe(server.name);
   });
 
+  it("keeps the registry description within the schema's 100-character limit", () => {
+    // Hit for real: the registry rejected a 166-character description with a
+    // 422 at `mcp-publisher publish`, i.e. after the npm version was spent.
+    // npm's own `description` has no such limit, so the two deliberately differ.
+    expect(server.description.length).toBeGreaterThan(0);
+    expect(server.description.length).toBeLessThanOrEqual(100);
+  });
+
   it("carries the ownership marker in the README", () => {
     expect(readme).toContain(`<!-- mcp-name: ${server.name} -->`);
   });
