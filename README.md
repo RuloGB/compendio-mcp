@@ -21,6 +21,10 @@
 </p>
 
 <p align="center">
+  <a href="https://glama.ai/mcp/servers/RuloGB/compendio-mcp/score"><img width="380" height="200" src="https://glama.ai/mcp/servers/RuloGB/compendio-mcp/badge" alt="compendio-mcp MCP server on Glama"></a>
+</p>
+
+<p align="center">
   <a href="#what-compendio-does">What it does</a> &bull;
   <a href="#requirements">Requirements</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
