@@ -274,6 +274,26 @@ Declared roots may not collide: two roots resolving to the same directory, one n
 
 In discovery mode, Compendio rescans top-level folders on every `index`, `sync`, and `serve` sync pass, selects those with `.md` files anywhere below them, skips symlinked content and generated/internal folders such as `.git`, `.compendio`, `node_modules`, `dist`, `build`, and `coverage`, and writes `INDEX.md` at the project root. Discovery fails closed: malformed top-level config JSON, unreadable candidate trees, traversal/read failures, or a previously indexed discovered root that disappears or becomes a symlink/junction before sync abort before mutating the index. A previously indexed root that is still a readable directory is still traversed even after its last Markdown file is deleted, so legitimate deletions are reconciled normally. The symlink checks use `lstat`/`realpath` at scan/traversal time, but they are not a kernel-level sandbox; a filesystem race between check and read remains out of scope. `--dir <path>` (below) is explicit mode: it replaces the whole declared/discovered root set with that one directory and writes `INDEX.md` inside it.
 
+### Works with your SDD framework
+
+Spec-driven development frameworks keep their planning artifacts in Markdown, which is exactly what Compendio indexes. Point `docsDir` at the folders your framework writes to:
+
+| Framework | Config | Indexes |
+|---|---|---|
+| [Spec Kit](https://github.com/github/spec-kit) | `{ "docsDir": ["specs", ".specify"] }` | Feature specs, plans and tasks under `specs/NNN-feature/`, plus the constitution at `.specify/memory/constitution.md` |
+| [OpenSpec](https://github.com/Fission-AI/OpenSpec) | `{ "docsDir": ["openspec"] }` | `openspec/project.md`, capability specs and in-flight changes |
+| [Kiro](https://kiro.dev/docs/specs/) | `{ "docsDir": [".kiro"] }` | `requirements.md`/`design.md`/`tasks.md` per feature under `.kiro/specs/`, plus `.kiro/steering/` |
+| [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) | `{ "docsDir": ["docs"] }` | PRD, architecture, sharded epics and stories |
+| Framework + your own docs | `{ "docsDir": ["docs", "openspec"] }` | Both, as one searchable corpus |
+
+Hidden directories such as `.specify/` and `.kiro/` are indexed normally, both as declared roots and in discovery mode — dot-prefixed *entries inside* a root are what gets skipped, not the root itself. So with no config file at all, a Spec Kit or Kiro project already indexes.
+
+Three things worth knowing before you copy a line:
+
+- **A root's alias is its directory name, not the path you declared.** `.kiro/specs` is aliased `specs`, so its documents come back as `specs/auth/design.md`. That also means it collides with a top-level `specs/` root and cannot be combined with Spec Kit's — declare `.kiro` instead, which is what the table does.
+- **BMAD's output folder is configurable.** `docs` is the default; BMAD v6 reads `output_folder` from its own config, so declare whatever yours is set to.
+- **Templates are noise.** `.specify/templates/` holds placeholder scaffolding, not project knowledge. Add `"exclude": [".specify/templates", ".specify/scripts"]` if you would rather they stayed out of search results.
+
 ### Documentation convention (optional)
 
 Two modes, selected by `convention.mode`:
