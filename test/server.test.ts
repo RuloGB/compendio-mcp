@@ -62,6 +62,12 @@ describe("server instructions", () => {
     expect(instructions).toMatch(/read_doc with that exact path/i);
     // The workflow must preserve progressive disclosure for a named section.
     expect(instructions).toMatch(/pass that section to read_doc/i);
+    // A request to read a whole file end to end is not a question Compendio
+    // answers: read_doc returns the entire document in one tool result, which
+    // the client truncates when the file is large. Route it away explicitly.
+    expect(instructions).toMatch(/read_doc is built for sections/i);
+    expect(instructions).toMatch(/whole file end to end/i);
+    expect(instructions).toMatch(/own file-reading tool/i);
   });
 });
 
@@ -78,9 +84,11 @@ describe("named Markdown document routing", () => {
     expect(internals._registeredTools.search_docs?.description).toMatch(/docs_overview/i);
     expect(internals._registeredTools.search_docs?.description).not.toMatch(/filename and requested section\/topic/i);
     expect(internals._registeredTools.read_doc?.description).toBe(
-      "Returns one section of a document (or the whole document when no section is given), " +
-        "along with its frontmatter. Prefer passing section: a whole document costs several " +
-        "times more than the section you actually need. When a user names a section in a .md " +
+      "Reads one section of a document, along with its frontmatter. Built for sections, not " +
+        "whole files: pass section whenever you can. Omitting it returns the entire document in a " +
+        "single response, which for a large document can exceed your client's tool-output limit " +
+        "and arrive truncated. If the user asks you to read a whole file end to end, open it with " +
+        "your own file-reading tool instead of this one. When a user names a section in a .md " +
         "document, pass that named section here after locating the indexed path with docs_overview " +
         "if necessary. If the path does not exist, it responds with the 3 closest matching paths " +
         "instead of failing.",

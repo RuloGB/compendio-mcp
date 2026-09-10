@@ -69,6 +69,10 @@ const SERVER_INSTRUCTIONS = [
   "example, P9), pass that section to read_doc so you read the requested part rather than the",
   "whole document. If the exact indexed path is already known, call read_doc directly.",
   "",
+  "read_doc is built for sections, not whole files. When the user asks you to read a",
+  "whole file end to end, open it with your own file-reading tool instead: read_doc returns",
+  "the entire document in a single response, and your client may truncate a large one.",
+  "",
   "Source code stays the authority on what the system does today: documentation can go",
   "stale, code cannot. What code cannot hold is intent — why a choice was made, which",
   "alternatives were rejected, what a rule is meant to guarantee. For that the docs are",
@@ -177,9 +181,11 @@ export function createMcpServer(container: Container): McpServer {
     {
       title: "Read a document",
       description:
-        "Returns one section of a document (or the whole document when no section is given), " +
-        "along with its frontmatter. Prefer passing section: a whole document costs several " +
-        "times more than the section you actually need. When a user names a section in a .md " +
+        "Reads one section of a document, along with its frontmatter. Built for sections, not " +
+        "whole files: pass section whenever you can. Omitting it returns the entire document in a " +
+        "single response, which for a large document can exceed your client's tool-output limit " +
+        "and arrive truncated. If the user asks you to read a whole file end to end, open it with " +
+        "your own file-reading tool instead of this one. When a user names a section in a .md " +
         "document, pass that named section here after locating the indexed path with docs_overview " +
         "if necessary. If the path does not exist, it responds " +
         "with the 3 closest matching paths instead of failing.",
