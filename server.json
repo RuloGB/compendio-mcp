@@ -6,12 +6,12 @@
     "url": "https://github.com/RuloGB/compendio-mcp",
     "source": "github"
   },
-  "version": "1.4.4",
+  "version": "1.5.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "compendio-mcp",
-      "version": "1.4.4",
+      "version": "1.5.0",
       "transport": {
         "type": "stdio"
       },
