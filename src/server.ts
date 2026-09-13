@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { formatOverview, toSyncInfo } from "./application/get-overview.js";
-import { formatFrontmatter, type ReadResult } from "./application/read-document.js";
+import {
+  formatFrontmatter,
+  formatOutlineRow,
+  OUTLINE_THRESHOLD_TOKENS,
+  type OutlineOmission,
+  type OutlineSection,
+  type ReadResult,
+} from "./application/read-document.js";
 import type { SearchQuery } from "./application/search-documents.js";
 import type { Container } from "./composition.js";
 
@@ -69,9 +76,10 @@ const SERVER_INSTRUCTIONS = [
   "example, P9), pass that section to read_doc so you read the requested part rather than the",
   "whole document. If the exact indexed path is already known, call read_doc directly.",
   "",
-  "read_doc is built for sections, not whole files. When the user asks you to read a",
-  "whole file end to end, open it with your own file-reading tool instead: read_doc returns",
-  "the entire document in a single response, and your client may truncate a large one.",
+  "read_doc is built for sections, not whole files. It returns the entire document only",
+  "when it is small or cannot usefully be split into sections; a large document with",
+  "sections gets its outline instead, not its full text. To read or summarize a whole",
+  "document, start from that outline and request the sections you need.",
   "",
   "Source code stays the authority on what the system does today: documentation can go",
   "stale, code cannot. What code cannot hold is intent — why a choice was made, which",
@@ -182,22 +190,23 @@ export function createMcpServer(container: Container): McpServer {
       title: "Read a document",
       description:
         "Reads one section of a document, along with its frontmatter. Built for sections, not " +
-        "whole files: pass section whenever you can. Omitting it returns the entire document in a " +
-        "single response, which for a large document can exceed your client's tool-output limit " +
-        "and arrive truncated. If the user asks you to read a whole file end to end, open it with " +
-        "your own file-reading tool instead of this one. When a user names a section in a .md " +
-        "document, pass that named section here after locating the indexed path with docs_overview " +
-        "if necessary. If the path does not exist, it responds " +
-        "with the 3 closest matching paths instead of failing.",
+        "whole files: pass section whenever you can. Omitting it returns the entire document " +
+        "when it is small or cannot usefully be split into sections; a large document with " +
+        "sections returns its outline instead (H2 and H3 headings, each with an estimated token " +
+        "size), so call again with one of those headings as section. To read or summarize a " +
+        "whole document, start from its outline and request the sections you need. When a user names a section in a .md document, pass that named section here after " +
+        "locating the indexed path with docs_overview if necessary. If the path does not exist, " +
+        "it responds with the 3 closest matching paths instead of failing.",
       inputSchema: {
         path: z.string().min(1).describe("Document path, relative to the docs directory"),
         section: z
           .string()
           .optional()
           .describe(
-            "Heading (or part of it) of the section to read, e.g. 'Business rules'. " +
-              "Use the section field of a search_docs result. Sections name a region of a " +
-              "document, not a single fragment: a large section returns all of its parts joined.",
+            "Heading (or part of it) of the section to read, e.g. 'Business rules', " +
+              "or a heading from read_doc's outline. Use the section field of a search_docs " +
+              "result. Sections name a region of a document, not a single fragment: a large " +
+              "section returns all of its parts joined.",
           ),
       },
     },
@@ -228,6 +237,33 @@ export function formatReadResult(result: ReadResult): string {
       return `${formatFrontmatter(result.meta)}\n\n${result.content}`;
     case "section":
       return `${formatFrontmatter(result.meta)}\n\n${result.content}`;
+    case "outline": {
+      const header =
+        `Document "${result.meta.path}" is too large to return whole ` +
+        `(~${String(result.tokens)} tokens; limit ${String(OUTLINE_THRESHOLD_TOKENS)}).`;
+      const instructions =
+        "Call read_doc again with one of these headings, verbatim, as section. " +
+        "(~N) is the estimated size in tokens of that response.";
+      const flagsUsed = collectFlagsUsed(result.sections, result.repeated);
+      const legendClauses = FLAG_LEGEND.filter(([flag]) => flagsUsed.has(flag)).map(([, text]) => text);
+      const legendLine = legendClauses.length > 0 ? `Flags: ${legendClauses.join("; ")}.` : null;
+      const noticeLine = formatOmissionNotice(result.omitted);
+      const rows = result.sections.flatMap((s) => renderOutlineRow(s, 0));
+      const repeatedBlock =
+        result.repeated.length > 0
+          ? ["Repeated under several headings (listed once):", ...result.repeated.flatMap((r) => renderOutlineRow(r, 0))]
+          : [];
+      return [
+        formatFrontmatter(result.meta),
+        "",
+        header,
+        instructions,
+        ...(legendLine !== null ? [legendLine] : []),
+        ...(noticeLine !== null ? [noticeLine] : []),
+        ...rows,
+        ...repeatedBlock,
+      ].join("\n");
+    }
     case "path-not-found":
       return [
         `No indexed document exists at path "${result.path}".`,
@@ -252,6 +288,60 @@ export function formatReadResult(result: ReadResult): string {
     case "no-sections":
       return formatNoSections(result.meta.path);
   }
+}
+
+/** R2's three short, fixed, locale-independent flags, each explained once in
+ * a `Flags:` legend line -- and only when some LISTED row actually uses it
+ * (design.md R2, spec.md "flag clauses render in the fixed order"). Order
+ * here is the fixed render order: `xN`, `too large`, `+other`. */
+const FLAG_LEGEND: readonly [string, string][] = [
+  ["xN", `"xN" = the heading occurs N times and the response contains all of them`],
+  [
+    "too large",
+    `"too large" = still over ${String(OUTLINE_THRESHOLD_TOKENS)} tokens, request a narrower heading or use your own file-reading tool`,
+  ],
+  ["+other", `"+other" = the response also contains text from other headings`],
+];
+
+function collectFlagsUsed(sections: OutlineSection[], repeated: OutlineSection[]): Set<string> {
+  const used = new Set<string>();
+  function visit(section: OutlineSection): void {
+    if (section.occurrences > 1) used.add("xN");
+    if (section.oversized) used.add("too large");
+    if (section.includesOtherContent) used.add("+other");
+    section.children.forEach(visit);
+  }
+  sections.forEach(visit);
+  repeated.forEach(visit);
+  return used;
+}
+
+/** R4's exact notice wording for each ladder outcome, using `String(n)` for
+ * every rendered number (design.md's literal contract). */
+function formatOmissionNotice(omitted: OutlineOmission): string | null {
+  switch (omitted.kind) {
+    case "none":
+      return null;
+    case "subheadings":
+      return (
+        `${String(omitted.hidden)} subheadings and repeated headings are not listed (outline limit). ` +
+        "Request a listed heading, or find a subsection with search_docs and pass its section value."
+      );
+    case "truncated":
+      return (
+        `Only the first ${String(omitted.shown)} of ${String(omitted.total)} top-level headings are listed, ` +
+        "without subheadings (outline limit). For the others, find the section with search_docs and pass its " +
+        "section value, or use your own file-reading tool."
+      );
+  }
+}
+
+/** Renders one outline row and its children via the shared `formatOutlineRow`
+ * (design.md D5: the budget ladder and the actual rendering share one
+ * function, so a row's cost can never diverge from its rendered length). */
+function renderOutlineRow(section: OutlineSection, depth: 0 | 1): string[] {
+  const line = formatOutlineRow(section, depth);
+  return [line, ...section.children.flatMap((c) => renderOutlineRow(c, 1))];
 }
 
 function formatNoSections(path: string): string {

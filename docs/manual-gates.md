@@ -268,3 +268,37 @@ verified:
 After each RED verification the reverted or patched file is restored and `npm run build` re-run;
 3.1/3.2's numbers reproduced identically both times (55.7% retention, W3 = 0), confirming nothing
 was lost in the revert/restore round-trip.
+
+## Gate: outline stress probe (`read-doc-large-outline`, revision 1)
+
+Manual, size- and memory-focused gate for `read_doc`'s large-document outline (R1-R6). Never asserted
+in vitest beyond the deterministic 2,000/5,000-heading unit tests and the changelog/5000 no-OOM guard
+(`test/application/read-document.test.ts`) — wall-clock timing stays a manual gate, per R6's own
+"timing assertions in vitest are flaky" rejection.
+
+```bash
+npm run build
+node scripts/outline-stress-probe.mjs
+```
+
+Exercises 3 shapes (`apiRef`, `flat`, `changelog`) at 5 sizes (105/500/1000/2000/5000 headings) against
+a synthetic corpus under `os.tmpdir()`, and exits non-zero if any shape/size:
+
+- Renders an outline whose estimated size exceeds **2,300 tokens** (the row-budget-derived ceiling,
+  design.md Acceptance budgets).
+- Renders an outline that is not smaller than the document it describes (revision 0's changelog
+  shapes did exactly this).
+- Serves a document above the ~6,000-token outline threshold whole (every probe shape has 2+
+  addressable headings, so that means the outline gate regressed and the response is unbounded).
+- Throws or fails to complete at all (the exact way revision 0 OOM'd on `changelog/5000`).
+
+Manual-only budgets (not enforced by the script's exit code, read from its printed table): median
+`execMs` (of 3 runs) stays **≤ 300 ms** at 5,000 headings, for every shape. Expected `Level` per
+shape/size (design.md Acceptance table, "Level" row): `apiRef/105` and `changelog/500` are `full`;
+`flat/5000` is `truncated`; `apiRef/500` is `subheadings`.
+
+Measured (this repository, after R1-R6 landed): every shape/size stayed within the 2,300-token budget
+and completed without throwing, including `changelog/5000` (previously OOM under revision 0);
+`flat/105` and `changelog/105` stay under the outline threshold entirely (`document`, not `outline`) at
+this document length; median exec time at 5,000 headings stayed under 110 ms for every shape, well
+under the 300 ms manual budget.

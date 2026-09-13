@@ -167,6 +167,91 @@ Non-obvious decisions, verified against code, with their full rationale and meas
   is a deliberately accepted, documented limitation (design.md Decision 4's orchestrator note,
   `read-doc-fence-aware-sections`), not a defect — see `mcp-contract/spec.md`'s fourth non-guarantee.
 
+## read_doc returns an outline for large documents
+
+Revision 1 (`read-doc-large-outline`, superseding an initial shipped-then-falsified revision 0): a
+stress probe (`scripts/outline-stress-probe.mjs`) measured revision 0's rendered outline at 65-117% of
+the document it was meant to replace, and OOM'd at 5,000 headings — root causes: unbounded prose
+annotations, a same-bucket-only collapse leaving 500+ identical H3 rows each resolving to the whole
+document, and per-row retained joined text making both memory and the overlap check quadratic in
+document size. R1-R6 below replace collapsing, overlap detection, and rendering; D1-D7 (row source,
+size, matcher, the >=2-addressable gate's strict-subset definition, placement, `meta`/intro handling)
+are unchanged.
+
+- **Above `OUTLINE_THRESHOLD_TOKENS` (6000), `read_doc({ path })` without `section` returns an
+  outline instead of the document body, but only when 2 or more distinct-title candidate rows are
+  "addressable"** (`ReadDocument.execute`, `buildOutline`, `src/application/read-document.ts`). The
+  threshold check runs over exactly the `content` string the `document` variant would have returned,
+  computed *arithmetically* from chunk lengths (no string built) so the decision itself stays O(doc)
+  even before an outline is chosen. A row's size (D2) is never the heading's own text span: it is
+  computed from precomputed chunk lengths for exactly the chunks `sectionMatcher`'s index-returning
+  form (`matchIndices`) resolves for that title — the same predicate the `section` branch uses, so a
+  row's size can never diverge from what requesting it actually returns.
+- **R1 — one row per normalized title, classified in two passes over a position-ordered occurrence
+  table.** Every H2/H3 heading LINE, document-wide, gets a global ordinal `k`. Pass 1 classifies each
+  distinct normalized title once: **top-level** if any occurrence is an H2 or an H3 before any H2;
+  otherwise **that parent's child** if every occurrence sits under one H2 parent title; otherwise
+  (an H3 under 2+ *different* H2 parents, no top-level occurrence) a separate **`repeated`** entry,
+  listed once, apart from any parent's `children`. A title qualifying for both top-level and
+  `repeated` is always top-level. A top-level row is positioned at its first *top-level* occurrence
+  — which can be later in the document than its true first occurrence, when an earlier child
+  occurrence is later promoted by a top-level one; that earlier occurrence still pools into the row's
+  `occurrences` count. Pass 2 assembles each parent's `children` only from titles pass 1 classified as
+  that parent's child. Every row carries `occurrences` (its document-wide H2/H3 line count); the `xN`
+  flag renders iff that count exceeds 1. This closes revision 0's changelog defect: 500 `### Added`
+  lines become one `repeated` row with `x500`, not 500 rows each resolving to the whole document.
+- **R4's D4 gate — lazy, and capped at `MAX_GATE_CANDIDATES` (2000).** The >=2-addressable count walks
+  the R1-classified candidates in pinned position order, stopping at the first 2 addressable rows
+  found, and never evaluates more than 2,000 candidates before falling back to `document` — even if a
+  later, unevaluated candidate would have qualified. This bounds gate cost to O(2000 x chunks)
+  regardless of document size, closing a theoretical unbounded-scan case a document with many short,
+  widely-matching titles could otherwise force. `addressable` itself is never serialized.
+- **R3 — "own sections" replace revision 0's heading-line-containment overlap check.** Each heading
+  occurrence `k` owns `[k, end(k))`, where `end(k)` is the next occurrence at the same level or
+  shallower (open-ended for the last H2; always `k+1` for an H3, since any next occurrence closes it).
+  A chunk's owner(s) are its own first/last heading-line occurrence, or — for a heading-less chunk —
+  the nearest *preceding* occurrence inherited from an earlier chunk; a chunk that precedes every
+  occurrence in the walk (the intro chunk, or any chunk pulled in only by title collision) has no
+  owner at all, and an undefined owner satisfies no row's interval, ever. A row backed by more than
+  one pooled occurrence (a collapsed top-level title, or a `repeated` entry) is flagged
+  `includesOtherContent` (renamed from `overlapsOtherSection`) iff some matched chunk falls outside
+  the **union** of all its pooled occurrences' own spans — never their intersection. This single rule,
+  with no byte-level line comparison, covers: `"Scope"`/`"Out of Scope"` (only the row whose response
+  includes the other is flagged); two sections fused into one physical chunk at index time (both
+  flagged); an oversized childless H2 split across 2+ physical chunks by `splitToBound` (NOT flagged —
+  every physical piece belongs to the same single occurrence's span); an ordinary H2 with only its own
+  H3 children's content, or repeated child titles within its own span (never flagged); and a
+  `repeated` row pooling one occurrence per changelog version (NOT flagged when every parent H2 is
+  large enough that the chunker gives each child its own dedicated chunk with no preceding parent
+  heading line; flagged when the ordinary, non-terse `chunkOutline` non-descend rule fuses a version's
+  own `## x.y.z` line ahead of its `### Added` child in the same chunk).
+- **R2 — a short, fixed flag per condition, replacing revision 0's prose.** `xN` (occurrence count),
+  `too large` (still over 6000 tokens; D8's instruction unchanged, just shorter), `+other` (R3).
+  Flags render, when present, in that fixed order; a `Flags:` legend line explains a flag only once,
+  and only when some *listed* row actually uses it.
+- **R4's row budget — the rendered outline is bounded to `OUTLINE_ROWS_BUDGET_CHARS` (8000)
+  characters, by construction, at any heading count.** Each row's ladder-decision cost is
+  `formatOutlineRow` called with `tokens = docTokens` and both flags forced on — an exact upper bound,
+  since a `section` response is never longer than the whole document. (1) If every candidate
+  (top-level, children, `repeated`) fits, everything renders. (2) Otherwise, if the top-level rows
+  alone fit, all render; children of *real* too-large top-level rows then render as a single
+  document-order prefix (across all such parents, not per-parent), stopping at the first child that
+  would not fit — the `repeated` group and any remaining children are omitted, and the response
+  carries a `subheadings` notice whose `hidden` count sums both. (3) Otherwise, only the longest
+  document-order prefix of top-level rows that fits renders, with no children and no `repeated` group,
+  and the response carries a `truncated` notice. The ladder step decision uses the *pessimistic* cost
+  (no matcher calls); once a step is chosen, real tokens/flags are computed only for the rows that
+  step will actually render (R5) — at most ~258 rows are ever sized, since a pessimistic row costs at
+  least 31 characters. Truncation never revisits the gate: a document that qualified for `outline`
+  stays `outline` even if the budget reduces its visible rows below 2.
+- **Non-guarantees, documented and accepted**: a setext-style heading is never scanned (unchanged); a
+  row whose own single rendered line exceeds the budget is never shown; after budget-driven omission,
+  fewer than 2 addressable rows may be visible even though the gate found 2+; the gate's own decision
+  is bounded to its first 2,000 candidates, not necessarily every one. Removed (falsified): "the
+  outline's own size is unbounded in principle but measured small in practice" — replaced by the
+  8,000-character row budget and the ~2,300-estimated-token ceiling it yields (Acceptance budgets,
+  `docs/manual-gates.md`'s "outline stress probe" gate).
+
 ## Excerpt flattening is fence-aware
 
 - **`search_docs` excerpt flattening (`stripHeadingLines`, `src/domain/flatten-map.ts`) is fence-aware,
