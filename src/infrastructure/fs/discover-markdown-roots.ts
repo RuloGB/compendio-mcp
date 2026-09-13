@@ -53,13 +53,23 @@ export function discoverMarkdownRoots(projectRoot: string): string[] {
   return discoverMarkdownRootDetails(projectRoot).map((root) => root.declared);
 }
 
-export function validateDiscoveredRootAlias(projectRoot: string, alias: string): DiscoveredMarkdownRoot {
+/**
+ * `undefined` means the alias was deleted (`lstat` failed with code
+ * `ENOENT`): the caller must skip it rather than re-adding it to the
+ * selected roots. Every other failure still throws; nothing else is treated
+ * as deletion.
+ */
+export function validateDiscoveredRootAlias(
+  projectRoot: string,
+  alias: string,
+): DiscoveredMarkdownRoot | undefined {
   const projectRealPath = canonicalRealPath(projectRoot);
   const candidate = join(projectRoot, alias);
   let stat;
   try {
     stat = lstatSync(candidate);
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw new Error(`previously discovered documentation root "${alias}" could not be inspected: ${describeError(error)}`);
   }
   if (stat.isSymbolicLink()) {

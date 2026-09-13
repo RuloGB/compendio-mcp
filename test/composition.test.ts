@@ -344,16 +344,20 @@ describe("createContainer — auto-discovered markdown roots", () => {
     }
   });
 
-  it("preserves indexed documents by aborting sync when a discovered root disappears with ENOENT", async () => {
+  it("purges a discovered root's documents on sync when the root is deleted from disk (ENOENT)", async () => {
     await mkdir(join(projectDir, "openspec"), { recursive: true });
-    await writeFile(join(projectDir, "openspec", "keep.md"), "# Keep\n\nOriginal content.\n");
+    await mkdir(join(projectDir, "docs"), { recursive: true });
+    await writeFile(join(projectDir, "openspec", "gone.md"), "# Gone\n\nWill be deleted.\n");
+    await writeFile(join(projectDir, "docs", "keep.md"), "# Keep\n\nOriginal content.\n");
     const container = createContainer({ root: projectDir, forceLexical: true });
     try {
       await container.indexDocuments.execute();
       await rm(join(projectDir, "openspec"), { recursive: true, force: true });
 
-      await expect(container.syncIndex.execute()).rejects.toThrow(/ENOENT|no such file/i);
-      expect(container.store.listDocuments().map((doc) => doc.path)).toEqual(["openspec/keep.md"]);
+      const report = await container.syncIndex.execute();
+
+      expect(report.deleted).toEqual(["openspec/gone.md"]);
+      expect(container.store.listDocuments().map((doc) => doc.path)).toEqual(["docs/keep.md"]);
     } finally {
       container.close();
     }
@@ -381,9 +385,11 @@ describe("createContainer — auto-discovered markdown roots", () => {
     }
   });
 
-  it("preserves indexed discovered roots that disappear before sync in a freshly reconstructed container", async () => {
+  it("purges every discovered root's documents in a freshly reconstructed container when all roots disappear", async () => {
     await mkdir(join(projectDir, "docs"), { recursive: true });
+    await mkdir(join(projectDir, "openspec"), { recursive: true });
     await writeFile(join(projectDir, "docs", "keep.md"), "# Keep\n\nOriginal content.\n");
+    await writeFile(join(projectDir, "openspec", "gone.md"), "# Gone\n\nWill be deleted.\n");
 
     const firstContainer = createContainer({ root: projectDir, forceLexical: true });
     try {
@@ -393,11 +399,14 @@ describe("createContainer — auto-discovered markdown roots", () => {
     }
 
     await rm(join(projectDir, "docs"), { recursive: true, force: true });
+    await rm(join(projectDir, "openspec"), { recursive: true, force: true });
 
     const reconstructed = createContainer({ root: projectDir, forceLexical: true });
     try {
-      await expect(reconstructed.syncIndex.execute()).rejects.toThrow(/docs.*ENOENT|ENOENT.*docs/s);
-      expect(reconstructed.store.listDocuments().map((doc) => doc.path)).toEqual(["docs/keep.md"]);
+      const report = await reconstructed.syncIndex.execute();
+
+      expect(report.deleted.sort()).toEqual(["docs/keep.md", "openspec/gone.md"]);
+      expect(reconstructed.store.listDocuments()).toEqual([]);
     } finally {
       reconstructed.close();
     }
@@ -448,7 +457,11 @@ describe("createContainer — auto-discovered markdown roots", () => {
     }
   });
 
-  it("fails closed on any unreadable discovered root before mutating healthy roots", async () => {
+  it("fails closed on a non-ENOENT unreadable discovered root before mutating healthy roots", async () => {
+    // Non-ENOENT trigger (a file replaces the folder), not `rm`: this must
+    // still fail closed even though a clean ENOENT on the same alias would
+    // now purge it instead. If the ENOENT check is ever widened to a
+    // catch-all, this test is the one that must start failing.
     await mkdir(join(projectDir, "docs"), { recursive: true });
     await mkdir(join(projectDir, "openspec"), { recursive: true });
     await writeFile(join(projectDir, "docs", "a.md"), "# A\n\nOriginal docs content.\n");
@@ -459,8 +472,9 @@ describe("createContainer — auto-discovered markdown roots", () => {
       await container.indexDocuments.execute();
       await writeFile(join(projectDir, "docs", "a.md"), "# A\n\nMutated docs content.\n");
       await rm(join(projectDir, "openspec"), { recursive: true, force: true });
+      await writeFile(join(projectDir, "openspec"), "not a directory", "utf8");
 
-      await expect(container.syncIndex.execute()).rejects.toThrow(/openspec.*ENOENT|ENOENT.*openspec/s);
+      await expect(container.syncIndex.execute()).rejects.toThrow(/openspec.*not a directory/s);
       expect(container.store.listDocuments().map((doc) => doc.path)).toEqual([
         "docs/a.md",
         "openspec/b.md",
@@ -470,6 +484,76 @@ describe("createContainer — auto-discovered markdown roots", () => {
       const chunks = container.store.getChunksByDocument(docs!.id);
       expect(chunks.map((chunk) => chunk.content).join("\n")).toContain("Original docs content.");
       expect(chunks.map((chunk) => chunk.content).join("\n")).not.toContain("Mutated docs content.");
+    } finally {
+      container.close();
+    }
+  });
+
+  it("rebuilds without a deleted root's documents on a full reindex", async () => {
+    await mkdir(join(projectDir, "docs"), { recursive: true });
+    await mkdir(join(projectDir, "openspec"), { recursive: true });
+    await writeFile(join(projectDir, "docs", "keep.md"), "# Keep\n\nOriginal content.\n");
+    await writeFile(join(projectDir, "openspec", "gone.md"), "# Gone\n\nWill be deleted.\n");
+
+    const container = createContainer({ root: projectDir, forceLexical: true });
+    try {
+      await container.indexDocuments.execute();
+      await rm(join(projectDir, "openspec"), { recursive: true, force: true });
+
+      const report = await container.indexDocuments.execute();
+
+      expect(report.indexed.map((d) => d.path)).toEqual(["docs/keep.md"]);
+      expect(container.store.listDocuments().map((doc) => doc.path)).toEqual(["docs/keep.md"]);
+    } finally {
+      container.close();
+    }
+  });
+
+  it("leaves an empty index when a full reindex runs after every discovered root is deleted", async () => {
+    await mkdir(join(projectDir, "docs"), { recursive: true });
+    await mkdir(join(projectDir, "openspec"), { recursive: true });
+    await writeFile(join(projectDir, "docs", "a.md"), "# A\n\nContent.\n");
+    await writeFile(join(projectDir, "openspec", "b.md"), "# B\n\nContent.\n");
+
+    const container = createContainer({ root: projectDir, forceLexical: true });
+    try {
+      await container.indexDocuments.execute();
+      await rm(join(projectDir, "docs"), { recursive: true, force: true });
+      await rm(join(projectDir, "openspec"), { recursive: true, force: true });
+
+      await container.indexDocuments.execute();
+
+      expect(container.store.listDocuments()).toEqual([]);
+      expect(container.getOverview.execute().totalDocuments).toBe(0);
+    } finally {
+      container.close();
+    }
+  });
+
+  it("purges a deleted discovered root on the next throttled sync pass through the scheduler", async () => {
+    await mkdir(join(projectDir, "docs"), { recursive: true });
+    await mkdir(join(projectDir, "openspec"), { recursive: true });
+    await writeFile(join(projectDir, "docs", "keep.md"), "# Keep\n\nOriginal content.\n");
+    await writeFile(join(projectDir, "openspec", "gone.md"), "# Gone\n\nWill be deleted.\n");
+
+    const container = createContainer({ root: projectDir, forceLexical: true });
+    try {
+      await container.indexDocuments.execute();
+      await rm(join(projectDir, "openspec"), { recursive: true, force: true });
+
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        // The first call to the scheduler always runs a pass (lastRunAt starts
+        // at -Infinity), so this exercises the same recovery path `serve` uses
+        // on every tool call.
+        await container.syncScheduler.maybeSync();
+      } finally {
+        errorSpy.mockRestore();
+      }
+
+      expect(container.store.listDocuments().map((doc) => doc.path)).toEqual(["docs/keep.md"]);
+      expect(container.syncScheduler.lastReport?.deleted).toEqual(["openspec/gone.md"]);
+      expect(errorSpy.mock.calls.some((call) => String(call[0]).includes("incremental sync failed"))).toBe(false);
     } finally {
       container.close();
     }
