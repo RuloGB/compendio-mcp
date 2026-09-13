@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it } from "vitest";
+import type { Container } from "../src/composition.js";
+import { createMcpServer } from "../src/server.js";
 
 /**
  * MCP registry publication guard.
@@ -77,5 +81,32 @@ describe("MCP registry metadata stays in sync", () => {
     // `environmentVariables` entry with `isSecret: true` that must be removed.
     expect(server.remotes).toBeUndefined();
     expect(server.packages[0].environmentVariables).toBeUndefined();
+  });
+});
+
+describe("LobeHub manifest stays in sync", () => {
+  // `lhm.plugin.json` is a static snapshot of what the server advertises, and
+  // nothing regenerates it: it sat at 1.3.2 through the 1.5.0 release, with tool
+  // descriptions and a `read_doc` schema that no longer matched the server.
+  const lhm = readJson("lhm.plugin.json");
+
+  it("names this package and pins its version", () => {
+    expect(lhm.name).toBe(pkg.name);
+    expect(lhm.version).toBe(pkg.version);
+  });
+
+  it("lists exactly the tools the server advertises", async () => {
+    // Listing tools never reaches a handler, so an empty container is enough.
+    const mcp = createMcpServer({} as Container);
+    const client = new Client({ name: "registry-metadata-test", version: "0.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    try {
+      await Promise.all([mcp.connect(serverTransport), client.connect(clientTransport)]);
+      const { tools } = await client.listTools();
+      expect(lhm.tools).toEqual(tools);
+    } finally {
+      await client.close();
+      await mcp.close();
+    }
   });
 });
