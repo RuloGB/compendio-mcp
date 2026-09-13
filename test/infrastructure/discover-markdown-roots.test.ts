@@ -3,7 +3,11 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { discoverMarkdownRootDetails, discoverMarkdownRoots } from "../../src/infrastructure/fs/discover-markdown-roots";
+import {
+  discoverMarkdownRootDetails,
+  discoverMarkdownRoots,
+  validateDiscoveredRootAlias,
+} from "../../src/infrastructure/fs/discover-markdown-roots";
 import { FileDocumentSource } from "../../src/infrastructure/fs/file-document-source";
 
 describe("discoverMarkdownRoots", () => {
@@ -141,6 +145,167 @@ describe("discoverMarkdownRoots", () => {
     });
     const result = await source.discover();
     expect(result.files.map((file) => file.path)).toEqual(["docs/a.md"]);
+  });
+});
+
+describe("validateDiscoveredRootAlias", () => {
+  let projectDir: string;
+
+  beforeEach(async () => {
+    projectDir = await mkdtemp(join(tmpdir(), "compendio-alias-validation-"));
+  });
+
+  afterEach(async () => {
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  it("validates a present alias directory and pins its real path", async () => {
+    await mkdir(join(projectDir, "docs"), { recursive: true });
+
+    const result = validateDiscoveredRootAlias(projectDir, "docs");
+
+    expect(result).toEqual({ declared: "docs", trustedRealPath: await realpath(join(projectDir, "docs")) });
+  });
+
+  it("throws when the alias is a file instead of a directory", async () => {
+    await writeFile(join(projectDir, "docs"), "not a directory", "utf8");
+
+    expect(() => validateDiscoveredRootAlias(projectDir, "docs")).toThrow(/is not a directory/);
+  });
+
+  it("throws when the alias is a symlink or junction", async () => {
+    const externalDir = await mkdtemp(join(tmpdir(), "compendio-alias-external-"));
+    try {
+      await symlink(externalDir, join(projectDir, "docs"), "junction");
+
+      expect(() => validateDiscoveredRootAlias(projectDir, "docs")).toThrow(/symlink or junction/);
+    } finally {
+      await rm(externalDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns undefined when the alias directory was deleted (ENOENT)", async () => {
+    // The alias is intentionally never created: lstat on a missing path fails ENOENT.
+    const result = validateDiscoveredRootAlias(projectDir, "docs");
+
+    expect(result).toBeUndefined();
+  });
+
+  it("validates an alias deleted then recreated as an empty directory before validation runs", async () => {
+    await mkdir(join(projectDir, "docs"), { recursive: true });
+    await rm(join(projectDir, "docs"), { recursive: true, force: true });
+    await mkdir(join(projectDir, "docs"), { recursive: true });
+
+    const result = validateDiscoveredRootAlias(projectDir, "docs");
+
+    expect(result).toEqual({ declared: "docs", trustedRealPath: await realpath(join(projectDir, "docs")) });
+  });
+
+  it("still throws (does not treat as deleted) when lstat fails with EACCES", async () => {
+    vi.resetModules();
+    vi.doMock("node:fs", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:fs")>();
+      return {
+        ...actual,
+        lstatSync: (path: unknown) => {
+          if (String(path).endsWith("docs")) {
+            const error = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+            error.code = "EACCES";
+            throw error;
+          }
+          return actual.lstatSync(path as string);
+        },
+      };
+    });
+    const { validateDiscoveredRootAlias: validateWithMock } = await import(
+      "../../src/infrastructure/fs/discover-markdown-roots"
+    );
+
+    expect(() => validateWithMock(projectDir, "docs")).toThrow(/could not be inspected/);
+
+    vi.doUnmock("node:fs");
+    vi.resetModules();
+  });
+
+  it("still throws (does not treat as deleted) when lstat fails with EPERM", async () => {
+    vi.resetModules();
+    vi.doMock("node:fs", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:fs")>();
+      return {
+        ...actual,
+        lstatSync: (path: unknown) => {
+          if (String(path).endsWith("docs")) {
+            const error = new Error("EPERM: operation not permitted") as NodeJS.ErrnoException;
+            error.code = "EPERM";
+            throw error;
+          }
+          return actual.lstatSync(path as string);
+        },
+      };
+    });
+    const { validateDiscoveredRootAlias: validateWithMock } = await import(
+      "../../src/infrastructure/fs/discover-markdown-roots"
+    );
+
+    expect(() => validateWithMock(projectDir, "docs")).toThrow(/could not be inspected/);
+
+    vi.doUnmock("node:fs");
+    vi.resetModules();
+  });
+
+  it("still throws (does not treat as deleted) when lstat fails with no code but 'ENOENT' in the message text", async () => {
+    // Proves the check is `error.code`, not message string matching.
+    vi.resetModules();
+    vi.doMock("node:fs", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:fs")>();
+      return {
+        ...actual,
+        lstatSync: (path: unknown) => {
+          if (String(path).endsWith("docs")) {
+            throw new Error("ENOENT: something went wrong, but this error carries no .code");
+          }
+          return actual.lstatSync(path as string);
+        },
+      };
+    });
+    const { validateDiscoveredRootAlias: validateWithMock } = await import(
+      "../../src/infrastructure/fs/discover-markdown-roots"
+    );
+
+    expect(() => validateWithMock(projectDir, "docs")).toThrow(/could not be inspected/);
+
+    vi.doUnmock("node:fs");
+    vi.resetModules();
+  });
+
+  it("throws when lstat succeeds but realpathSync.native fails with ENOENT", async () => {
+    await mkdir(join(projectDir, "docs"), { recursive: true });
+
+    vi.resetModules();
+    vi.doMock("node:fs", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:fs")>();
+      return {
+        ...actual,
+        realpathSync: Object.assign((path: unknown) => actual.realpathSync(path as string), {
+          native: (path: unknown) => {
+            if (String(path).endsWith("docs")) {
+              const error = new Error("ENOENT: no such file or directory") as NodeJS.ErrnoException;
+              error.code = "ENOENT";
+              throw error;
+            }
+            return actual.realpathSync.native(path as string);
+          },
+        }),
+      };
+    });
+    const { validateDiscoveredRootAlias: validateWithMock } = await import(
+      "../../src/infrastructure/fs/discover-markdown-roots"
+    );
+
+    expect(() => validateWithMock(projectDir, "docs")).toThrow(/could not be resolved/);
+
+    vi.doUnmock("node:fs");
+    vi.resetModules();
   });
 });
 

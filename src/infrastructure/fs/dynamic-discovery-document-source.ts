@@ -22,7 +22,11 @@ export class DynamicDiscoveryDocumentSource implements DocumentSource {
 
     for (const alias of this.indexedRootAliases()) {
       if (!selectedByAlias.has(alias)) {
-        selectedByAlias.set(alias, validateDiscoveredRootAlias(this.projectRoot, alias));
+        // `undefined` means the alias was deleted from disk (ENOENT): skip it
+        // instead of re-adding it, so the path-presence diff downstream
+        // purges its previously indexed documents like any other removal.
+        const validated = validateDiscoveredRootAlias(this.projectRoot, alias);
+        if (validated !== undefined) selectedByAlias.set(alias, validated);
       }
     }
 
