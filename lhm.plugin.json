@@ -18,7 +18,7 @@
     {
       "name": "docs_overview",
       "title": "Documentation map",
-      "description": "Map of the documentation corpus: counts by type and module, plus one line per document ([type] path — summary (status)). Use it to enumerate what exists, or to pick filter values for search_docs. For a specific question, call search_docs first — it answers in one call, while orienting here lists the whole corpus before you can read anything.",
+      "description": "Map of the documentation corpus: counts by type and module, plus one line per document ([type] path — summary (status)). Use it to enumerate what exists, or to pick filter values for search_docs. When a user names a .md file but its exact indexed path is uncertain, use this to find that path before calling read_doc. For a specific question, call search_docs first — it answers in one call, while orienting here lists the whole corpus before you can read anything.",
       "inputSchema": {
         "type": "object",
         "properties": {},
@@ -31,7 +31,7 @@
     {
       "name": "search_docs",
       "title": "Documentation search",
-      "description": "Hybrid search (lexical BM25 + semantic) in natural language over the project's documentation, with metadata filters. Entry point for any question about what the project does or why — behaviour, business rules, the exact text of a user-facing message, limits, endpoints, deployment steps, or the reasoning behind a decision. Cheapest first probe for such a question; source code remains the authority on current behaviour, while these docs are the only record of intent. The top result carries a full-length excerpt, centred on the part of the document that matched, which usually answers outright; the rest carry short ones from the start of their section, enough to tell whether the top result is the right one. Each result has path, title, section, excerpt and score; section names the document region the fragment came from — a document with no headings reports one region for the whole file. A '…' at either end of an excerpt marks content omitted there — that is the signal to call read_doc with its path and section. If the project declares convention.excludedStatuses, documents in those statuses are left out unless include_excluded is set; if it declares none, no document is excluded by status.",
+      "description": "Hybrid search (lexical BM25 + semantic) in natural language over the project's documentation, with metadata filters. Entry point for any question about what the project does or why — behaviour, business rules, the exact text of a user-facing message, limits, endpoints, deployment steps, or the reasoning behind a decision. For a content or project question, this is the cheapest first probe; a filename alone does not reliably identify an indexed path, so resolve named .md files with docs_overview before calling read_doc. Source code remains the authority on current behaviour, while these docs are the only record of intent. The top result carries a full-length excerpt, centred on the part of the document that matched, which usually answers outright; the rest carry short ones, centred on their own match, enough to tell whether the top result is the right one. Each result has path, title, section, excerpt and score; section names the document region the fragment came from — a document with no headings reports one region for the whole file. A '…' at either end of an excerpt marks content omitted there — that is the signal to call read_doc with its path and section. If the project declares convention.excludedStatuses, documents in those statuses are left out unless include_excluded is set; if it declares none, no document is excluded by status.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -79,7 +79,7 @@
     {
       "name": "read_doc",
       "title": "Read a document",
-      "description": "Reads one section of a document, along with its frontmatter. Built for sections, not whole files: pass section whenever you can. Omitting it returns the entire document in a single response, which for a large document can exceed your client's tool-output limit and arrive truncated. If the user asks you to read a whole file end to end, open it with your own file-reading tool instead of this one. When a user names a section in a .md document, pass that named section here after locating the indexed path with docs_overview if necessary. If the path does not exist, it responds with the 3 closest matching paths instead of failing.",
+      "description": "Reads one section of a document, along with its frontmatter. Built for sections, not whole files: pass section whenever you can. Omitting it returns the entire document when it is small or cannot usefully be split into sections; a large document with sections returns its outline instead (H2 and H3 headings, each with an estimated token size), so call again with one of those headings as section. To read or summarize a whole document, start from its outline and request the sections you need. When a user names a section in a .md document, pass that named section here after locating the indexed path with docs_overview if necessary. If the path does not exist, it responds with the 3 closest matching paths instead of failing.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -90,7 +90,7 @@
           },
           "section": {
             "type": "string",
-            "description": "Heading (or part of it) of the section to read, e.g. 'Business rules'. Use the section field of a search_docs result. Sections name a region of a document, not a single fragment: a large section returns all of its parts joined."
+            "description": "Heading (or part of it) of the section to read, e.g. 'Business rules', or a heading from read_doc's outline. Use the section field of a search_docs result. Sections name a region of a document, not a single fragment: a large section returns all of its parts joined."
           }
         },
         "required": [
@@ -104,5 +104,5 @@
       }
     }
   ],
-  "version": "1.3.2"
+  "version": "1.6.0"
 }
