@@ -5,6 +5,6 @@ export type { IndexReport } from "./application/index-documents.js";
 export type { IndexMdReport } from "./application/generate-index-md.js";
 export type { SearchQuery, SearchDefaults } from "./application/search-documents.js";
 export type { EvalReport } from "./application/evaluate-search.js";
-export type { ReadRequest, ReadResult } from "./application/read-document.js";
+export type { OutlineOmission, OutlineSection, ReadRequest, ReadResult } from "./application/read-document.js";
 export type { Overview } from "./application/get-overview.js";
 export * from "./domain/model.js";

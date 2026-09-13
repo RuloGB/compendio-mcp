@@ -64,7 +64,7 @@ Registered in `server.ts`. The rungs are **not a mandatory sequence**; the tool 
 
 1. `docs_overview()` — corpus map (counts by type/module, ~10 tokens/doc). `byType`/`byModule` buckets and per-document `[type]`/`(status)` segments are omitted entirely when a document/corpus has no value for that field — never a synthetic "no type" bucket or `[undefined]`.
 2. `search_docs({ query, type?, module?, tags?, k?, include_excluded? })` — the entry point; hybrid top-k with a graduated excerpt budget (rank 1: 1400 chars, others: 120), each centred on its matched span; a `…` edge means "call `read_doc`". `convention.excludedStatuses` docs are hidden unless `include_excluded`.
-3. `read_doc({ path, section? })` — one section or the full document; `type:`/`module:`/`status:` header lines render only when present. Unknown `path` returns the 3 closest matches instead of erroring.
+3. `read_doc({ path, section? })` — one section or the full document; `type:`/`module:`/`status:` header lines render only when present. Unknown `path` returns the 3 closest matches instead of erroring. Above ~6000 tokens with 2+ addressable H2/H3 headings, it returns an outline instead of the body, bounded to ≤ 2,300 estimated tokens excluding frontmatter and the document path — [more](docs/design-decisions.md#read_doc-returns-an-outline-for-large-documents).
 
 **The MCP surface stays exactly these 3 tools.** `compendio sync` is a human-only CLI escape hatch, never a fourth tool (every tool call already triggers `serve`'s throttled sync).
 

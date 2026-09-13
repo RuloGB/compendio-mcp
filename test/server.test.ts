@@ -62,12 +62,12 @@ describe("server instructions", () => {
     expect(instructions).toMatch(/read_doc with that exact path/i);
     // The workflow must preserve progressive disclosure for a named section.
     expect(instructions).toMatch(/pass that section to read_doc/i);
-    // A request to read a whole file end to end is not a question Compendio
-    // answers: read_doc returns the entire document in one tool result, which
-    // the client truncates when the file is large. Route it away explicitly.
+    // A whole-file request stays inside Compendio: a large document answers
+    // with its outline, and the agent reads the sections it needs from it.
+    // Sending it to the agent's own file-reading tool is no longer the route.
     expect(instructions).toMatch(/read_doc is built for sections/i);
-    expect(instructions).toMatch(/whole file end to end/i);
-    expect(instructions).toMatch(/own file-reading tool/i);
+    expect(instructions).toMatch(/request the sections you need/i);
+    expect(instructions).not.toMatch(/own file-reading tool/i);
   });
 });
 
@@ -85,14 +85,40 @@ describe("named Markdown document routing", () => {
     expect(internals._registeredTools.search_docs?.description).not.toMatch(/filename and requested section\/topic/i);
     expect(internals._registeredTools.read_doc?.description).toBe(
       "Reads one section of a document, along with its frontmatter. Built for sections, not " +
-        "whole files: pass section whenever you can. Omitting it returns the entire document in a " +
-        "single response, which for a large document can exceed your client's tool-output limit " +
-        "and arrive truncated. If the user asks you to read a whole file end to end, open it with " +
-        "your own file-reading tool instead of this one. When a user names a section in a .md " +
-        "document, pass that named section here after locating the indexed path with docs_overview " +
-        "if necessary. If the path does not exist, it responds with the 3 closest matching paths " +
-        "instead of failing.",
+        "whole files: pass section whenever you can. Omitting it returns the entire document " +
+        "when it is small or cannot usefully be split into sections; a large document with " +
+        "sections returns its outline instead (H2 and H3 headings, each with an estimated token " +
+        "size), so call again with one of those headings as section. To read or summarize a " +
+        "whole document, start from its outline and request the sections you need. When a user names a section in a .md document, pass that named section here after " +
+        "locating the indexed path with docs_overview if necessary. If the path does not exist, " +
+        "it responds with the 3 closest matching paths instead of failing.",
     );
+    // read_doc's `section` param description must also route an agent that
+    // just received an outline back into it (mcp-contract delta).
+    const tool = getRegisteredTool(server, "read_doc") as unknown as {
+      inputSchema?: { shape?: Record<string, { description?: string }> };
+    };
+    expect(tool.inputSchema?.shape?.section?.description).toMatch(/heading from read_doc's outline/i);
+  });
+});
+
+describe("read_doc — outline routing no longer promises an unconditional full document (mcp-contract delta)", () => {
+  it("SERVER_INSTRUCTIONS no longer claims read_doc returns the entire document in a single response, and instead hedges on small/unsplittable documents", () => {
+    const server = createMcpServer(fakeContainer());
+    const internals = server.server as unknown as { _instructions?: string };
+    const instructions = internals._instructions ?? "";
+    expect(instructions).not.toMatch(/entire document in a single response/);
+    expect(instructions).toMatch(/small or cannot usefully be split/i);
+    // The two untouched entries around the edited one still match unmodified.
+    expect(instructions).toMatch(/built for sections/i);
+    expect(instructions).toMatch(/request the sections you need/i);
+    expect(instructions).not.toMatch(/own file-reading tool/i);
+  });
+
+  it("exposes exactly the 3 MCP tools, no fourth tool introduced for the outline feature", () => {
+    const server = createMcpServer(fakeContainer());
+    const internals = server as unknown as { _registeredTools: Record<string, unknown> };
+    expect(Object.keys(internals._registeredTools).sort()).toEqual(["docs_overview", "read_doc", "search_docs"]);
   });
 });
 

@@ -322,7 +322,7 @@ Designed as *progressive disclosure*: orient cheaply → search cheaply → read
 
 **2. `search_docs({ query, type?, module?, tags?, k?, include_excluded? })`** — the top *k* fragments (5 by default, at most 2 per document), each with path, section, excerpt and score. `type` is an open, project-defined string, not a fixed list.
 
-**3. `read_doc({ path, section? })`** — one section, or the whole document. A path that doesn't exist returns the 3 most similar paths instead of an error, so the agent self-corrects instead of retrying blind.
+**3. `read_doc({ path, section? })`** — one section, or the whole document. A large document with sections (above ~6,000 estimated tokens) returns a compact outline of its H2/H3 headings instead of the body, so the agent reads only the sections it needs. A path that doesn't exist returns the 3 most similar paths instead of an error, so the agent self-corrects instead of retrying blind.
 
 ## CLI
 
