@@ -24,7 +24,9 @@ no such cap, so the two deliberately differ rather than being kept in sync.
 
 `test/registry-metadata.test.ts` pins every field that can drift — the name and its exact case,
 `package.json`'s version and `mcpName`, `server.json`'s root and `packages[0]` versions, the
-description length, the README marker, and `packageArguments` carrying `serve` — so a PR fails
+description length, the README marker, `packageArguments` carrying `serve`, and the LobeHub
+manifest `lhm.plugin.json` (its version, plus `tools` deep-equal to the server's live
+`tools/list`) — so a PR fails
 instead of a release. Validate the whole file with
 `npx ajv-cli@5 validate -s server.schema.json -d server.json --strict=false`: the schema is
 **draft-07**, not the draft 2020-12 its `$schema` URL suggests, and it uses the non-standard
