@@ -14,6 +14,15 @@ import { resolveProgressMode } from "./domain/progress.js";
 import { createContainer, type Container, type ContainerOptions } from "./composition.js";
 import { createProgressSink } from "./infrastructure/progress-sink.js";
 import { createMcpServer, SERVER_VERSION } from "./server.js";
+import { InstallMcp } from "./application/install-mcp.js";
+import { createFsAdapter } from "./infrastructure/fs/mcp-config-fs.js";
+import {
+  getAgentConfigPath,
+  getAgentServerKey,
+  isValidAgent,
+  type McpAgent,
+  type McpServerEntry,
+} from "./domain/mcp-agents.js";
 
 interface GlobalOptions {
   root: string;
@@ -258,6 +267,63 @@ program
     // stdout belongs to the MCP protocol: all logging goes to stderr.
     console.error(`compendio-mcp v${SERVER_VERSION}: MCP server started (stdio)`);
     await server.connect(new StdioServerTransport());
+  });
+
+const INSTALL_MCP_HELP = `
+Supported agents:
+  claude          Claude Code CLI (~/.claude/settings.json)
+  claude-desktop  Claude Desktop app (platform-specific)
+  cursor          Cursor editor (~/.cursor/mcp.json)
+  vscode          VS Code with Copilot (platform-specific settings.json)
+  opencode        OpenCode CLI (~/.config/opencode/opencode.json)
+  codex           Codex CLI (~/.codex/config.toml)
+
+Examples:
+  compendio install-mcp claude
+  compendio install-mcp cursor
+  compendio install-mcp vscode
+  compendio install-mcp codex
+`;
+
+program
+  .command("install-mcp")
+  .description("Installs compendio-mcp in the specified AI agent's configuration")
+  .argument("<agent>", "agent to install: claude, claude-desktop, cursor, vscode, opencode, codex")
+  .addHelpText("after", INSTALL_MCP_HELP)
+  .action(async (agent: string) => {
+    if (!isValidAgent(agent)) {
+      console.error(`Error: Unknown agent "${agent}".`);
+      console.error(`Supported agents: claude, claude-desktop, cursor, vscode, opencode, codex`);
+      process.exit(1);
+    }
+
+    const homeDir = process.env["HOME"] ?? process.env["USERPROFILE"] ?? "";
+    const appDataDir = process.env["APPDATA"];
+    const configPath = getAgentConfigPath(agent as McpAgent, process.platform, homeDir, appDataDir);
+    const serverKey = getAgentServerKey(agent as McpAgent);
+
+    const serverEntry: McpServerEntry = {
+      command: "npx",
+      args: ["-y", "compendio-mcp", "serve"],
+    };
+
+    const installMcp = new InstallMcp(createFsAdapter());
+    const result = await installMcp.execute({
+      agent,
+      configPath,
+      serverName: "compendio",
+      serverEntry,
+      serverKey,
+    });
+
+    if (result.created) {
+      console.log(`Created ${configPath}`);
+    } else if (result.overwritten) {
+      console.log(`Updated existing "compendio" entry in ${configPath}`);
+    } else {
+      console.log(`Added "compendio" to ${configPath}`);
+    }
+    console.log(`Restart ${agent} to load the new MCP server.`);
   });
 
 async function withContainer(

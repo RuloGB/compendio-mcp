@@ -81,137 +81,15 @@ npm install -g compendio-mcp
 
 To update Compendio later, run that same command again — it always pulls the latest published version.
 
-**2. Register it as an MCP server** in your client, pointed at your project root.
+**2. Register it as an MCP server** in your client:
 
-**Claude Code** (`.mcp.json` at the repo root or `{USER_FOLDER} .claude.json` to global install):
-
-```json
-{
-  "mcpServers": {
-    "compendio": {
-      "command": "compendio",
-      "args": ["serve"]
-    }
-  }
-}
+```bash
+compendio install-mcp <agent>
 ```
 
-**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows — or Settings → Developer → Edit Config):
+Supported agents: `claude`, `claude-desktop`, `cursor`, `vscode`, `opencode`, `codex`.
 
-```json
-{
-  "mcpServers": {
-    "compendio": {
-      "command": "compendio",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-**OpenCode** (`opencode.json`):
-
-```json
-{
-  "mcp": {
-    "compendio": {
-      "type": "local",
-      "command": ["compendio", "serve"],
-      "enabled": true
-    }
-  }
-}
-```
-
-**VS Code / Copilot** (`.vscode/mcp.json`):
-
-```json
-{
-  "servers": {
-    "compendio": {
-      "type": "stdio",
-      "command": "compendio",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-**Cursor** (`.cursor/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "compendio": {
-      "command": "compendio",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-**Codex** (`.codex/config.toml`):
-
-```toml
-[mcp_servers.compendio]
-command = "npx"
-args = ["compendio-mcp", "serve"]
-enabled = true
-startup_timeout_sec = 60
-```
-
-**Windsurf** (`~/.codeium/windsurf/mcp_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "compendio": {
-      "command": "compendio",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-**Zed** (`settings.json`, or Settings → AI → MCP Servers → Add Custom Server):
-
-```json
-{
-  "context_servers": {
-    "compendio": {
-      "command": "compendio",
-      "args": ["serve"],
-      "env": {}
-    }
-  }
-}
-```
-
-**Cline** (MCP Servers icon → Configure → *Configure MCP Servers*; the CLI reads `~/.cline/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "compendio": {
-      "command": "compendio",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-**Gemini CLI** (`.gemini/settings.json` in the project, or `~/.gemini/settings.json`):
-
-```json
-{
-  "mcpServers": {
-    "compendio": {
-      "command": "compendio",
-      "args": ["serve"]
-    }
-  }
-}
-```
+For manual installation or agents not supported by this command (Windsurf, Zed, Cline, Gemini CLI), see [Manual Installation](docs/manual-installation.md).
 
 **3. Build the index once**, from the project root:
 
@@ -329,6 +207,7 @@ Designed as *progressive disclosure*: orient cheaply → search cheaply → read
 | Command | What it does |
 |---|---|
 | `compendio serve` | Starts the MCP server over stdio |
+| `compendio install-mcp <agent>` | Registers compendio-mcp in the specified agent's configuration |
 | `compendio index` | Full rebuild of the index |
 | `compendio sync` | Runs one incremental sync pass from the terminal — syncs only the documents whose content changed, with live progress. See [Incremental sync](#incremental-sync) |
 | `compendio search "..."` | Hybrid search with filters: `--type`, `--module`, `--tags`, `-k`, `--all` |
