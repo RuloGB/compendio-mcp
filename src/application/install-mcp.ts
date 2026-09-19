@@ -1,5 +1,5 @@
 import { dirname } from "node:path";
-import { mergeMcpConfig, mergeCodexToml, type McpServerEntry } from "../domain/mcp-agents.js";
+import { mergeMcpConfig, mergeCodexToml, getAgentServerKey, type McpAgent, type McpServerEntry } from "../domain/mcp-agents.js";
 import { parseToml, serializeToml } from "../infrastructure/config/toml.js";
 
 export interface InstallMcpDependencies {
@@ -9,11 +9,10 @@ export interface InstallMcpDependencies {
 }
 
 export interface InstallMcpOptions {
-  agent: string;
+  agent: McpAgent;
   configPath: string;
   serverName: string;
   serverEntry: McpServerEntry;
-  serverKey: string;
 }
 
 export interface InstallMcpResult {
@@ -26,8 +25,9 @@ export class InstallMcp {
   constructor(private readonly deps: InstallMcpDependencies) {}
 
   async execute(options: InstallMcpOptions): Promise<InstallMcpResult> {
-    const { agent, configPath, serverName, serverEntry, serverKey } = options;
+    const { agent, configPath, serverName, serverEntry } = options;
     const isCodex = agent === "codex";
+    const serverKey = getAgentServerKey(agent);
 
     let existing: Record<string, unknown> = {};
     let created = false;
@@ -54,7 +54,7 @@ export class InstallMcp {
       const merged = mergeCodexToml(existing, serverName, serverEntry);
       content = serializeToml(merged);
     } else {
-      const merged = mergeMcpConfig(existing, serverName, serverEntry, serverKey);
+      const merged = mergeMcpConfig(existing, serverName, serverEntry, agent);
       content = JSON.stringify(merged, null, 2);
     }
 
