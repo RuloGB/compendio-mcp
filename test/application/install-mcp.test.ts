@@ -42,7 +42,6 @@ describe("InstallMcp", () => {
       configPath: "/home/test/.claude/settings.json",
       serverName: "compendio",
       serverEntry,
-      serverKey: "mcpServers",
     });
 
     expect(result.created).toBe(true);
@@ -73,7 +72,6 @@ describe("InstallMcp", () => {
       configPath: "/home/test/.claude/settings.json",
       serverName: "compendio",
       serverEntry,
-      serverKey: "mcpServers",
     });
 
     expect(result.created).toBe(false);
@@ -103,7 +101,6 @@ describe("InstallMcp", () => {
       configPath: "/home/test/.claude/settings.json",
       serverName: "compendio",
       serverEntry,
-      serverKey: "mcpServers",
     });
 
     expect(result.created).toBe(false);
@@ -126,7 +123,6 @@ describe("InstallMcp", () => {
       configPath: "/home/test/.claude/settings.json",
       serverName: "compendio",
       serverEntry,
-      serverKey: "mcpServers",
     });
 
     expect(result.created).toBe(false);
@@ -147,7 +143,6 @@ describe("InstallMcp", () => {
       configPath: "/home/test/.claude/settings.json",
       serverName: "compendio",
       serverEntry,
-      serverKey: "mcpServers",
     });
 
     expect(result.created).toBe(true);
@@ -164,7 +159,6 @@ describe("InstallMcp", () => {
       configPath: "/home/test/.codex/config.toml",
       serverName: "compendio",
       serverEntry,
-      serverKey: "mcp_servers",
     });
 
     expect(result.created).toBe(true);
@@ -193,7 +187,6 @@ args = ["--flag"]
       configPath: "/home/test/.codex/config.toml",
       serverName: "compendio",
       serverEntry,
-      serverKey: "mcp_servers",
     });
 
     expect(result.created).toBe(false);
@@ -201,5 +194,71 @@ args = ["--flag"]
     expect(written).toContain("[mcp_servers.other-server]");
     expect(written).toContain("[mcp_servers.compendio]");
     expect(written).toContain('command = "npx"');
+  });
+
+  it("creates OpenCode format config", async () => {
+    const state: FakeFsState = { files: new Map() };
+    const fakeFs = createFakeFs(state);
+    const useCase = new InstallMcp(fakeFs);
+
+    const result = await useCase.execute({
+      agent: "opencode",
+      configPath: "/home/test/.config/opencode/opencode.json",
+      serverName: "compendio",
+      serverEntry,
+    });
+
+    expect(result.created).toBe(true);
+    const written = state.files.get("/home/test/.config/opencode/opencode.json");
+    const parsed = JSON.parse(written!);
+    expect(parsed.mcp.compendio).toEqual({
+      type: "local",
+      command: ["npx", "-y", "compendio-mcp", "serve"],
+      enabled: true,
+    });
+  });
+
+  it("creates VS Code format config", async () => {
+    const state: FakeFsState = { files: new Map() };
+    const fakeFs = createFakeFs(state);
+    const useCase = new InstallMcp(fakeFs);
+
+    const result = await useCase.execute({
+      agent: "vscode",
+      configPath: "/home/test/.config/Code/User/settings.json",
+      serverName: "compendio",
+      serverEntry,
+    });
+
+    expect(result.created).toBe(true);
+    const written = state.files.get("/home/test/.config/Code/User/settings.json");
+    const parsed = JSON.parse(written!);
+    expect(parsed.servers.compendio).toEqual({
+      type: "stdio",
+      command: "npx",
+      args: ["-y", "compendio-mcp", "serve"],
+    });
+  });
+
+  it("creates Zed format config", async () => {
+    const state: FakeFsState = { files: new Map() };
+    const fakeFs = createFakeFs(state);
+    const useCase = new InstallMcp(fakeFs);
+
+    const result = await useCase.execute({
+      agent: "zed",
+      configPath: "/home/test/.config/zed/settings.json",
+      serverName: "compendio",
+      serverEntry,
+    });
+
+    expect(result.created).toBe(true);
+    const written = state.files.get("/home/test/.config/zed/settings.json");
+    const parsed = JSON.parse(written!);
+    expect(parsed.context_servers.compendio).toEqual({
+      command: "npx",
+      args: ["-y", "compendio-mcp", "serve"],
+      env: {},
+    });
   });
 });

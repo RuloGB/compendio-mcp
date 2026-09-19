@@ -277,30 +277,31 @@ Supported agents:
   vscode          VS Code with Copilot (platform-specific settings.json)
   opencode        OpenCode CLI (~/.config/opencode/opencode.json)
   codex           Codex CLI (~/.codex/config.toml)
+  zed             Zed editor (platform-specific settings.json)
 
 Examples:
   compendio install-mcp claude
   compendio install-mcp cursor
   compendio install-mcp vscode
   compendio install-mcp codex
+  compendio install-mcp zed
 `;
 
 program
   .command("install-mcp")
   .description("Installs compendio-mcp in the specified AI agent's configuration")
-  .argument("<agent>", "agent to install: claude, claude-desktop, cursor, vscode, opencode, codex")
+  .argument("<agent>", "agent to install: claude, claude-desktop, cursor, vscode, opencode, codex, zed")
   .addHelpText("after", INSTALL_MCP_HELP)
   .action(async (agent: string) => {
     if (!isValidAgent(agent)) {
       console.error(`Error: Unknown agent "${agent}".`);
-      console.error(`Supported agents: claude, claude-desktop, cursor, vscode, opencode, codex`);
+      console.error(`Supported agents: claude, claude-desktop, cursor, vscode, opencode, codex, zed`);
       process.exit(1);
     }
 
     const homeDir = process.env["HOME"] ?? process.env["USERPROFILE"] ?? "";
     const appDataDir = process.env["APPDATA"];
     const configPath = getAgentConfigPath(agent as McpAgent, process.platform, homeDir, appDataDir);
-    const serverKey = getAgentServerKey(agent as McpAgent);
 
     const serverEntry: McpServerEntry = {
       command: "npx",
@@ -309,11 +310,10 @@ program
 
     const installMcp = new InstallMcp(createFsAdapter());
     const result = await installMcp.execute({
-      agent,
+      agent: agent as McpAgent,
       configPath,
       serverName: "compendio",
       serverEntry,
-      serverKey,
     });
 
     if (result.created) {

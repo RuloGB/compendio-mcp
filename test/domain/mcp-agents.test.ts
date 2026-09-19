@@ -66,6 +66,19 @@ describe("mcp-agents", () => {
       expect(path).toBe(normalize("/home/test/.codex/config.toml"));
     });
 
+    it("returns correct path for zed on linux", () => {
+      const home = "/home/test";
+      const path = getAgentConfigPath("zed", "linux", home);
+      expect(path).toBe(normalize("/home/test/.config/zed/settings.json"));
+    });
+
+    it("returns correct path for zed on windows", () => {
+      const home = "C:\\Users\\Test";
+      const appData = "C:\\Users\\Test\\AppData\\Roaming";
+      const path = getAgentConfigPath("zed", "win32", home, appData);
+      expect(path).toBe(win32.join(appData, "Zed", "settings.json"));
+    });
+
     it("throws for unknown agent", () => {
       const home = "/home/test";
       expect(() => getAgentConfigPath("unknown" as McpAgent, "linux", home)).toThrow(
@@ -79,16 +92,17 @@ describe("mcp-agents", () => {
       expect(getAgentServerKey("claude")).toBe("mcpServers");
       expect(getAgentServerKey("claude-desktop")).toBe("mcpServers");
       expect(getAgentServerKey("cursor")).toBe("mcpServers");
-      expect(getAgentServerKey("vscode")).toBe("mcpServers");
-      expect(getAgentServerKey("opencode")).toBe("mcpServers");
+      expect(getAgentServerKey("vscode")).toBe("servers");
+      expect(getAgentServerKey("opencode")).toBe("mcp");
       expect(getAgentServerKey("codex")).toBe("mcp_servers");
+      expect(getAgentServerKey("zed")).toBe("context_servers");
     });
   });
 
   describe("mergeMcpConfig", () => {
-    it("adds new server to empty config", () => {
+    it("adds new server to empty config for claude", () => {
       const existing = {};
-      const result = mergeMcpConfig(existing, "compendio", serverEntry, "mcpServers");
+      const result = mergeMcpConfig(existing, "compendio", serverEntry, "claude");
       expect(result).toEqual({
         mcpServers: {
           compendio: serverEntry,
@@ -96,13 +110,13 @@ describe("mcp-agents", () => {
       });
     });
 
-    it("adds new server alongside existing servers", () => {
+    it("adds new server alongside existing servers for cursor", () => {
       const existing = {
         mcpServers: {
           "other-server": { command: "other", args: [] },
         },
       };
-      const result = mergeMcpConfig(existing, "compendio", serverEntry, "mcpServers");
+      const result = mergeMcpConfig(existing, "compendio", serverEntry, "cursor");
       expect(result).toEqual({
         mcpServers: {
           "other-server": { command: "other", args: [] },
@@ -111,13 +125,13 @@ describe("mcp-agents", () => {
       });
     });
 
-    it("overwrites existing server with same name", () => {
+    it("overwrites existing server with same name for claude-desktop", () => {
       const existing = {
         mcpServers: {
           compendio: { command: "old", args: ["old-args"] },
         },
       };
-      const result = mergeMcpConfig(existing, "compendio", serverEntry, "mcpServers");
+      const result = mergeMcpConfig(existing, "compendio", serverEntry, "claude-desktop");
       expect(result).toEqual({
         mcpServers: {
           compendio: serverEntry,
@@ -125,14 +139,14 @@ describe("mcp-agents", () => {
       });
     });
 
-    it("preserves other config keys", () => {
+    it("preserves other config keys for claude", () => {
       const existing = {
         someOtherKey: "value",
         mcpServers: {
           existing: { command: "existing" },
         },
       };
-      const result = mergeMcpConfig(existing, "compendio", serverEntry, "mcpServers");
+      const result = mergeMcpConfig(existing, "compendio", serverEntry, "claude");
       expect(result).toEqual({
         someOtherKey: "value",
         mcpServers: {
@@ -142,13 +156,93 @@ describe("mcp-agents", () => {
       });
     });
 
-    it("handles config without server key", () => {
+    it("handles config without server key for claude", () => {
       const existing = { someOtherKey: "value" };
-      const result = mergeMcpConfig(existing, "compendio", serverEntry, "mcpServers");
+      const result = mergeMcpConfig(existing, "compendio", serverEntry, "claude");
       expect(result).toEqual({
         someOtherKey: "value",
         mcpServers: {
           compendio: serverEntry,
+        },
+      });
+    });
+
+    it("transforms entry to OpenCode format", () => {
+      const existing = {};
+      const result = mergeMcpConfig(existing, "compendio", serverEntry, "opencode");
+      expect(result).toEqual({
+        mcp: {
+          compendio: {
+            type: "local",
+            command: ["npx", "-y", "compendio-mcp", "serve"],
+            enabled: true,
+          },
+        },
+      });
+    });
+
+    it("adds OpenCode server alongside existing servers", () => {
+      const existing = {
+        mcp: {
+          codegraph: { command: ["codegraph"], type: "local" },
+        },
+      };
+      const result = mergeMcpConfig(existing, "compendio", serverEntry, "opencode");
+      expect(result).toEqual({
+        mcp: {
+          codegraph: { command: ["codegraph"], type: "local" },
+          compendio: {
+            type: "local",
+            command: ["npx", "-y", "compendio-mcp", "serve"],
+            enabled: true,
+          },
+        },
+      });
+    });
+
+    it("transforms entry to VS Code format", () => {
+      const existing = {};
+      const result = mergeMcpConfig(existing, "compendio", serverEntry, "vscode");
+      expect(result).toEqual({
+        servers: {
+          compendio: {
+            type: "stdio",
+            command: "npx",
+            args: ["-y", "compendio-mcp", "serve"],
+          },
+        },
+      });
+    });
+
+    it("transforms entry to Zed format", () => {
+      const existing = {};
+      const result = mergeMcpConfig(existing, "compendio", serverEntry, "zed");
+      expect(result).toEqual({
+        context_servers: {
+          compendio: {
+            command: "npx",
+            args: ["-y", "compendio-mcp", "serve"],
+            env: {},
+          },
+        },
+      });
+    });
+
+    it("preserves env in Zed format when provided", () => {
+      const entryWithEnv: McpServerEntry = {
+        command: "npx",
+        args: ["-y", "compendio-mcp", "serve"],
+        env: { API_KEY: "test" },
+      };
+      const existing = {};
+      const result = mergeMcpConfig(existing, "compendio", entryWithEnv, "zed");
+      expect(result).toEqual({
+        context_servers: {
+          compendio: {
+            command: "npx",
+            args: ["-y", "compendio-mcp", "serve"],
+            env: { API_KEY: "test" },
+          },
         },
       });
     });

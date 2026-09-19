@@ -87,9 +87,9 @@ To update Compendio later, run that same command again — it always pulls the l
 compendio install-mcp <agent>
 ```
 
-Supported agents: `claude`, `claude-desktop`, `cursor`, `vscode`, `opencode`, `codex`.
+Supported agents: `claude`, `claude-desktop`, `cursor`, `vscode`, `opencode`, `codex`, `zed`.
 
-For manual installation or agents not supported by this command (Windsurf, Zed, Cline, Gemini CLI), see [Manual Installation](docs/manual-installation.md).
+For manual installation or agents not supported by this command (Windsurf, Cline, Gemini CLI), see [Manual Installation](docs/manual-installation.md).
 
 **3. Build the index once**, from the project root:
 

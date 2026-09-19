@@ -1,6 +1,6 @@
 import { join, win32 } from "node:path";
 
-export type McpAgent = "claude" | "claude-desktop" | "cursor" | "vscode" | "opencode" | "codex";
+export type McpAgent = "claude" | "claude-desktop" | "cursor" | "vscode" | "opencode" | "codex" | "zed";
 
 export interface McpServerEntry {
   command: string;
@@ -8,7 +8,7 @@ export interface McpServerEntry {
   env?: Record<string, string>;
 }
 
-const VALID_AGENTS: McpAgent[] = ["claude", "claude-desktop", "cursor", "vscode", "opencode", "codex"];
+const VALID_AGENTS: McpAgent[] = ["claude", "claude-desktop", "cursor", "vscode", "opencode", "codex", "zed"];
 
 export function isValidAgent(value: string): value is McpAgent {
   return VALID_AGENTS.includes(value as McpAgent);
@@ -51,29 +51,77 @@ export function getAgentConfigPath(
       return joinPath(platform, homeDir, ".config", "opencode", "opencode.json");
     case "codex":
       return joinPath(platform, homeDir, ".codex", "config.toml");
+    case "zed":
+      if (platform === "win32") {
+        if (!appDataDir) throw new Error("APPDATA required for zed on Windows");
+        return joinPath(platform, appDataDir, "Zed", "settings.json");
+      }
+      if (platform === "darwin") {
+        return joinPath(platform, homeDir, "Library", "Application Support", "Zed", "settings.json");
+      }
+      return joinPath(platform, homeDir, ".config", "zed", "settings.json");
     default:
       throw new Error(`Unknown MCP agent: "${agent}"`);
   }
 }
 
 export function getAgentServerKey(agent: McpAgent): string {
-  return agent === "codex" ? "mcp_servers" : "mcpServers";
+  switch (agent) {
+    case "vscode":
+      return "servers";
+    case "opencode":
+      return "mcp";
+    case "zed":
+      return "context_servers";
+    case "codex":
+      return "mcp_servers";
+    default:
+      return "mcpServers";
+  }
 }
 
 export function mergeMcpConfig(
   existing: Record<string, unknown>,
   serverName: string,
   entry: McpServerEntry,
-  serverKey: string,
+  agent: McpAgent,
 ): Record<string, unknown> {
-  const servers = (existing[serverKey] as Record<string, McpServerEntry> | undefined) ?? {};
+  const serverKey = getAgentServerKey(agent);
+  const servers = (existing[serverKey] as Record<string, unknown> | undefined) ?? {};
+  const serverValue = transformServerEntry(entry, agent);
+  
   return {
     ...existing,
     [serverKey]: {
       ...servers,
-      [serverName]: entry,
+      [serverName]: serverValue,
     },
   };
+}
+
+function transformServerEntry(entry: McpServerEntry, agent: McpAgent): unknown {
+  switch (agent) {
+    case "opencode":
+      return {
+        type: "local",
+        command: [entry.command, ...entry.args],
+        enabled: true,
+      };
+    case "vscode":
+      return {
+        type: "stdio",
+        command: entry.command,
+        args: entry.args,
+      };
+    case "zed":
+      return {
+        command: entry.command,
+        args: entry.args,
+        env: entry.env ?? {},
+      };
+    default:
+      return entry;
+  }
 }
 
 export function mergeCodexToml(
