@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalize } from "node:path";
+import { normalize, win32 } from "node:path";
 import {
   getAgentConfigPath,
   getAgentServerKey,
@@ -19,7 +19,7 @@ describe("mcp-agents", () => {
     it("returns correct path for claude on windows", () => {
       const home = "C:\\Users\\Test";
       const path = getAgentConfigPath("claude", "win32", home);
-      expect(path).toBe(normalize("C:\\Users\\Test\\.claude\\settings.json"));
+      expect(path).toBe(win32.join(home, ".claude", "settings.json"));
     });
 
     it("returns correct path for claude on linux", () => {
@@ -32,7 +32,7 @@ describe("mcp-agents", () => {
       const home = "C:\\Users\\Test";
       const appData = "C:\\Users\\Test\\AppData\\Roaming";
       const path = getAgentConfigPath("claude-desktop", "win32", home, appData);
-      expect(path).toBe(normalize("C:\\Users\\Test\\AppData\\Roaming\\Claude\\claude_desktop_config.json"));
+      expect(path).toBe(win32.join(appData, "Claude", "claude_desktop_config.json"));
     });
 
     it("returns correct path for claude-desktop on macos", () => {
@@ -51,7 +51,7 @@ describe("mcp-agents", () => {
       const home = "C:\\Users\\Test";
       const appData = "C:\\Users\\Test\\AppData\\Roaming";
       const path = getAgentConfigPath("vscode", "win32", home, appData);
-      expect(path).toBe(normalize("C:\\Users\\Test\\AppData\\Roaming\\Code\\User\\settings.json"));
+      expect(path).toBe(win32.join(appData, "Code", "User", "settings.json"));
     });
 
     it("returns correct path for opencode", () => {

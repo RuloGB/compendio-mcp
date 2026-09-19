@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 
 export type McpAgent = "claude" | "claude-desktop" | "cursor" | "vscode" | "opencode" | "codex";
 
@@ -14,6 +14,10 @@ export function isValidAgent(value: string): value is McpAgent {
   return VALID_AGENTS.includes(value as McpAgent);
 }
 
+function joinPath(platform: NodeJS.Platform, ...segments: string[]): string {
+  return platform === "win32" ? win32.join(...segments) : join(...segments);
+}
+
 export function getAgentConfigPath(
   agent: McpAgent,
   platform: NodeJS.Platform,
@@ -22,31 +26,31 @@ export function getAgentConfigPath(
 ): string {
   switch (agent) {
     case "claude":
-      return join(homeDir, ".claude", "settings.json");
+      return joinPath(platform, homeDir, ".claude", "settings.json");
     case "claude-desktop":
       if (platform === "win32") {
         if (!appDataDir) throw new Error("APPDATA required for claude-desktop on Windows");
-        return join(appDataDir, "Claude", "claude_desktop_config.json");
+        return joinPath(platform, appDataDir, "Claude", "claude_desktop_config.json");
       }
       if (platform === "darwin") {
-        return join(homeDir, "Library", "Application Support", "Claude", "claude_desktop_config.json");
+        return joinPath(platform, homeDir, "Library", "Application Support", "Claude", "claude_desktop_config.json");
       }
-      return join(homeDir, ".config", "Claude", "claude_desktop_config.json");
+      return joinPath(platform, homeDir, ".config", "Claude", "claude_desktop_config.json");
     case "cursor":
-      return join(homeDir, ".cursor", "mcp.json");
+      return joinPath(platform, homeDir, ".cursor", "mcp.json");
     case "vscode":
       if (platform === "win32") {
         if (!appDataDir) throw new Error("APPDATA required for vscode on Windows");
-        return join(appDataDir, "Code", "User", "settings.json");
+        return joinPath(platform, appDataDir, "Code", "User", "settings.json");
       }
       if (platform === "darwin") {
-        return join(homeDir, "Library", "Application Support", "Code", "User", "settings.json");
+        return joinPath(platform, homeDir, "Library", "Application Support", "Code", "User", "settings.json");
       }
-      return join(homeDir, ".config", "Code", "User", "settings.json");
+      return joinPath(platform, homeDir, ".config", "Code", "User", "settings.json");
     case "opencode":
-      return join(homeDir, ".config", "opencode", "opencode.json");
+      return joinPath(platform, homeDir, ".config", "opencode", "opencode.json");
     case "codex":
-      return join(homeDir, ".codex", "config.toml");
+      return joinPath(platform, homeDir, ".codex", "config.toml");
     default:
       throw new Error(`Unknown MCP agent: "${agent}"`);
   }
