@@ -79,7 +79,11 @@ Compendio indexes your markdown documentation and gives any AI agent three tools
 npm install -g compendio-mcp
 ```
 
-To update Compendio later, run that same command again — it always pulls the latest published version.
+To update an existing installation:
+
+```bash
+compendio update
+```
 
 **2. Register it as an MCP server** in your client:
 
@@ -208,6 +212,7 @@ Designed as *progressive disclosure*: orient cheaply → search cheaply → read
 |---|---|
 | `compendio serve` | Starts the MCP server over stdio |
 | `compendio install-mcp <agent>` | Registers compendio-mcp in the specified agent's configuration |
+| `compendio update` | Updates compendio-mcp to the latest version from npm |
 | `compendio index` | Full rebuild of the index |
 | `compendio sync` | Runs one incremental sync pass from the terminal — syncs only the documents whose content changed, with live progress. See [Incremental sync](#incremental-sync) |
 | `compendio search "..."` | Hybrid search with filters: `--type`, `--module`, `--tags`, `-k`, `--all` |
