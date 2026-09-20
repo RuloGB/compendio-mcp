@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawn } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -325,6 +326,43 @@ program
     }
     console.log(`Restart ${agent} to load the new MCP server.`);
   });
+
+program
+  .command("update")
+  .description("Updates compendio-mcp to the latest version from npm")
+  .action(async () => {
+    await runNpmUpdate();
+  });
+
+/**
+ * Spawns `npm install -g compendio-mcp@latest` and streams its output to the
+ * user's terminal. Exported for direct unit testing. Uses `shell: true`
+ * because on Windows `npm` is a `.cmd` batch file that requires a shell
+ * to execute; without it, `spawn` raises EINVAL.
+ */
+export async function runNpmUpdate(): Promise<void> {
+  const command = process.platform === "win32" ? "npm.cmd" : "npm";
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(command, ["install", "-g", "compendio-mcp@latest"], {
+        stdio: "inherit",
+        shell: true,
+      });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`npm exited with code ${code}`));
+      });
+    });
+    console.log("compendio updated to the latest version.");
+  } catch (error) {
+    console.error("Error: failed to update compendio.");
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+}
 
 async function withContainer(
   options: {
